@@ -1,5 +1,6 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
+import Login          from './pages/Login'
 import Dashboard      from './pages/Dashboard'
 import Zones          from './pages/Zones'
 import ZoneDetail     from './pages/ZoneDetail'
@@ -9,11 +10,29 @@ import Programs       from './pages/Programs'
 import PressureAnalysis from './pages/PressureAnalysis'
 import Alerts         from './pages/Alerts'
 import AdminConsole   from './pages/AdminConsole'
+import { useAuth }    from './hooks/useAuth'
 
 export default function App() {
+  const { session, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f9f9f9] flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-[#0d631b] animate-pulse" />
+          <span className="text-sm font-body text-[#40493d]">Loading…</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <Login />
+  }
+
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar session={session} />
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
         <Routes>
           <Route path="/"           element={<Dashboard />} />
@@ -25,6 +44,7 @@ export default function App() {
           <Route path="/pressure"   element={<PressureAnalysis />} />
           <Route path="/alerts"     element={<Alerts />} />
           <Route path="/admin"      element={<AdminConsole />} />
+          <Route path="*"           element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

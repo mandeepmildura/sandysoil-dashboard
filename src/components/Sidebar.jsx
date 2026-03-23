@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 const nav = [
   { to: '/',         label: 'Dashboard',  icon: <GridIcon /> },
@@ -10,7 +11,7 @@ const nav = [
   { to: '/admin',    label: 'Admin',      icon: <AdminIcon /> },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ session }) {
   return (
     <aside className="w-56 min-h-screen bg-[#304047] flex flex-col shrink-0">
       {/* Logo */}
@@ -53,8 +54,17 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-white/10">
+      <div className="px-4 py-4 border-t border-white/10 space-y-2">
+        {session?.user?.email && (
+          <p className="text-white/40 text-[10px] truncate">{session.user.email}</p>
+        )}
         <p className="text-white/30 text-xs">Mildura, VIC</p>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="text-white/40 hover:text-white/70 text-xs font-body transition-colors"
+        >
+          Sign out
+        </button>
       </div>
     </aside>
   )
