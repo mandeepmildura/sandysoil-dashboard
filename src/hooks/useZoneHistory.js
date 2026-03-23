@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
@@ -8,9 +8,12 @@ import { supabase } from '../lib/supabase'
 export function useZoneHistory(zoneNum = null, limit = 20) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
+
+  const refresh = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    async function fetch() {
+    async function load() {
       setLoading(true)
       let query = supabase
         .from('zone_history')
@@ -24,8 +27,8 @@ export function useZoneHistory(zoneNum = null, limit = 20) {
       if (!error && data) setHistory(data)
       setLoading(false)
     }
-    fetch()
-  }, [zoneNum, limit])
+    load()
+  }, [zoneNum, limit, tick])
 
-  return { history, loading }
+  return { history, loading, refresh }
 }

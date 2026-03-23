@@ -5,6 +5,7 @@ import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useZoneHistory } from '../hooks/useZoneHistory'
 import { zoneOn, zoneOff, allZonesOff, durationToMinutes } from '../lib/commands'
+import { supabase } from '../lib/supabase'
 
 const DURATIONS = ['15 min', '30 min', '1 hour', 'Custom']
 
@@ -17,15 +18,40 @@ export default function ZoneDetail() {
 
   async function handleStart() {
     setCmdSending(true); setCmdError(null)
-    try { await zoneOn(zoneNum, durationToMinutes(selectedDuration)) }
-    catch (e) { setCmdError(e.message) }
+    try {
+      await zoneOn(zoneNum, durationToMinutes(selectedDuration))
+      await supabase.from('zone_history').insert({
+        zone_num: zoneNum,
+        started_at: new Date().toISOString(),
+        source: 'manual',
+      })
+      refresh()
+    } catch (e) { setCmdError(e.message) }
     setCmdSending(false)
   }
 
   async function handleStop() {
     setCmdSending(true); setCmdError(null)
-    try { await zoneOff(zoneNum) }
-    catch (e) { setCmdError(e.message) }
+    try {
+      await zoneOff(zoneNum)
+      const now = new Date()
+      const { data: open } = await supabase
+        .from('zone_history')
+        .select('id, started_at')
+        .eq('zone_num', zoneNum)
+        .is('ended_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (open) {
+        const durMin = ((now - new Date(open.started_at)) / 60000).toFixed(2)
+        await supabase.from('zone_history').update({
+          ended_at: now.toISOString(),
+          duration_min: durMin,
+        }).eq('id', open.id)
+      }
+      refresh()
+    } catch (e) { setCmdError(e.message) }
     setCmdSending(false)
   }
 
@@ -37,7 +63,7 @@ export default function ZoneDetail() {
   }
 
   const { data: live } = useLiveTelemetry(['farm/irrigation1/status'])
-  const { history, loading } = useZoneHistory(zoneNum, 20)
+  const { history, loading, refresh } = useZoneHistory(zoneNum, 20)
 
   const irr   = live['farm/irrigation1/status'] ?? null
   const zones = irr?.zones ?? []

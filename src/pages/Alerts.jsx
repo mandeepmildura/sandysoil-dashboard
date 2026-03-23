@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useAlerts } from '../hooks/useAlerts'
@@ -28,16 +28,15 @@ export default function Alerts() {
   const { data: live } = useLiveTelemetry(['farm/irrigation1/status', 'farm/filter1/pressure'])
 
   // Use DB alerts if loaded and non-empty, otherwise show demo
-  const source = (!loading && dbAlerts.length > 0) ? dbAlerts : (loading ? [] : DEMO_ALERTS)
+  const source = useMemo(
+    () => (!loading && dbAlerts.length > 0) ? dbAlerts : (!loading ? DEMO_ALERTS : []),
+    [loading, dbAlerts]
+  )
   const [localAlerts, setLocalAlerts] = useState(null) // null = use source
   const alerts = localAlerts ?? source
 
-  // Sync localAlerts when source changes (fresh load)
-  const [prevSource, setPrevSource] = useState(null)
-  if (prevSource !== source) {
-    setPrevSource(source)
-    setLocalAlerts(null)
-  }
+  // Reset local overrides whenever the authoritative source changes
+  useEffect(() => { setLocalAlerts(null) }, [source])
 
   const [tab, setTab] = useState('All')
   const tabs = ['All', 'Critical', 'Warnings', 'Resolved']
