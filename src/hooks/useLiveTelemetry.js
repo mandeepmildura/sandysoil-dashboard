@@ -1,59 +1,41 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { mqttSubscribe } from '../lib/mqttClient'
 
 /**
- * Subscribes to device_telemetry via Supabase Realtime.
- * Returns a map of { [topic]: latestPayload } and a connected flag.
- *
- * On mount, fetches the most recent row for each watched topic,
- * then keeps it live via INSERT events.
+ * Subscribes to MQTT topics directly over WSS.
+ * Returns { data: { [topic]: latestPayload }, connected }.
+ * No Railway bridge — updates arrive as fast as the device publishes.
  */
 export function useLiveTelemetry(topics = []) {
-  const [data, setData] = useState({})
+  const [data,      setData]      = useState({})
   const [connected, setConnected] = useState(false)
 
   const topicsKey = topics.join(',')
 
-  const applyRow = useCallback((row) => {
-    if (!row?.topic || !row?.payload) return
-    setData(prev => ({ ...prev, [row.topic]: row.payload }))
+  const handleMessage = useCallback((payload, topic) => {
+    setConnected(true)
+    setData(prev => ({ ...prev, [topic]: payload }))
   }, [])
 
   useEffect(() => {
     if (!topics.length) return
 
-    // Initial fetch — latest row per topic
-    async function fetchLatest() {
+    const unsubs = []
+
+    async function subscribe() {
       for (const topic of topics) {
-        const { data: rows } = await supabase
-          .from('device_telemetry')
-          .select('topic, payload')
-          .eq('topic', topic)
-          .order('received_at', { ascending: false })
-          .limit(1)
-        if (rows?.[0]) applyRow(rows[0])
+        const unsub = await mqttSubscribe(topic, handleMessage)
+        unsubs.push(unsub)
       }
+      setConnected(true)
     }
-    fetchLatest()
 
-    // Realtime subscription
-    const channel = supabase
-      .channel('live-telemetry')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'device_telemetry' },
-        (change) => {
-          const row = change.new
-          if (topics.includes(row.topic)) applyRow(row)
-        }
-      )
-      .subscribe((status) => {
-        setConnected(status === 'SUBSCRIBED')
-      })
+    subscribe().catch(err => {
+      console.error('MQTT subscribe error:', err)
+      setConnected(false)
+    })
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => unsubs.forEach(fn => fn())
   }, [topicsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { data, connected }
