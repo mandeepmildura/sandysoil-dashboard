@@ -89,6 +89,10 @@ create table if not exists device_commands (
   processed_at timestamptz
 );
 
+-- Ensure columns exist in case table was created by an earlier partial run
+alter table device_commands add column if not exists processed     boolean     not null default false;
+alter table device_commands add column if not exists processed_at  timestamptz;
+
 create index if not exists device_commands_unprocessed_idx
   on device_commands (topic, inserted_at)
   where processed = false;
