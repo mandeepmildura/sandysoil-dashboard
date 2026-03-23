@@ -1,34 +1,80 @@
 import { useState } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
+import { useAlerts } from '../hooks/useAlerts'
+import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 
-const ALL_ALERTS = [
-  { id: 1, severity: 'fault',   title: 'High Pressure Alert',        device: 'Irrigation Controller', time: '14:32 today',    desc: 'Supply PSI exceeded 65 PSI. Zone 3 was active.',  resolved: false },
-  { id: 2, severity: 'fault',   title: 'Filter Fault',               device: 'Filter Station',        time: '12:15 today',    desc: 'Backwash cycle failed to complete. Manual reset required.', resolved: false },
-  { id: 3, severity: 'warning', title: 'Zone 3 Runtime Exceeded',    device: 'Irrigation Controller', time: '10:00 today',    desc: 'Zone ran 45 min over scheduled time.',            resolved: false },
-  { id: 4, severity: 'warning', title: 'Device Offline',             device: 'Irrigation Controller', time: '2h ago',         desc: 'Device last seen 2 hours ago. Check connectivity.', resolved: false },
-  { id: 5, severity: 'online',  title: 'Backwash Complete',          device: 'Filter Station',        time: 'Yesterday 09:00',desc: 'Backwash cycle completed successfully.',           resolved: true },
-  { id: 6, severity: 'online',  title: 'OTA Update Applied',         device: 'Irrigation Controller', time: '2 days ago',     desc: 'Firmware updated to v2.3.1 successfully.',         resolved: true },
+// Static demo alerts shown when DB table is empty or unavailable
+const DEMO_ALERTS = [
+  { id: 1, severity: 'fault',   title: 'High Pressure Alert',        device: 'Irrigation Controller', created_at: new Date().toISOString(), description: 'Supply PSI exceeded 65 PSI. Zone 3 was active.',  acknowledged: false },
+  { id: 2, severity: 'fault',   title: 'Filter Fault',               device: 'Filter Station',        created_at: new Date().toISOString(), description: 'Backwash cycle failed to complete. Manual reset required.', acknowledged: false },
+  { id: 3, severity: 'warning', title: 'Zone 3 Runtime Exceeded',    device: 'Irrigation Controller', created_at: new Date().toISOString(), description: 'Zone ran 45 min over scheduled time.',            acknowledged: false },
 ]
 
-const DEVICES = [
-  { name: 'Irrigation Controller', model: 'KC868-A8v3', fw: 'v2.3.1', status: 'online'  },
-  { name: 'Filter Station',        model: 'ALR-V13',    fw: 'v1.2.0', status: 'warning' },
-]
-
-const accentFor = s => ({ fault: 'red', warning: 'amber', online: 'green', upcoming: 'blue' }[s] ?? undefined)
+function fmtTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMin = Math.floor((now - d) / 60000)
+  if (diffMin < 2)   return 'Just now'
+  if (diffMin < 60)  return `${diffMin}m ago`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24)    return `${diffH}h ago`
+  return d.toLocaleDateString()
+}
 
 export default function Alerts() {
+  const { alerts: dbAlerts, loading, acknowledge, dismiss } = useAlerts()
+  const { data: live } = useLiveTelemetry(['farm/irrigation1/status', 'farm/filter1/pressure'])
+
+  // Use DB alerts if loaded and non-empty, otherwise show demo
+  const source = (!loading && dbAlerts.length > 0) ? dbAlerts : (loading ? [] : DEMO_ALERTS)
+  const [localAlerts, setLocalAlerts] = useState(null) // null = use source
+  const alerts = localAlerts ?? source
+
+  // Sync localAlerts when source changes (fresh load)
+  const [prevSource, setPrevSource] = useState(null)
+  if (prevSource !== source) {
+    setPrevSource(source)
+    setLocalAlerts(null)
+  }
+
   const [tab, setTab] = useState('All')
   const tabs = ['All', 'Critical', 'Warnings', 'Resolved']
 
-  const filtered = ALL_ALERTS.filter(a => {
+  const filtered = alerts.filter(a => {
     if (tab === 'All')      return true
-    if (tab === 'Critical') return a.severity === 'fault' && !a.resolved
-    if (tab === 'Warnings') return a.severity === 'warning' && !a.resolved
-    if (tab === 'Resolved') return a.resolved
+    if (tab === 'Critical') return a.severity === 'fault'  && !a.acknowledged
+    if (tab === 'Warnings') return a.severity === 'warning' && !a.acknowledged
+    if (tab === 'Resolved') return !!a.acknowledged
     return true
   })
+
+  const irr   = live['farm/irrigation1/status']  ?? null
+  const press = live['farm/filter1/pressure']     ?? null
+
+  const DEVICES = [
+    { name: 'Irrigation Controller', model: 'KC868-A8v3', fw: irr?.fw ?? '—', status: irr?.online ? 'online' : 'offline' },
+    { name: 'Filter Station',        model: 'ALR-V13',    fw: '—',             status: press ? 'online' : 'offline' },
+  ]
+
+  async function handleAcknowledge(alert) {
+    if (dbAlerts.find(a => a.id === alert.id)) {
+      await acknowledge(alert.id)
+    } else {
+      // Demo mode — just update local state
+      setLocalAlerts(prev => (prev ?? alerts).map(a => a.id === alert.id ? { ...a, acknowledged: true } : a))
+    }
+  }
+
+  async function handleDismiss(alert) {
+    if (dbAlerts.find(a => a.id === alert.id)) {
+      await dismiss(alert.id)
+    } else {
+      // Demo mode
+      setLocalAlerts(prev => (prev ?? alerts).filter(a => a.id !== alert.id))
+    }
+  }
 
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
@@ -52,11 +98,13 @@ export default function Alerts() {
       <div className="grid grid-cols-3 gap-6">
         {/* Alert list */}
         <div className="col-span-2 space-y-3">
+          {loading && <p className="text-sm text-[#40493d]">Loading alerts…</p>}
+
           {filtered.map(a => (
-            <div key={a.id} className={`bg-[#ffffff] rounded-xl shadow-card overflow-hidden flex`}>
+            <div key={a.id} className="bg-[#ffffff] rounded-xl shadow-card overflow-hidden flex">
               {/* Accent bar */}
               <div className={`w-1 shrink-0 ${
-                a.severity === 'fault' ? 'bg-[#ba1a1a]' :
+                a.severity === 'fault'   ? 'bg-[#ba1a1a]' :
                 a.severity === 'warning' ? 'bg-[#e65100]' :
                 'bg-[#0d631b]'
               }`} />
@@ -64,26 +112,43 @@ export default function Alerts() {
                 <div className="flex items-start justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <p className="font-headline font-semibold text-[#1a1c1c] text-sm">{a.title}</p>
-                    <StatusChip status={a.resolved ? 'completed' : a.severity} label={a.resolved ? 'RESOLVED' : a.severity.toUpperCase()} />
+                    <StatusChip
+                      status={a.acknowledged ? 'completed' : a.severity}
+                      label={a.acknowledged ? 'RESOLVED' : a.severity?.toUpperCase()}
+                    />
                   </div>
-                  <span className="text-[10px] text-[#40493d] shrink-0 ml-4">{a.time}</span>
+                  <span className="text-[10px] text-[#40493d] shrink-0 ml-4">{fmtTime(a.created_at)}</span>
                 </div>
-                <p className="text-xs text-[#40493d] mb-1">{a.device}</p>
-                <p className="text-xs text-[#1a1c1c]">{a.desc}</p>
-                {!a.resolved && (
+                <p className="text-xs text-[#40493d] mb-1">{a.device ?? a.device_id}</p>
+                <p className="text-xs text-[#1a1c1c]">{a.description ?? a.message}</p>
+                {!a.acknowledged && (
                   <div className="flex gap-3 mt-3">
-                    <button className="bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#e8e8e8] transition-colors">
+                    <button
+                      onClick={() => handleAcknowledge(a)}
+                      className="bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#e8e8e8] transition-colors"
+                    >
                       Acknowledge
                     </button>
-                    <button className="text-[#00639a] text-xs font-semibold hover:underline">
-                      View Device
+                    <button
+                      onClick={() => handleDismiss(a)}
+                      className="text-[#ba1a1a] text-xs font-semibold hover:underline"
+                    >
+                      Dismiss
                     </button>
                   </div>
+                )}
+                {a.acknowledged && (
+                  <button
+                    onClick={() => handleDismiss(a)}
+                    className="mt-2 text-[#40493d] text-xs hover:underline"
+                  >
+                    Remove
+                  </button>
                 )}
               </div>
             </div>
           ))}
-          {filtered.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <p className="text-sm text-[#40493d] font-body text-center py-10">No alerts in this category.</p>
           )}
         </div>

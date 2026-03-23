@@ -1,15 +1,8 @@
+import { useState, useEffect, useCallback } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import VitalsStrip from '../components/VitalsStrip'
-
-const FARMS = [
-  { id: 1, name: 'Mildura Block A',   location: 'Mildura, VIC',      devices: 2, status: 'online',  lastActivity: '2 min ago',   supply: '47.3', inlet: '52.1' },
-  { id: 2, name: 'Sunraysia North',   location: 'Irymple, VIC',      devices: 2, status: 'online',  lastActivity: '5 min ago',   supply: '43.8', inlet: '48.2' },
-  { id: 3, name: 'Red Cliffs Station',location: 'Red Cliffs, VIC',   devices: 2, status: 'warning', lastActivity: '1h ago',      supply: '38.1', inlet: '41.0' },
-  { id: 4, name: 'Coomealla Fruit',   location: 'Coomealla, NSW',    devices: 1, status: 'online',  lastActivity: '12 min ago',  supply: '50.2', inlet: null   },
-  { id: 5, name: 'Euston Almonds',    location: 'Euston, NSW',       devices: 2, status: 'fault',   lastActivity: '3h ago',      supply: null,   inlet: null   },
-  { id: 6, name: 'Robinvale Citrus',  location: 'Robinvale, VIC',    devices: 2, status: 'online',  lastActivity: '8 min ago',   supply: '44.6', inlet: '49.1' },
-]
+import { supabase } from '../lib/supabase'
 
 const ACTIVITY = [
   { farm: 'Mildura Block A',   event: 'Zone 3 started',         time: '2 min ago' },
@@ -19,14 +12,59 @@ const ACTIVITY = [
   { farm: 'Robinvale Citrus',  event: 'Backwash complete',      time: '4h ago'    },
 ]
 
-const VITALS = [
-  { label: 'Total Farms',       value: '12', unit: '' },
-  { label: 'Online Devices',    value: '23', unit: '/ 24', status: 'online',  statusLabel: 'ONLINE' },
-  { label: 'Active Irrigation', value: '4',  unit: 'farms', status: 'running', statusLabel: 'RUNNING' },
-  { label: 'Active Faults',     value: '2',  unit: '',      status: 'fault',   statusLabel: 'FAULT' },
-]
-
 export default function AdminConsole() {
+  const [farms, setFarms]       = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [farmName, setFarmName] = useState('')
+  const [location, setLocation] = useState('')
+  const [saving, setSaving]     = useState(false)
+  const [saveMsg, setSaveMsg]   = useState(null)
+
+  const loadFarms = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase.from('farms').select('*').order('created_at')
+    if (!error && data) setFarms(data)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { loadFarms() }, [loadFarms])
+
+  async function addFarm() {
+    if (!farmName.trim()) { setSaveMsg({ ok: false, text: 'Enter a farm name' }); return }
+    setSaving(true)
+    setSaveMsg(null)
+    const { error } = await supabase.from('farms').insert({
+      name: farmName.trim(),
+      location: location.trim() || null,
+    })
+    if (error) {
+      setSaveMsg({ ok: false, text: error.message ?? 'Save failed' })
+    } else {
+      setFarmName('')
+      setLocation('')
+      setSaveMsg({ ok: true, text: 'Farm added.' })
+      loadFarms()
+    }
+    setSaving(false)
+    setTimeout(() => setSaveMsg(null), 4000)
+  }
+
+  async function deleteFarm(id) {
+    if (!window.confirm('Remove this farm?')) return
+    await supabase.from('farms').delete().eq('id', id)
+    loadFarms()
+  }
+
+  const onlineFarms = farms.filter(f => f.status === 'online').length
+  const faultFarms  = farms.filter(f => f.status === 'fault').length
+
+  const VITALS = [
+    { label: 'Total Farms',       value: String(farms.length), unit: '' },
+    { label: 'Online Farms',      value: String(onlineFarms),  unit: `/ ${farms.length}`, status: 'online',  statusLabel: 'ONLINE' },
+    { label: 'Active Irrigation', value: '—',  unit: '',      status: 'running', statusLabel: 'RUNNING' },
+    { label: 'Active Faults',     value: String(faultFarms),   unit: '',      status: faultFarms > 0 ? 'fault' : 'online', statusLabel: faultFarms > 0 ? 'FAULT' : 'OK' },
+  ]
+
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
       <div className="mb-6">
@@ -43,22 +81,27 @@ export default function AdminConsole() {
             <table className="w-full text-sm font-body">
               <thead>
                 <tr className="bg-[#f3f3f3]">
-                  {['Farm', 'Location', 'Devices', 'Status', 'Last Active', 'Supply', 'Inlet', ''].map(h => (
+                  {['Farm', 'Location', 'Status', ''].map(h => (
                     <th key={h} className="text-left text-xs font-semibold text-[#40493d] px-4 py-3 first:pl-5">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {FARMS.map((f, i) => (
-                  <tr key={f.id} className={`hover:bg-[#f9f9f9] transition-colors cursor-pointer ${i % 2 !== 0 ? 'bg-[#f3f3f3]/40' : ''}`}>
+                {loading && (
+                  <tr><td colSpan={4} className="px-5 py-4 text-sm text-[#40493d]">Loading farms…</td></tr>
+                )}
+                {!loading && farms.length === 0 && (
+                  <tr><td colSpan={4} className="px-5 py-6 text-sm text-[#40493d] text-center">No farms yet. Add one below.</td></tr>
+                )}
+                {farms.map((f, i) => (
+                  <tr key={f.id} className={`hover:bg-[#f9f9f9] transition-colors ${i % 2 !== 0 ? 'bg-[#f3f3f3]/40' : ''}`}>
                     <td className="px-5 py-3 font-semibold text-[#1a1c1c]">{f.name}</td>
-                    <td className="px-4 py-3 text-[#40493d] text-xs">{f.location}</td>
-                    <td className="px-4 py-3 text-[#1a1c1c] font-semibold">{f.devices}</td>
-                    <td className="px-4 py-3"><StatusChip status={f.status} /></td>
-                    <td className="px-4 py-3 text-[#40493d] text-xs">{f.lastActivity}</td>
-                    <td className="px-4 py-3 font-body font-semibold text-[#1a1c1c] tracking-data">{f.supply ? `${f.supply} PSI` : '—'}</td>
-                    <td className="px-4 py-3 font-body font-semibold text-[#1a1c1c] tracking-data">{f.inlet ? `${f.inlet} PSI` : '—'}</td>
-                    <td className="px-4 py-3 text-[#00639a] text-xs hover:underline">View</td>
+                    <td className="px-4 py-3 text-[#40493d] text-xs">{f.location ?? '—'}</td>
+                    <td className="px-4 py-3"><StatusChip status={f.status ?? 'offline'} label={(f.status ?? 'offline').toUpperCase()} /></td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => deleteFarm(f.id)}
+                        className="text-[#ba1a1a] text-xs hover:underline">Remove</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -69,11 +112,26 @@ export default function AdminConsole() {
           <div className="mt-4 bg-[#ffffff] rounded-xl shadow-card p-5 border-2 border-dashed border-[#bfcaba]/40">
             <p className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">+ Add New Farm</p>
             <div className="grid grid-cols-3 gap-3">
-              <input placeholder="Farm name"  className="bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none col-span-2" />
-              <input placeholder="Location"   className="bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
+              <input
+                value={farmName} onChange={e => setFarmName(e.target.value)}
+                placeholder="Farm name"
+                className="bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none col-span-2"
+              />
+              <input
+                value={location} onChange={e => setLocation(e.target.value)}
+                placeholder="Location"
+                className="bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none"
+              />
             </div>
-            <button className="mt-3 gradient-primary text-white text-sm font-semibold px-5 py-2 rounded-xl shadow-fab hover:opacity-90 transition-opacity">
-              Add Farm
+            {saveMsg && (
+              <p className={`mt-2 text-xs font-semibold ${saveMsg.ok ? 'text-[#0d631b]' : 'text-[#ba1a1a]'}`}>{saveMsg.text}</p>
+            )}
+            <button
+              onClick={addFarm}
+              disabled={saving}
+              className="mt-3 gradient-primary text-white text-sm font-semibold px-5 py-2 rounded-xl shadow-fab hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {saving ? 'Adding…' : 'Add Farm'}
             </button>
           </div>
         </div>

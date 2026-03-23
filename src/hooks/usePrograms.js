@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
@@ -7,9 +7,12 @@ import { supabase } from '../lib/supabase'
 export function usePrograms() {
   const [programs, setPrograms] = useState([])
   const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
+
+  const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    async function fetch() {
+    async function load() {
       setLoading(true)
 
       const [groupsRes, membersRes, schedulesRes] = await Promise.all([
@@ -31,8 +34,8 @@ export function usePrograms() {
       }
       setLoading(false)
     }
-    fetch()
-  }, [])
+    load()
+  }, [tick])
 
-  return { programs, loading }
+  return { programs, loading, reload }
 }

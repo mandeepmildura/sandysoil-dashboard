@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-import { startBackwash, allZonesOff } from '../lib/commands'
+import { startBackwash, allZonesOff, zoneOn, zoneOff } from '../lib/commands'
 
 const TOPICS = [
   'farm/irrigation1/status',
@@ -11,6 +12,19 @@ const TOPICS = [
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
+  const [busy, setBusy] = useState({})
+
+  async function handleZoneOn(id) {
+    setBusy(b => ({ ...b, [id]: true }))
+    try { await zoneOn(id, 30) } catch (e) { console.error(e) }
+    setBusy(b => ({ ...b, [id]: false }))
+  }
+
+  async function handleZoneOff(id) {
+    setBusy(b => ({ ...b, [id]: true }))
+    try { await zoneOff(id) } catch (e) { console.error(e) }
+    setBusy(b => ({ ...b, [id]: false }))
+  }
 
   const irr      = data['farm/irrigation1/status']   ?? null
   const pressure = data['farm/filter1/pressure']      ?? null
@@ -70,6 +84,18 @@ export default function Dashboard() {
                   <span className={`w-2.5 h-2.5 rounded-full mt-1 ${zone.on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
                 </div>
                 <StatusChip status={zone.on ? 'running' : 'offline'} label={zone.on ? 'ON' : 'OFF'} />
+                <div className="flex gap-1 mt-2">
+                  <button
+                    onClick={() => handleZoneOn(zone.id)}
+                    disabled={!!busy[zone.id]}
+                    className="flex-1 py-1 rounded-md bg-[#0d631b] text-white text-[10px] font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
+                  >Start</button>
+                  <button
+                    onClick={() => handleZoneOff(zone.id)}
+                    disabled={!!busy[zone.id]}
+                    className="flex-1 py-1 rounded-md bg-[#e2e2e2] text-[#1a1c1c] text-[10px] font-semibold hover:bg-[#d5d5d5] disabled:opacity-40 transition-all"
+                  >Stop</button>
+                </div>
               </Card>
             ))}
           </div>
