@@ -1,37 +1,46 @@
-import { mqttPublish } from './mqttClient'
+import { supabase } from './supabase'
+
+// ── Internal helper ────────────────────────────────────────────────────────
+
+async function sendCommand(topic, payload) {
+  const { error } = await supabase
+    .from('device_commands')
+    .insert({ topic, payload })
+  if (error) throw error
+}
 
 // ── Zone commands ──────────────────────────────────────────────────────────
 
 export function zoneOn(zoneNum, durationMin) {
-  return mqttPublish(
+  return sendCommand(
     `farm/irrigation1/zone/${zoneNum}/cmd`,
     { cmd: 'on', duration: durationMin }
   )
 }
 
 export function zoneOff(zoneNum) {
-  return mqttPublish(
+  return sendCommand(
     `farm/irrigation1/zone/${zoneNum}/cmd`,
     { cmd: 'off' }
   )
 }
 
 export function allZonesOff() {
-  return mqttPublish('farm/irrigation1/all/off', '')
+  return sendCommand('farm/irrigation1/all/off', {})
 }
 
 // ── Filter commands ────────────────────────────────────────────────────────
 
 export function startBackwash() {
-  return mqttPublish('farm/filter1/backwash/start', '')
+  return sendCommand('farm/filter1/backwash/start', {})
 }
 
 export function stopBackwash() {
-  return mqttPublish('farm/filter1/backwash/stop', '')
+  return sendCommand('farm/filter1/backwash/stop', {})
 }
 
 export function resetBackwash() {
-  return mqttPublish('farm/filter1/backwash/reset', '')
+  return sendCommand('farm/filter1/backwash/reset', {})
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
