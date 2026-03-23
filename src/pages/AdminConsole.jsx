@@ -3,6 +3,8 @@ import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import VitalsStrip from '../components/VitalsStrip'
 import { supabase } from '../lib/supabase'
+import { useFirmware } from '../hooks/useFirmware'
+import { otaUpdate } from '../lib/commands'
 
 const ACTIVITY = [
   { farm: 'Mildura Block A',   event: 'Zone 3 started',         time: '2 min ago' },
@@ -19,6 +21,10 @@ export default function AdminConsole() {
   const [location, setLocation] = useState('')
   const [saving, setSaving]     = useState(false)
   const [saveMsg, setSaveMsg]   = useState(null)
+
+  const { byModel, loading: fwLoading, reload: reloadFw } = useFirmware()
+  const [otaBusy,  setOtaBusy]  = useState({})
+  const [otaMsg,   setOtaMsg]   = useState(null)
 
   const loadFarms = useCallback(async () => {
     setLoading(true)
@@ -53,6 +59,21 @@ export default function AdminConsole() {
     if (!window.confirm('Remove this farm?')) return
     await supabase.from('farms').delete().eq('id', id)
     loadFarms()
+  }
+
+  async function pushOta(model, url, version) {
+    if (!window.confirm(`Push firmware ${version} to all ${model} devices?`)) return
+    setOtaBusy(b => ({ ...b, [model]: true }))
+    setOtaMsg(null)
+    try {
+      await otaUpdate(model, url, version)
+      setOtaMsg({ ok: true, text: `OTA queued for ${model} → ${version}` })
+      reloadFw()
+    } catch (e) {
+      setOtaMsg({ ok: false, text: e.message ?? 'OTA failed' })
+    }
+    setOtaBusy(b => ({ ...b, [model]: false }))
+    setTimeout(() => setOtaMsg(null), 5000)
   }
 
   const onlineFarms = farms.filter(f => f.status === 'online').length
@@ -152,26 +173,57 @@ export default function AdminConsole() {
 
           <Card accent="green">
             <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Firmware Status</h2>
-            <div className="space-y-2 mb-4">
-              {[
-                { model: 'KC868-A8v3', count: 12, version: 'v2.3.1', update: false },
-                { model: 'ALR-V13',    count: 12, version: 'v1.2.0', update: true  },
-              ].map(d => (
-                <div key={d.model} className="bg-[#f3f3f3] rounded-lg p-3">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-xs font-semibold text-[#1a1c1c]">{d.model}</p>
-                      <p className="text-[10px] text-[#40493d]">{d.count} devices · {d.version}</p>
+            {fwLoading ? (
+              <p className="text-xs text-[#40493d] mb-4">Loading…</p>
+            ) : byModel.length === 0 ? (
+              <p className="text-xs text-[#40493d] mb-4">No devices registered.</p>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {byModel.map(d => (
+                  <div key={d.model} className="bg-[#f3f3f3] rounded-lg p-3">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-xs font-semibold text-[#1a1c1c]">{d.model}</p>
+                        <p className="text-[10px] text-[#40493d]">
+                          {d.count} device{d.count !== 1 ? 's' : ''} · {d.current_version}
+                          {d.updateCount > 0 && ` (${d.updateCount} outdated)`}
+                        </p>
+                        {d.updateCount > 0 && (
+                          <p className="text-[10px] text-[#0d631b] mt-0.5">Latest: {d.latest_version}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5">
+                        {d.updateCount > 0 && (
+                          <span className="text-[10px] bg-[#e65100]/10 text-[#e65100] font-semibold px-2 py-0.5 rounded-full">
+                            Update available
+                          </span>
+                        )}
+                        {d.updateCount > 0 && d.url && (
+                          <button
+                            onClick={() => pushOta(d.model, d.url, d.latest_version)}
+                            disabled={!!otaBusy[d.model]}
+                            className="text-[10px] bg-[#1a1c1c] text-white font-semibold px-2 py-0.5 rounded-full hover:opacity-80 disabled:opacity-40 transition-opacity"
+                          >
+                            {otaBusy[d.model] ? 'Queuing…' : 'Push OTA'}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    {d.update && (
-                      <span className="text-[10px] bg-[#e65100]/10 text-[#e65100] font-semibold px-2 py-0.5 rounded-full">Update</span>
-                    )}
                   </div>
-                </div>
-              ))}
-            </div>
-            <button className="w-full gradient-primary text-white text-xs font-semibold py-2.5 rounded-xl shadow-fab hover:opacity-90 transition-opacity">
-              Push Firmware Update
+                ))}
+              </div>
+            )}
+            {otaMsg && (
+              <p className={`text-xs font-semibold mb-2 ${otaMsg.ok ? 'text-[#0d631b]' : 'text-[#ba1a1a]'}`}>
+                {otaMsg.text}
+              </p>
+            )}
+            <button
+              onClick={() => byModel.filter(d => d.updateCount > 0 && d.url).forEach(d => pushOta(d.model, d.url, d.latest_version))}
+              disabled={byModel.every(d => d.updateCount === 0) || Object.values(otaBusy).some(Boolean)}
+              className="w-full gradient-primary text-white text-xs font-semibold py-2.5 rounded-xl shadow-fab hover:opacity-90 disabled:opacity-40 transition-opacity"
+            >
+              Push All Pending Updates
             </button>
           </Card>
         </div>

@@ -43,6 +43,16 @@ export function resetBackwash() {
   return sendCommand('farm/filter1/backwash/reset', {})
 }
 
+// ── OTA firmware update ────────────────────────────────────────────────────
+
+/**
+ * Queues an OTA update command for all devices matching the given model.
+ * The device watches device_commands for { cmd: 'ota', url, version }.
+ */
+export function otaUpdate(model, url, version) {
+  return sendCommand(`farm/device/${model}/ota`, { cmd: 'ota', url, version })
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 export function durationToMinutes(label) {
