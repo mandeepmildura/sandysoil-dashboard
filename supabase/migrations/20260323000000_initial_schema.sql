@@ -1,10 +1,25 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Sandy Soil Automations — initial schema
 -- Run this in: Supabase Dashboard → SQL Editor → New query → Run
+-- Safe to re-run: drops and recreates all tables from scratch.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- ── Drop everything first so re-runs always start clean ───────────────────────
+drop table if exists device_firmware    cascade;
+drop table if exists firmware_releases  cascade;
+drop table if exists device_telemetry   cascade;
+drop table if exists device_commands    cascade;
+drop table if exists device_alerts      cascade;
+drop table if exists pressure_log       cascade;
+drop table if exists group_schedules    cascade;
+drop table if exists zone_group_members cascade;
+drop table if exists zone_groups        cascade;
+drop table if exists zone_schedules     cascade;
+drop table if exists zone_history       cascade;
+drop table if exists farms              cascade;
+
 -- ── Farms ─────────────────────────────────────────────────────────────────────
-create table if not exists farms (
+create table farms (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
   location    text,
@@ -13,7 +28,7 @@ create table if not exists farms (
 );
 
 -- ── Zone history ───────────────────────────────────────────────────────────────
-create table if not exists zone_history (
+create table zone_history (
   id           bigint generated always as identity primary key,
   zone_num     int  not null,
   started_at   timestamptz not null default now(),
@@ -23,7 +38,7 @@ create table if not exists zone_history (
 );
 
 -- ── Zone schedules (per-zone) ──────────────────────────────────────────────────
-create table if not exists zone_schedules (
+create table zone_schedules (
   id           bigint generated always as identity primary key,
   zone_num     int  not null unique,
   days_of_week int[] not null default '{}',       -- 0=Sun … 6=Sat
@@ -33,14 +48,14 @@ create table if not exists zone_schedules (
 );
 
 -- ── Programs (zone groups) ─────────────────────────────────────────────────────
-create table if not exists zone_groups (
+create table zone_groups (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
   run_mode    text not null default 'sequential', -- sequential | parallel
   created_at  timestamptz not null default now()
 );
 
-create table if not exists zone_group_members (
+create table zone_group_members (
   group_id     uuid references zone_groups(id) on delete cascade,
   zone_num     int  not null,
   duration_min int  not null default 30,
@@ -48,7 +63,7 @@ create table if not exists zone_group_members (
   primary key (group_id, zone_num)
 );
 
-create table if not exists group_schedules (
+create table group_schedules (
   id           bigint generated always as identity primary key,
   group_id     uuid references zone_groups(id) on delete cascade,
   label        text,
@@ -58,7 +73,7 @@ create table if not exists group_schedules (
 );
 
 -- ── Pressure log ───────────────────────────────────────────────────────────────
-create table if not exists pressure_log (
+create table pressure_log (
   id          bigint generated always as identity primary key,
   ts          timestamptz not null default now(),
   inlet_psi   numeric not null,
@@ -66,10 +81,10 @@ create table if not exists pressure_log (
   diff_psi    numeric generated always as (inlet_psi - outlet_psi) stored
 );
 
-create index if not exists pressure_log_ts_idx on pressure_log (ts desc);
+create index pressure_log_ts_idx on pressure_log (ts desc);
 
 -- ── Device alerts ──────────────────────────────────────────────────────────────
-create table if not exists device_alerts (
+create table device_alerts (
   id             bigint generated always as identity primary key,
   device_id      text,
   farm_id        uuid references farms(id) on delete set null,
@@ -80,7 +95,7 @@ create table if not exists device_alerts (
 );
 
 -- ── Device commands (replaces MQTT publish) ────────────────────────────────────
-create table if not exists device_commands (
+create table device_commands (
   id           bigint generated always as identity primary key,
   topic        text not null,
   payload      jsonb not null default '{}',
@@ -89,24 +104,20 @@ create table if not exists device_commands (
   processed_at timestamptz
 );
 
--- Ensure columns exist in case table was created by an earlier partial run
-alter table device_commands add column if not exists processed     boolean     not null default false;
-alter table device_commands add column if not exists processed_at  timestamptz;
-
-create index if not exists device_commands_unprocessed_idx
+create index device_commands_unprocessed_idx
   on device_commands (topic, inserted_at)
   where processed = false;
 
 -- ── Device telemetry (replaces MQTT subscribe) ─────────────────────────────────
 -- The device upserts one row per topic; dashboard reads via Realtime.
-create table if not exists device_telemetry (
+create table device_telemetry (
   topic       text primary key,
   payload     jsonb not null default '{}',
   updated_at  timestamptz not null default now()
 );
 
 -- ── Firmware releases ──────────────────────────────────────────────────────────
-create table if not exists firmware_releases (
+create table firmware_releases (
   id           bigint generated always as identity primary key,
   model        text not null,
   version      text not null,
@@ -117,7 +128,7 @@ create table if not exists firmware_releases (
 );
 
 -- ── Device firmware status ─────────────────────────────────────────────────────
-create table if not exists device_firmware (
+create table device_firmware (
   id               bigint generated always as identity primary key,
   device_id        text not null unique,
   farm_id          uuid references farms(id) on delete set null,
@@ -129,7 +140,6 @@ create table if not exists device_firmware (
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Row-level security
 -- Enable RLS and allow authenticated users full access to all tables.
--- Tighten these policies for production as needed.
 -- ─────────────────────────────────────────────────────────────────────────────
 do $$
 declare
@@ -143,7 +153,6 @@ begin
   ]
   loop
     execute format('alter table %I enable row level security', tbl);
-    execute format('drop policy if exists "auth_users_all" on %I', tbl);
     execute format(
       'create policy "auth_users_all" on %I for all to authenticated using (true) with check (true)',
       tbl
@@ -151,20 +160,15 @@ begin
   end loop;
 end $$;
 
--- Allow the device (service role / anon key with RLS bypass) to upsert telemetry
--- and mark commands processed without being a logged-in user.
-drop policy if exists "anon_read_commands" on device_commands;
+-- Allow the device (anon key) to read commands, upsert telemetry, etc.
 create policy "anon_read_commands" on device_commands
   for select to anon using (true);
 
-drop policy if exists "anon_upsert_telemetry" on device_telemetry;
 create policy "anon_upsert_telemetry" on device_telemetry
   for all to anon using (true) with check (true);
 
-drop policy if exists "anon_update_commands" on device_commands;
 create policy "anon_update_commands" on device_commands
   for update to anon using (true) with check (true);
 
-drop policy if exists "anon_upsert_device_firmware" on device_firmware;
 create policy "anon_upsert_device_firmware" on device_firmware
   for all to anon using (true) with check (true);
