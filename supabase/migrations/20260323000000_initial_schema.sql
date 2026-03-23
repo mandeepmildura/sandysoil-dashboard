@@ -139,8 +139,9 @@ begin
   ]
   loop
     execute format('alter table %I enable row level security', tbl);
+    execute format('drop policy if exists "auth_users_all" on %I', tbl);
     execute format(
-      'create policy if not exists "auth_users_all" on %I for all to authenticated using (true) with check (true)',
+      'create policy "auth_users_all" on %I for all to authenticated using (true) with check (true)',
       tbl
     );
   end loop;
@@ -148,14 +149,18 @@ end $$;
 
 -- Allow the device (service role / anon key with RLS bypass) to upsert telemetry
 -- and mark commands processed without being a logged-in user.
-create policy if not exists "anon_read_commands" on device_commands
+drop policy if exists "anon_read_commands" on device_commands;
+create policy "anon_read_commands" on device_commands
   for select to anon using (true);
 
-create policy if not exists "anon_upsert_telemetry" on device_telemetry
+drop policy if exists "anon_upsert_telemetry" on device_telemetry;
+create policy "anon_upsert_telemetry" on device_telemetry
   for all to anon using (true) with check (true);
 
-create policy if not exists "anon_update_commands" on device_commands
+drop policy if exists "anon_update_commands" on device_commands;
+create policy "anon_update_commands" on device_commands
   for update to anon using (true) with check (true);
 
-create policy if not exists "anon_upsert_device_firmware" on device_firmware
+drop policy if exists "anon_upsert_device_firmware" on device_firmware;
+create policy "anon_upsert_device_firmware" on device_firmware
   for all to anon using (true) with check (true);
