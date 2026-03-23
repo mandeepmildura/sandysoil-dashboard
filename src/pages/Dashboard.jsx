@@ -1,47 +1,58 @@
-import { useState } from 'react'
 import Card from '../components/Card'
-import VitalsStrip from '../components/VitalsStrip'
 import StatusChip from '../components/StatusChip'
+import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 
-const ZONES = Array.from({ length: 8 }, (_, i) => ({
-  id: i + 1,
-  name: `Zone ${i + 1}`,
-  label: ['North Block', 'South Block', 'East Row', 'West Row', 'Orchard A', 'Orchard B', 'Nursery', 'Holding'][i],
-  active: [true, false, true, false, false, true, false, false][i],
-  runtime: ['14:32', null, '08:15', null, null, '22:00', null, null][i],
-  lastRun: ['Today 06:00', 'Today 06:30', 'Today 07:00', 'Yesterday', 'Yesterday', 'Today 05:00', '2 days ago', '3 days ago'][i],
-}))
-
-const VITALS = [
-  { label: 'Supply Pressure', value: '47.3', unit: 'PSI', status: 'online', statusLabel: 'ONLINE' },
-  { label: 'Filter Inlet',    value: '52.1', unit: 'PSI', status: 'online', statusLabel: 'NORMAL' },
-  { label: 'Filter Outlet',   value: '48.6', unit: 'PSI', status: 'online', statusLabel: 'NORMAL' },
-  { label: 'Active Zones',    value: '3',    unit: '/ 8',  status: 'running', statusLabel: 'RUNNING' },
-]
-
-const SCHEDULE = [
-  { time: '06:00', zone: 'Zone 1 — North Block', duration: '30 min', status: 'completed' },
-  { time: '07:30', zone: 'Zone 3 — East Row',    duration: '45 min', status: 'running' },
-  { time: '09:00', zone: 'Zone 6 — Orchard B',   duration: '60 min', status: 'upcoming' },
-]
-
-const ALERTS = [
-  { id: 1, title: 'High Pressure Alert', desc: 'Supply PSI exceeded 65 at 14:32', status: 'fault' },
-  { id: 2, title: 'Filter Fault', desc: 'Backwash cycle failed to complete', status: 'warning' },
+const TOPICS = [
+  'farm/irrigation1/status',
+  'farm/filter1/pressure',
+  'farm/filter1/backwash/state',
 ]
 
 export default function Dashboard() {
-  const [zones, setZones] = useState(ZONES)
+  const { data, connected } = useLiveTelemetry(TOPICS)
 
-  function toggleZone(id) {
-    setZones(z => z.map(zone => zone.id === id ? { ...zone, active: !zone.active } : zone))
-  }
+  const irr      = data['farm/irrigation1/status']   ?? null
+  const pressure = data['farm/filter1/pressure']      ?? null
+  const backwash = data['farm/filter1/backwash/state'] ?? null
+
+  const zones       = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  const supplyPsi   = irr?.supply_psi ?? '—'
+  const activeCount = zones.filter(z => z.on).length
+  const inletPsi    = pressure?.inlet_psi ?? '—'
+  const outletPsi   = pressure?.outlet_psi ?? '—'
+  const diffPsi     = pressure?.differential_psi ?? '—'
+  const bwState     = backwash?.state ?? '—'
+
+  const vitals = [
+    { label: 'Supply Pressure', value: supplyPsi, unit: 'PSI', status: irr?.online ? 'online' : 'offline', statusLabel: irr?.online ? 'ONLINE' : 'OFFLINE' },
+    { label: 'Filter Inlet',    value: inletPsi,  unit: 'PSI', status: 'online',  statusLabel: 'NORMAL' },
+    { label: 'Filter Outlet',   value: outletPsi, unit: 'PSI', status: 'online',  statusLabel: 'NORMAL' },
+    { label: 'Active Zones',    value: String(activeCount), unit: `/ ${zones.length}`, status: activeCount > 0 ? 'running' : 'offline', statusLabel: activeCount > 0 ? 'RUNNING' : 'IDLE' },
+  ]
 
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
-      <h1 className="font-headline font-bold text-2xl text-[#1a1c1c] mb-6">Farm Dashboard</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Farm Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+          <span className="text-xs font-body text-[#40493d]">{connected ? 'Live' : 'Connecting…'}</span>
+        </div>
+      </div>
 
-      <VitalsStrip vitals={VITALS} />
+      {/* Vitals strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {vitals.map(v => (
+          <div key={v.label} className="bg-[#ffffff] rounded-xl shadow-card p-4">
+            <p className="text-xs font-body text-[#40493d] uppercase tracking-[0.02em] mb-1">{v.label}</p>
+            <div className="flex items-end gap-2">
+              <span className="text-3xl font-headline font-bold text-[#1a1c1c] leading-none">{v.value}</span>
+              <span className="text-sm text-[#40493d] mb-0.5">{v.unit}</span>
+            </div>
+            <div className="mt-2"><StatusChip status={v.status} label={v.statusLabel} /></div>
+          </div>
+        ))}
+      </div>
 
       <div className="grid grid-cols-3 gap-6">
         {/* Zone grid */}
@@ -49,18 +60,15 @@ export default function Dashboard() {
           <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">Irrigation Zones</h2>
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             {zones.map(zone => (
-              <Card key={zone.id} accent={zone.active ? 'green' : undefined}>
+              <Card key={zone.id} accent={zone.on ? 'green' : undefined}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-headline font-bold text-sm text-[#1a1c1c]">{zone.name}</p>
-                    <p className="text-xs text-[#40493d]">{zone.label}</p>
+                    <p className="text-xs text-[#40493d]">{zone.state}</p>
                   </div>
-                  <Toggle on={zone.active} onChange={() => toggleZone(zone.id)} />
+                  <span className={`w-2.5 h-2.5 rounded-full mt-1 ${zone.on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
                 </div>
-                {zone.active && zone.runtime && (
-                  <p className="text-2xl font-headline font-bold text-[#0d631b] leading-none mb-1">{zone.runtime}</p>
-                )}
-                <p className="text-[10px] text-[#40493d]">Last: {zone.lastRun}</p>
+                <StatusChip status={zone.on ? 'running' : 'offline'} label={zone.on ? 'ON' : 'OFF'} />
               </Card>
             ))}
           </div>
@@ -68,59 +76,43 @@ export default function Dashboard() {
 
         {/* Right column */}
         <div className="space-y-4">
-          {/* Schedule */}
-          <Card accent="blue">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Today's Schedule</h2>
-            <div className="space-y-3">
-              {SCHEDULE.map((s, i) => (
-                <div key={i} className={`rounded-lg p-3 ${s.status === 'running' ? 'bg-[#0d631b]/5' : 'bg-[#f3f3f3]'}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-body font-semibold text-[#1a1c1c]">{s.time}</span>
-                    <StatusChip status={s.status} />
-                  </div>
-                  <p className="text-xs text-[#40493d]">{s.zone}</p>
-                  <p className="text-xs text-[#40493d]">{s.duration}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Alerts */}
-          <Card accent="red">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Recent Alerts</h2>
-            <div className="space-y-2">
-              {ALERTS.map(a => (
-                <div key={a.id} className="rounded-lg bg-[#f3f3f3] p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <StatusChip status={a.status} />
-                  </div>
-                  <p className="text-xs font-semibold text-[#1a1c1c]">{a.title}</p>
-                  <p className="text-[10px] text-[#40493d]">{a.desc}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-
           {/* Filter station */}
           <Card accent="blue">
             <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Filter Station</h2>
             <div className="space-y-2 mb-4">
-              <div className="flex justify-between text-xs">
-                <span className="text-[#40493d]">Inlet PSI</span>
-                <span className="font-semibold text-[#1a1c1c]">52.1</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-[#40493d]">Outlet PSI</span>
-                <span className="font-semibold text-[#1a1c1c]">48.6</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-[#40493d]">Differential</span>
-                <span className="font-semibold text-[#1a1c1c]">3.5 PSI</span>
-              </div>
+              {[
+                { label: 'Inlet PSI',     value: inletPsi },
+                { label: 'Outlet PSI',    value: outletPsi },
+                { label: 'Differential',  value: diffPsi !== '—' ? `${diffPsi} PSI` : '—' },
+                { label: 'Backwash',      value: bwState },
+              ].map(r => (
+                <div key={r.label} className="flex justify-between text-xs">
+                  <span className="text-[#40493d]">{r.label}</span>
+                  <span className="font-semibold text-[#1a1c1c]">{r.value}</span>
+                </div>
+              ))}
             </div>
-            <button className="w-full py-2 rounded-lg border border-[#bfcaba]/40 text-xs font-body font-semibold text-[#00639a] hover:bg-[#00639a]/5 transition-colors">
+            <button className="w-full py-2 rounded-lg bg-[#f3f3f3] text-xs font-body font-semibold text-[#00639a] hover:bg-[#e8e8e8] transition-colors">
               Start Backwash
             </button>
+          </Card>
+
+          {/* Device info */}
+          <Card accent="green">
+            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Device Status</h2>
+            <div className="space-y-2 text-xs font-body">
+              {[
+                { label: 'Firmware',  value: irr?.fw      ?? '—' },
+                { label: 'RSSI',      value: irr?.rssi != null ? `${irr.rssi} dBm` : '—' },
+                { label: 'Uptime',    value: irr?.uptime  != null ? fmtUptime(irr.uptime) : '—' },
+                { label: 'Status',    value: irr?.online  ? 'Online' : 'Offline' },
+              ].map(r => (
+                <div key={r.label} className="flex justify-between">
+                  <span className="text-[#40493d]">{r.label}</span>
+                  <span className="font-semibold text-[#1a1c1c]">{r.value}</span>
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
       </div>
@@ -128,13 +120,8 @@ export default function Dashboard() {
   )
 }
 
-function Toggle({ on, onChange }) {
-  return (
-    <button
-      onClick={onChange}
-      className={`relative w-9 h-5 rounded-full transition-colors duration-200 shrink-0 ${on ? 'bg-[#0d631b]' : 'bg-[#e2e2e2]'}`}
-    >
-      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
-    </button>
-  )
+function fmtUptime(sec) {
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
