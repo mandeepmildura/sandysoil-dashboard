@@ -4,6 +4,7 @@ import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useZoneHistory } from '../hooks/useZoneHistory'
+import { zoneOn, zoneOff, allZonesOff, durationToMinutes } from '../lib/commands'
 
 const DURATIONS = ['15 min', '30 min', '1 hour', 'Custom']
 
@@ -11,6 +12,29 @@ export default function ZoneDetail() {
   const { id = '1' } = useParams()
   const zoneNum = parseInt(id)
   const [selectedDuration, setSelectedDuration] = useState('30 min')
+  const [cmdSending, setCmdSending] = useState(false)
+  const [cmdError, setCmdError]     = useState(null)
+
+  async function handleStart() {
+    setCmdSending(true); setCmdError(null)
+    try { await zoneOn(zoneNum, durationToMinutes(selectedDuration)) }
+    catch (e) { setCmdError(e.message) }
+    setCmdSending(false)
+  }
+
+  async function handleStop() {
+    setCmdSending(true); setCmdError(null)
+    try { await zoneOff(zoneNum) }
+    catch (e) { setCmdError(e.message) }
+    setCmdSending(false)
+  }
+
+  async function handleAllOff() {
+    setCmdSending(true); setCmdError(null)
+    try { await allZonesOff() }
+    catch (e) { setCmdError(e.message) }
+    setCmdSending(false)
+  }
 
   const { data: live } = useLiveTelemetry(['farm/irrigation1/status'])
   const { history, loading } = useZoneHistory(zoneNum, 20)
@@ -59,10 +83,19 @@ export default function ZoneDetail() {
           <Card accent="green">
             <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-4">Manual Control</h2>
             {isRunning ? (
-              <div className="mb-4 bg-[#0d631b]/5 rounded-xl p-4 text-center">
-                <p className="text-xs text-[#40493d] mb-1">Zone is running</p>
-                <p className="text-2xl font-headline font-bold text-[#0d631b]">{zone?.state}</p>
-              </div>
+              <>
+                <div className="mb-4 bg-[#0d631b]/5 rounded-xl p-4 text-center">
+                  <p className="text-xs text-[#40493d] mb-1">Zone is running</p>
+                  <p className="text-2xl font-headline font-bold text-[#0d631b]">{zone?.state}</p>
+                </div>
+                <button
+                  onClick={handleStop}
+                  disabled={cmdSending}
+                  className="w-full py-4 rounded-xl bg-[#ba1a1a] text-white font-headline font-bold text-lg shadow-fab hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {cmdSending ? 'Sending…' : 'STOP ZONE'}
+                </button>
+              </>
             ) : (
               <>
                 <p className="text-xs font-body text-[#40493d] mb-2">Run for:</p>
@@ -79,13 +112,24 @@ export default function ZoneDetail() {
                     </button>
                   ))}
                 </div>
-                <button className="w-full py-3 rounded-xl gradient-primary text-white font-headline font-bold text-base shadow-fab hover:opacity-90 transition-opacity">
-                  Start Zone
+                <button
+                  onClick={handleStart}
+                  disabled={cmdSending}
+                  className="w-full py-3 rounded-xl gradient-primary text-white font-headline font-bold text-base shadow-fab hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {cmdSending ? 'Sending…' : 'Start Zone'}
                 </button>
               </>
             )}
+            {cmdError && (
+              <p className="mt-2 text-xs text-[#ba1a1a] bg-[#ffdad6] rounded-lg px-3 py-2">{cmdError}</p>
+            )}
             <div className="mt-4 pt-4 border-t border-[#f3f3f3]">
-              <button className="w-full py-2.5 rounded-xl border-2 border-[#ba1a1a]/30 text-[#ba1a1a] font-body font-semibold text-sm hover:bg-[#ba1a1a]/5 transition-colors">
+              <button
+                onClick={handleAllOff}
+                disabled={cmdSending}
+                className="w-full py-2.5 rounded-xl border-2 border-[#ba1a1a]/30 text-[#ba1a1a] font-body font-semibold text-sm hover:bg-[#ba1a1a]/5 transition-colors disabled:opacity-50"
+              >
                 ALL ZONES OFF
               </button>
             </div>

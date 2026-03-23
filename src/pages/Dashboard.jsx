@@ -1,6 +1,7 @@
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { startBackwash, allZonesOff } from '../lib/commands'
 
 const TOPICS = [
   'farm/irrigation1/status',
@@ -92,7 +93,10 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <button className="w-full py-2 rounded-lg bg-[#f3f3f3] text-xs font-body font-semibold text-[#00639a] hover:bg-[#e8e8e8] transition-colors">
+            <button
+              onClick={() => startBackwash().catch(console.error)}
+              className="w-full py-2 rounded-lg bg-[#f3f3f3] text-xs font-body font-semibold text-[#00639a] hover:bg-[#e8e8e8] transition-colors"
+            >
               Start Backwash
             </button>
           </Card>

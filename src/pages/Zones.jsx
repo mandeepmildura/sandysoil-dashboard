@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { allZonesOff } from '../lib/commands'
 
 export default function Zones() {
   const navigate = useNavigate()
@@ -20,7 +21,10 @@ export default function Zones() {
             <span className="text-xs font-body text-[#40493d]">{connected ? 'Live' : 'Connecting…'}</span>
           </div>
         </div>
-        <button className="border-2 border-[#ba1a1a]/30 text-[#ba1a1a] font-body font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-[#ba1a1a]/5 transition-colors">
+        <button
+          onClick={() => allZonesOff().catch(console.error)}
+          className="border-2 border-[#ba1a1a]/30 text-[#ba1a1a] font-body font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-[#ba1a1a]/5 transition-colors"
+        >
           All Zones OFF
         </button>
       </div>
