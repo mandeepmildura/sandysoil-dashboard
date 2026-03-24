@@ -15,33 +15,46 @@ export function useAlerts() {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('device_alerts')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (!error && data) setAlerts(data)
-      setLoading(false)
+      try {
+        const { data, error } = await supabase
+          .from('device_alerts')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (!error && data) setAlerts(data)
+      } catch (e) {
+        console.error('useAlerts error:', e)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [tick])
 
   async function acknowledge(id) {
-    const { error } = await supabase
-      .from('device_alerts')
-      .update({ acknowledged: true })
-      .eq('id', id)
-    if (!error) {
-      setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a))
+    try {
+      const { error } = await supabase
+        .from('device_alerts')
+        .update({ acknowledged: true })
+        .eq('id', id)
+      if (!error) {
+        setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a))
+      }
+    } catch (e) {
+      console.error('acknowledge error:', e)
     }
   }
 
   async function dismiss(id) {
-    const { error } = await supabase
-      .from('device_alerts')
-      .delete()
-      .eq('id', id)
-    if (!error) {
-      setAlerts(prev => prev.filter(a => a.id !== id))
+    try {
+      const { error } = await supabase
+        .from('device_alerts')
+        .delete()
+        .eq('id', id)
+      if (!error) {
+        setAlerts(prev => prev.filter(a => a.id !== id))
+      }
+    } catch (e) {
+      console.error('dismiss error:', e)
     }
   }
 
