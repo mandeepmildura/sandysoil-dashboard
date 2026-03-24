@@ -2,6 +2,7 @@ import { useState } from 'react'
 import StatusChip from '../components/StatusChip'
 import { usePrograms } from '../hooks/usePrograms'
 import { supabase } from '../lib/supabase'
+import { zoneOn } from '../lib/commands'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -70,18 +71,13 @@ function ProgramModal({ program, onClose, onSaved }) {
       let groupId
       const { data: { user } } = await supabase.auth.getUser()
 
-      // Fetch the user's device via farm (only needed for new programs)
+      // Reuse device_id from any existing zone_group (only needed for new programs)
       let deviceId = null
       if (!isEdit) {
-        const { data: farm, error: farmErr } = await supabase
-          .from('farms').select('id').eq('owner_id', user?.id).limit(1).maybeSingle()
-        if (farmErr) throw farmErr
-        const { data: device, error: devErr } = farm
-          ? await supabase.from('farm_devices').select('id').eq('farm_id', farm.id).limit(1).maybeSingle()
-          : { data: null, error: null }
-        if (devErr) throw devErr
-        if (!device) throw new Error('No device found for your account. Contact your administrator.')
-        deviceId = device.id
+        const { data: existingGroup } = await supabase
+          .from('zone_groups').select('device_id').not('device_id', 'is', null).limit(1).maybeSingle()
+        deviceId = existingGroup?.device_id ?? null
+        if (!deviceId) throw new Error('No device configured yet. Contact your administrator.')
       }
 
       if (isEdit) {
@@ -260,11 +256,23 @@ function ProgramModal({ program, onClose, onSaved }) {
   )
 }
 
+async function runProgramNow(program) {
+  if (!program.zones?.length) return
+  // Send first zone immediately; for sequential, the device continues the sequence
+  const first = program.zones[0]
+  try {
+    await zoneOn(first.zone_num, first.duration_min)
+  } catch (e) {
+    alert(`Failed to start program: ${e.message}`)
+  }
+}
+
 export default function Programs() {
   const { programs, loading, reload } = usePrograms()
   const [expanded, setExpanded] = useState(null)
   const [filter, setFilter]     = useState('All')
   const [modal, setModal]       = useState(null) // null | 'new' | program object
+  const [runningId, setRunningId] = useState(null)
   const filters = ['All', 'Active', 'Paused']
 
   const filtered = programs.filter(p => {
@@ -354,7 +362,16 @@ export default function Programs() {
                               </div>
                             </div>
                             <div className="flex gap-3 shrink-0">
-                              <button className="gradient-primary text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-fab hover:opacity-90">Run Now</button>
+                              <button
+                                onClick={async e => {
+                                  e.stopPropagation()
+                                  setRunningId(p.id)
+                                  await runProgramNow(p)
+                                  setRunningId(null)
+                                }}
+                                disabled={runningId === p.id}
+                                className="gradient-primary text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-fab hover:opacity-90 disabled:opacity-50"
+                              >{runningId === p.id ? 'Starting…' : 'Run Now'}</button>
                               <button
                                 onClick={e => { e.stopPropagation(); setModal(p) }}
                                 className="bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#e8e8e8]"
