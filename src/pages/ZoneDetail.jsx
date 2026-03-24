@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
@@ -37,12 +40,22 @@ export default function ZoneDetail() {
   }
 
   const { data: live } = useLiveTelemetry(['farm/irrigation1/status'])
-  const { history, loading } = useZoneHistory(zoneNum, 20)
+  const { history, loading, reload } = useZoneHistory(zoneNum, 20)
 
   const irr   = live['farm/irrigation1/status'] ?? null
   const zones = irr?.zones ?? []
   const zone  = zones.find(z => z.id === zoneNum) ?? null
   const isRunning = zone?.on ?? false
+
+  // Chart data — last 10 completed runs, oldest first
+  const chartData = [...history]
+    .filter(h => h.duration_min)
+    .slice(0, 10)
+    .reverse()
+    .map(h => ({
+      label: fmtTime(new Date(h.started_at)),
+      duration: Number(Number(h.duration_min).toFixed(1)),
+    }))
 
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
@@ -76,6 +89,35 @@ export default function ZoneDetail() {
           </div>
         ))}
       </div>
+
+      {/* History chart */}
+      {chartData.length > 0 && (
+        <div className="mb-6">
+          <Card accent="blue">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Run Duration History</h2>
+              <button
+                onClick={reload}
+                className="text-xs text-[#00639a] font-semibold hover:underline"
+              >
+                Refresh
+              </button>
+            </div>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f3f3" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#40493d' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#40493d' }} unit=" min" />
+                <Tooltip
+                  formatter={(v) => [`${v} min`, 'Duration']}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+                />
+                <Bar dataKey="duration" fill="#0d631b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-6">
         {/* Manual control */}
@@ -139,10 +181,18 @@ export default function ZoneDetail() {
         {/* Run history */}
         <div className="col-span-2">
           <Card accent="blue">
-            <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-4">
-              Run History
-              {loading && <span className="ml-2 text-xs font-body text-[#40493d] font-normal">Loading…</span>}
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">
+                Run History
+                {loading && <span className="ml-2 text-xs font-body text-[#40493d] font-normal">Loading…</span>}
+              </h2>
+              <button
+                onClick={reload}
+                className="text-xs text-[#00639a] font-semibold hover:underline"
+              >
+                Refresh
+              </button>
+            </div>
             {history.length === 0 && !loading && (
               <p className="text-sm text-[#40493d]">No run history for this zone.</p>
             )}
