@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "migrate": "node scripts/migrate.js",
+    "deploy:functions": "npx supabase functions deploy run-schedules --project-ref lecssjvuskqemjzvjimo"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",
