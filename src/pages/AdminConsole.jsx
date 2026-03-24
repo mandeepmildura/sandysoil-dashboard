@@ -61,7 +61,7 @@ export default function AdminConsole() {
     setLoading(true)
     try {
       const { data, error } = await supabase.from('farms').select('*').order('created_at')
-      if (!error && data && data.length >= 0) {
+      if (!error && data) {
         setFarms(data)
         setUsingDemoFarms(false)
       } else {
@@ -93,7 +93,7 @@ export default function AdminConsole() {
         location: location.trim() || null,
       })
       if (error) {
-        setSaveMsg({ ok: false, text: 'Could not save farm. Please check database setup.' })
+        setSaveMsg({ ok: false, text: error.message })
       } else {
         setFarmName('')
         setLocation('')
@@ -101,7 +101,7 @@ export default function AdminConsole() {
         loadFarms()
       }
     } catch (e) {
-      setSaveMsg({ ok: false, text: 'Could not save farm. Please check database setup.' })
+      setSaveMsg({ ok: false, text: e.message ?? 'Could not save farm. Please check database setup.' })
     }
     setSaving(false)
     setTimeout(() => setSaveMsg(null), 4000)

@@ -213,7 +213,9 @@ export default function ZoneDetail() {
                       </div>
                       <div>
                         <p className="text-xs text-[#40493d]">Duration</p>
-                        <p className="text-sm font-semibold text-[#1a1c1c]">{durMin ? `${durMin} min` : 'Running…'}</p>
+                        <p className="text-sm font-semibold text-[#1a1c1c]">
+                          {!h.ended_at ? 'Running…' : durMin && Number(durMin) > 0 ? `${durMin} min` : '< 1 min'}
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#40493d]">Source</p>
