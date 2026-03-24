@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "migrate": "node scripts/migrate.js",
-    "deploy:functions": "npx supabase functions deploy run-schedules --project-ref lecssjvuskqemjzvjimo"
+    "deploy:functions": "npx supabase functions deploy run-schedules --project-ref lecssjvuskqemjzvjimo",
+    "filter-bridge": "node scripts/filter-bridge.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",
