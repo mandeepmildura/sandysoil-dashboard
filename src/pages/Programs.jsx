@@ -70,11 +70,15 @@ function ProgramModal({ program, onClose, onSaved }) {
       let groupId
       const { data: { user } } = await supabase.auth.getUser()
 
-      // Fetch the user's device (only needed for new programs)
+      // Fetch the user's device via farm (only needed for new programs)
       let deviceId = null
       if (!isEdit) {
-        const { data: device, error: devErr } = await supabase
-          .from('devices').select('id').eq('owner_id', user?.id).limit(1).maybeSingle()
+        const { data: farm, error: farmErr } = await supabase
+          .from('farms').select('id').eq('owner_id', user?.id).limit(1).maybeSingle()
+        if (farmErr) throw farmErr
+        const { data: device, error: devErr } = farm
+          ? await supabase.from('farm_devices').select('id').eq('farm_id', farm.id).limit(1).maybeSingle()
+          : { data: null, error: null }
         if (devErr) throw devErr
         if (!device) throw new Error('No device found for your account. Contact your administrator.')
         deviceId = device.id
