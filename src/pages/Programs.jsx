@@ -70,6 +70,16 @@ function ProgramModal({ program, onClose, onSaved }) {
       let groupId
       const { data: { user } } = await supabase.auth.getUser()
 
+      // Fetch the user's device (only needed for new programs)
+      let deviceId = null
+      if (!isEdit) {
+        const { data: device, error: devErr } = await supabase
+          .from('devices').select('id').eq('owner_id', user?.id).limit(1).maybeSingle()
+        if (devErr) throw devErr
+        if (!device) throw new Error('No device found for your account. Contact your administrator.')
+        deviceId = device.id
+      }
+
       if (isEdit) {
         // Update zone_group
         const { error: e1 } = await supabase.from('zone_groups')
@@ -82,7 +92,7 @@ function ProgramModal({ program, onClose, onSaved }) {
       } else {
         // Create zone_group
         const { data: group, error: e1 } = await supabase.from('zone_groups')
-          .insert({ name: name.trim(), run_mode: runMode, owner_id: user?.id }).select('id').single()
+          .insert({ name: name.trim(), run_mode: runMode, owner_id: user?.id, device_id: deviceId }).select('id').single()
         if (e1) throw e1
         groupId = group.id
       }

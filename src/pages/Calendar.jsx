@@ -51,10 +51,16 @@ function AddScheduleModal({ onClose, onSaved }) {
     try {
       const { data: { user } } = await supabase.auth.getUser()
 
+      // Fetch the user's device
+      const { data: device, error: devErr } = await supabase
+        .from('devices').select('id').eq('owner_id', user?.id).limit(1).maybeSingle()
+      if (devErr) throw devErr
+      if (!device) throw new Error('No device found for your account. Contact your administrator.')
+
       // 1. Create zone_group (program)
       const { data: group, error: e1 } = await supabase
         .from('zone_groups')
-        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id })
+        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id, device_id: device.id })
         .select('id').single()
       if (e1) throw e1
 
