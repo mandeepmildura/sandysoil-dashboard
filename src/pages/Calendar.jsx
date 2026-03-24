@@ -51,16 +51,10 @@ function AddScheduleModal({ onClose, onSaved }) {
     try {
       const { data: { user } } = await supabase.auth.getUser()
 
-      // Reuse device_id from any existing zone_group (all share the same device)
-      const { data: existingGroup } = await supabase
-        .from('zone_groups').select('device_id').not('device_id', 'is', null).limit(1).maybeSingle()
-      const deviceId = existingGroup?.device_id ?? null
-      if (!deviceId) throw new Error('No device configured yet. Contact your administrator.')
-
-      // 1. Create zone_group (program)
+      // 1. Create zone_group — device_id is optional after migration
       const { data: group, error: e1 } = await supabase
         .from('zone_groups')
-        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id, device_id: deviceId })
+        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id })
         .select('id').single()
       if (e1) throw e1
 

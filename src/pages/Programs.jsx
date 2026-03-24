@@ -71,15 +71,6 @@ function ProgramModal({ program, onClose, onSaved }) {
       let groupId
       const { data: { user } } = await supabase.auth.getUser()
 
-      // Reuse device_id from any existing zone_group (only needed for new programs)
-      let deviceId = null
-      if (!isEdit) {
-        const { data: existingGroup } = await supabase
-          .from('zone_groups').select('device_id').not('device_id', 'is', null).limit(1).maybeSingle()
-        deviceId = existingGroup?.device_id ?? null
-        if (!deviceId) throw new Error('No device configured yet. Contact your administrator.')
-      }
-
       if (isEdit) {
         // Update zone_group
         const { error: e1 } = await supabase.from('zone_groups')
@@ -90,9 +81,9 @@ function ProgramModal({ program, onClose, onSaved }) {
         // Replace zone members
         await supabase.from('zone_group_members').delete().eq('group_id', groupId)
       } else {
-        // Create zone_group
+        // Create zone_group — device_id is optional after migration
         const { data: group, error: e1 } = await supabase.from('zone_groups')
-          .insert({ name: name.trim(), run_mode: runMode, owner_id: user?.id, device_id: deviceId }).select('id').single()
+          .insert({ name: name.trim(), run_mode: runMode, owner_id: user?.id }).select('id').single()
         if (e1) throw e1
         groupId = group.id
       }
