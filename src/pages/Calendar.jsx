@@ -49,10 +49,12 @@ function AddScheduleModal({ onClose, onSaved }) {
     setSaving(true)
     setError(null)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+
       // 1. Create zone_group (program)
       const { data: group, error: e1 } = await supabase
         .from('zone_groups')
-        .insert({ name: label.trim(), run_mode: 'sequential' })
+        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id })
         .select('id').single()
       if (e1) throw e1
 
