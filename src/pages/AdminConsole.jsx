@@ -12,6 +12,15 @@ const ACTIVITY = [
   { farm: 'Robinvale Citrus',   event: 'Backwash complete',     time: '4h ago'    },
 ]
 
+// Demo farm data shown as fallback when farms table is unavailable
+const DEMO_FARMS = [
+  { id: 1, name: 'Mildura Block A',    location: 'Mildura',    status: 'online',  created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
+  { id: 2, name: 'Sunraysia North',    location: 'Mildura',    status: 'online',  created_at: new Date(Date.now() - 86400000 * 25).toISOString() },
+  { id: 3, name: 'Red Cliffs Station', location: 'Red Cliffs', status: 'fault',   created_at: new Date(Date.now() - 86400000 * 20).toISOString() },
+  { id: 4, name: 'Euston Almonds',     location: 'Euston',     status: 'offline', created_at: new Date(Date.now() - 86400000 * 15).toISOString() },
+  { id: 5, name: 'Robinvale Citrus',   location: 'Robinvale',  status: 'online',  created_at: new Date(Date.now() - 86400000 * 10).toISOString() },
+]
+
 // Demo device data shown as fallback when farm_devices table is unavailable
 const DEMO_DEVICES = [
   { id: 1, farm_name: 'Mildura Block A',    device_id: 'KC868-001', model: 'KC868-A8v3', type: 'Irrigation Controller', firmware: 'v2.3.1', status: 'online',  last_seen: new Date(Date.now() - 60000).toISOString() },
@@ -46,13 +55,22 @@ export default function AdminConsole() {
   const [saving, setSaving]     = useState(false)
   const [saveMsg, setSaveMsg]   = useState(null)
 
+  const [usingDemoFarms, setUsingDemoFarms] = useState(false)
+
   const loadFarms = useCallback(async () => {
     setLoading(true)
     try {
       const { data, error } = await supabase.from('farms').select('*').order('created_at')
-      if (!error && data) setFarms(data)
+      if (!error && data && data.length >= 0) {
+        setFarms(data)
+        setUsingDemoFarms(false)
+      } else {
+        setFarms(DEMO_FARMS)
+        setUsingDemoFarms(true)
+      }
     } catch (e) {
-      console.error('loadFarms error:', e)
+      setFarms(DEMO_FARMS)
+      setUsingDemoFarms(true)
     } finally {
       setLoading(false)
     }
@@ -62,6 +80,11 @@ export default function AdminConsole() {
 
   async function addFarm() {
     if (!farmName.trim()) { setSaveMsg({ ok: false, text: 'Enter a farm name' }); return }
+    if (usingDemoFarms) {
+      setSaveMsg({ ok: false, text: 'Database not configured — showing demo data only.' })
+      setTimeout(() => setSaveMsg(null), 4000)
+      return
+    }
     setSaving(true)
     setSaveMsg(null)
     try {
@@ -70,7 +93,7 @@ export default function AdminConsole() {
         location: location.trim() || null,
       })
       if (error) {
-        setSaveMsg({ ok: false, text: error.message ?? 'Save failed' })
+        setSaveMsg({ ok: false, text: 'Could not save farm. Please check database setup.' })
       } else {
         setFarmName('')
         setLocation('')
@@ -78,7 +101,7 @@ export default function AdminConsole() {
         loadFarms()
       }
     } catch (e) {
-      setSaveMsg({ ok: false, text: e.message ?? 'Save failed' })
+      setSaveMsg({ ok: false, text: 'Could not save farm. Please check database setup.' })
     }
     setSaving(false)
     setTimeout(() => setSaveMsg(null), 4000)
@@ -178,6 +201,11 @@ export default function AdminConsole() {
       {activeTab === 'farms' && (
         <div className="grid grid-cols-3 gap-6">
           <div className="col-span-2">
+            {usingDemoFarms && (
+              <div className="mb-3 px-4 py-2.5 bg-[#e65100]/10 border border-[#e65100]/20 rounded-lg text-xs text-[#e65100] font-semibold">
+                Demo data — farms table not found in database. Connect Supabase to enable live data.
+              </div>
+            )}
             <div className="bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
               <table className="w-full text-sm font-body">
                 <thead>
