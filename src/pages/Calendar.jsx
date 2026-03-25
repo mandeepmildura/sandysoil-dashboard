@@ -262,7 +262,7 @@ export default function Calendar() {
     .sort((a, b) => (a.schedule.start_time > b.schedule.start_time ? 1 : -1))
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
+    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Irrigation Calendar</h1>
         <div className="flex items-center gap-2">
@@ -286,9 +286,9 @@ export default function Calendar() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Calendar grid */}
-        <div className="col-span-3 bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
+        <div className="lg:col-span-3 bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
           {/* Day headers */}
           <div className="grid grid-cols-8 border-b border-[#f3f3f3]">
             <div className="p-3 text-xs text-[#40493d] font-body" />
