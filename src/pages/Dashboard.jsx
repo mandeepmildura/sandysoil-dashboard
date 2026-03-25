@@ -4,8 +4,11 @@ import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { startBackwash, allZonesOff, zoneOn, zoneOff } from '../lib/commands'
 
-const STATE_TOPIC = 'B16M/CCBA97071FD8/STATE'
-const TOPICS = [STATE_TOPIC]
+const IRR_TOPIC = 'farm/irrigation1/status'
+const PRESSURE_TOPIC = 'farm/filter1/pressure'
+const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
+const B16M_TOPIC = 'B16M/CCBA97071FD8/STATE'
+const TOPICS = [IRR_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC]
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
@@ -23,23 +26,24 @@ export default function Dashboard() {
     setBusy(b => ({ ...b, [id]: false }))
   }
 
-  const raw = data[STATE_TOPIC] ?? null
+  const irr      = data[IRR_TOPIC]      ?? null
+  const pressure = data[PRESSURE_TOPIC] ?? null
+  const backwash = data[BACKWASH_TOPIC] ?? null
+  const b16m     = data[B16M_TOPIC]     ?? null
 
-  const zones = Array.from({ length: 16 }, (_, i) => ({
-    id: i + 1,
-    name: `Zone ${i + 1}`,
-    on: raw?.[`output${i + 1}`]?.value ?? false,
-    state: raw?.[`output${i + 1}`]?.value ? 'running' : 'off',
-  }))
+  const zones       = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  const supplyPsi   = irr?.supply_psi ?? '—'
   const activeCount = zones.filter(z => z.on).length
-  const supplyPsi   = raw?.adc1?.value > 0 ? raw.adc1.value : '—'
-  const inletPsi    = raw?.adc2?.value > 0 ? raw.adc2.value : '—'
-  const outletPsi   = raw?.adc3?.value > 0 ? raw.adc3.value : '—'
-  const diffPsi     = '—'
-  const bwState     = raw?.output16?.value ? 'active' : 'idle'
+  const inletPsi    = pressure?.inlet_psi ?? '—'
+  const outletPsi   = pressure?.outlet_psi ?? '—'
+  const diffPsi     = pressure?.differential_psi ?? '—'
+  const bwState     = backwash?.state ?? '—'
+
+  const b16mOutputs = b16m ? Array.from({ length: 16 }, (_, i) => b16m[`output${i + 1}`]?.value ?? false) : null
+  const b16mActiveOutputs = b16mOutputs ? b16mOutputs.filter(Boolean).length : '—'
 
   const vitals = [
-    { label: 'Supply Pressure', value: supplyPsi, unit: 'PSI', status: connected ? 'online' : 'offline', statusLabel: connected ? 'ONLINE' : 'OFFLINE' },
+    { label: 'Supply Pressure', value: supplyPsi, unit: 'PSI', status: irr?.online ? 'online' : 'offline', statusLabel: irr?.online ? 'ONLINE' : 'OFFLINE' },
     { label: 'Filter Inlet',    value: inletPsi,  unit: 'PSI', status: 'online',  statusLabel: 'NORMAL' },
     { label: 'Filter Outlet',   value: outletPsi, unit: 'PSI', status: 'online',  statusLabel: 'NORMAL' },
     { label: 'Active Zones',    value: String(activeCount), unit: `/ ${zones.length}`, status: activeCount > 0 ? 'running' : 'offline', statusLabel: activeCount > 0 ? 'RUNNING' : 'IDLE' },
@@ -127,15 +131,17 @@ export default function Dashboard() {
             </button>
           </Card>
 
-          {/* Device info */}
+          {/* B16M monitor */}
           <Card accent="green">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Device Status</h2>
+            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">B16M Monitor</h2>
             <div className="space-y-2 text-xs font-body">
               {[
-                { label: 'Board',    value: 'B16M' },
-                { label: 'Firmware', value: 'KCSv3' },
-                { label: 'Inputs',   value: raw ? Object.entries(raw).filter(([k,v]) => k.startsWith('input') && v.value).length + ' active' : '—' },
-                { label: 'Status',   value: connected ? 'Online' : 'Offline' },
+                { label: 'Status',   value: b16m ? 'Online' : 'Offline' },
+                { label: 'Outputs',  value: b16m ? `${b16mActiveOutputs} / 16 active` : '—' },
+                { label: 'ADC 1',    value: b16m?.adc1?.value > 0 ? b16m.adc1.value : '—' },
+                { label: 'ADC 2',    value: b16m?.adc2?.value > 0 ? b16m.adc2.value : '—' },
+                { label: 'ADC 3',    value: b16m?.adc3?.value > 0 ? b16m.adc3.value : '—' },
+                { label: 'ADC 4',    value: b16m?.adc4?.value > 0 ? b16m.adc4.value : '—' },
               ].map(r => (
                 <div key={r.label} className="flex justify-between">
                   <span className="text-[#40493d]">{r.label}</span>
