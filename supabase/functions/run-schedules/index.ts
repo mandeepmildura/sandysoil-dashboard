@@ -43,6 +43,11 @@ const MQTT_HOST               = Deno.env.get('MQTT_HOST')!
 const MQTT_USER               = Deno.env.get('MQTT_USER')!
 const MQTT_PASS               = Deno.env.get('MQTT_PASS')!
 
+// IANA timezone name — handles daylight saving automatically
+// Set this in Supabase Dashboard → Edge Functions → Secrets as TIMEZONE
+// e.g. "Australia/Melbourne" for VIC/Mildura (auto-switches AEST↔AEDT)
+const TIMEZONE = Deno.env.get('TIMEZONE') ?? 'UTC'
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 // HiveMQ Cloud HTTP API — publish an MQTT message
@@ -68,25 +73,28 @@ async function mqttPublish(topic: string, payload: unknown): Promise<void> {
   }
 }
 
-// day-of-week: JS getDay() → 0=Sun … 6=Sat (matches group_schedules.days_of_week)
-function currentDOW(): number {
-  return new Date().getDay()
+// Get local time parts using the IANA timezone (handles DST automatically)
+function localTimeParts() {
+  const now = new Date()
+  const fmt = new Intl.DateTimeFormat('en-AU', {
+    timeZone: TIMEZONE,
+    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
+  })
+  const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
+  const hhmm = `${parts.hour.padStart(2, '0')}:${parts.minute.padStart(2, '0')}`
+  const dow  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(parts.weekday)
+  return { hhmm, dow }
 }
 
-// HH:MM string for current time in local time (UTC — Edge Functions run UTC)
-function currentHHMM(): string {
-  const now = new Date()
-  const h = String(now.getUTCHours()).padStart(2, '0')
-  const m = String(now.getUTCMinutes()).padStart(2, '0')
-  return `${h}:${m}`
-}
+function currentHHMM(): string { return localTimeParts().hhmm }
+function currentDOW():  number { return localTimeParts().dow }
 
 Deno.serve(async (_req) => {
   try {
     const now    = currentHHMM()
     const dow    = currentDOW()
 
-    console.log(`[run-schedules] checking at ${now} DOW=${dow}`)
+    console.log(`[run-schedules] checking at ${now} DOW=${dow} (tz=${TIMEZONE})`)
 
     // Find enabled schedules whose start_time matches this minute
     // and today's DOW is in days_of_week
