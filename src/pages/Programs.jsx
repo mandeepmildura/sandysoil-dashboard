@@ -274,7 +274,7 @@ export default function Programs() {
   })
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
+    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Programs</h1>
         <button
@@ -286,8 +286,8 @@ export default function Programs() {
       </div>
 
       {/* Filter */}
-      <div className="flex items-center gap-3 mb-5">
-        <input placeholder="Search programs…" className="bg-[#ffffff] rounded-xl px-4 py-2 text-sm font-body text-[#1a1c1c] shadow-card outline-none w-64" />
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <input placeholder="Search programs…" className="bg-[#ffffff] rounded-xl px-4 py-2 text-sm font-body text-[#1a1c1c] shadow-card outline-none flex-1 min-w-0" />
         <div className="flex gap-1.5">
           {filters.map(f => (
             <button key={f} onClick={() => setFilter(f)}
@@ -301,9 +301,65 @@ export default function Programs() {
 
       {loading && <p className="text-sm text-[#40493d]">Loading programs…</p>}
 
-      {/* Table */}
+      {/* Mobile card list */}
       {!loading && (
-        <div className="bg-[#ffffff] rounded-xl shadow-card overflow-hidden mb-4">
+        <div className="md:hidden space-y-3 mb-4">
+          {filtered.length === 0 && (
+            <p className="text-center text-sm text-[#40493d] py-8">No programs found.</p>
+          )}
+          {filtered.map(p => {
+            const active = p.schedule?.enabled !== false
+            const sched  = p.schedule
+            const isOpen = expanded === p.id
+            return (
+              <div key={p.id} className="bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
+                <button
+                  className="w-full text-left px-4 py-3 flex items-center justify-between"
+                  onClick={() => setExpanded(isOpen ? null : p.id)}
+                >
+                  <div>
+                    <p className="font-semibold text-sm text-[#1a1c1c]">{p.name}</p>
+                    <p className="text-xs text-[#40493d] mt-0.5">
+                      {sched ? `${fmtTime(sched.start_time)} · ${fmtDays(sched.days_of_week)}` : 'No schedule'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusChip status={active ? 'online' : 'paused'} label={active ? 'ACTIVE' : 'PAUSED'} />
+                    <span className="text-[#40493d] text-xs">{isOpen ? '▲' : '▼'}</span>
+                  </div>
+                </button>
+                {isOpen && (
+                  <div className="px-4 pb-4 border-t border-[#f3f3f3]">
+                    <div className="flex gap-1 flex-wrap mt-3 mb-2">
+                      {p.zones.map((z, i) => (
+                        <span key={z.zone_num} className="px-2 py-1 bg-[#f3f3f3] rounded-lg text-xs">
+                          {i + 1}. Z{z.zone_num} — {z.duration_min}m
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-[#40493d] mb-3 capitalize">Mode: {p.run_mode}</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => { setRunningId(p.id); await runProgramNow(p); setRunningId(null) }}
+                        disabled={runningId === p.id}
+                        className="flex-1 py-2 rounded-lg gradient-primary text-white text-xs font-semibold disabled:opacity-50"
+                      >{runningId === p.id ? 'Starting…' : 'Run Now'}</button>
+                      <button
+                        onClick={() => setModal(p)}
+                        className="flex-1 py-2 rounded-lg bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold"
+                      >Edit</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Desktop table */}
+      {!loading && (
+        <div className="hidden md:block bg-[#ffffff] rounded-xl shadow-card overflow-hidden mb-4">
           <table className="w-full text-sm font-body">
             <thead>
               <tr className="bg-[#f3f3f3]">

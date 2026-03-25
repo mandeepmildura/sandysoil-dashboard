@@ -46,7 +46,7 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
+    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Farm Dashboard</h1>
         <div className="flex items-center gap-2">
@@ -69,9 +69,9 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Zone grid */}
-        <div className="col-span-2">
+        <div className="lg:col-span-2">
           <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">Irrigation Zones</h2>
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             {zones.map(zone => (
