@@ -45,7 +45,7 @@ double_confirm_changes = true
 enable_confirmations = false
 
 [functions.run-schedules]
-verify_jwt = true
+verify_jwt = false
 
 [analytics]
 enabled = false
