@@ -114,7 +114,7 @@ export default function ZoneDetail() {
       </div>
 
       {/* Vitals */}
-      <div className={`grid gap-4 mb-6 ${vitals.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         {vitals.map(v => (
           <div
             key={v.label}
@@ -142,15 +142,16 @@ export default function ZoneDetail() {
               </button>
             </div>
             <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 4, right: 4, left: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f3f3" />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#40493d' }} />
                 <YAxis
                   tick={{ fontSize: 10, fill: '#40493d' }}
-                  unit=" min"
                   domain={[0, 'auto']}
                   allowDecimals={false}
                   tickCount={5}
+                  tickFormatter={(v) => `${v}m`}
+                  width={32}
                 />
                 <Tooltip
                   content={({ active, payload }) => {
