@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import StatusChip from '../components/StatusChip'
 import { usePrograms } from '../hooks/usePrograms'
+import { useUserContext } from '../hooks/useUserContext'
 import { supabase } from '../lib/supabase'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -27,7 +28,7 @@ function dowToBools(dow) {
   return bools
 }
 
-function ProgramModal({ program, onClose, onSaved }) {
+function ProgramModal({ program, deviceId, userId, onClose, onSaved }) {
   const isEdit = !!program
 
   const [name, setName]       = useState(isEdit ? program.name : '')
@@ -63,6 +64,7 @@ function ProgramModal({ program, onClose, onSaved }) {
     if (!name.trim())           { setError('Enter a program name'); return }
     if (zones.length === 0)     { setError('Add at least one zone'); return }
     if (hasSchedule && !days.some(Boolean)) { setError('Select at least one day for the schedule'); return }
+    if (!deviceId || !userId) { setError('Device not loaded — try refreshing'); return }
     setSaving(true)
     setError(null)
 
@@ -70,44 +72,37 @@ function ProgramModal({ program, onClose, onSaved }) {
       let groupId
 
       if (isEdit) {
-        // Update zone_group
         const { error: e1 } = await supabase.from('zone_groups')
           .update({ name: name.trim(), run_mode: runMode }).eq('id', program.id)
         if (e1) throw e1
         groupId = program.id
-
-        // Replace zone members
         await supabase.from('zone_group_members').delete().eq('group_id', groupId)
       } else {
-        // Create zone_group
         const { data: group, error: e1 } = await supabase.from('zone_groups')
-          .insert({ name: name.trim(), run_mode: runMode }).select('id').single()
+          .insert({ name: name.trim(), run_mode: runMode, device_id: deviceId, customer_id: userId })
+          .select('id').single()
         if (e1) throw e1
         groupId = group.id
       }
 
-      // Insert zone members
       const { error: e2 } = await supabase.from('zone_group_members').insert(
         zones.map((z, i) => ({ group_id: groupId, zone_num: z.num, duration_min: z.duration, sort_order: i }))
       )
       if (e2) throw e2
 
-      // Handle schedule
       if (hasSchedule) {
         const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
-        const schedData = { group_id: groupId, label: name.trim(), days_of_week: dow, start_time: startTime, enabled: true }
+        const schedData = { group_id: groupId, device_id: deviceId, customer_id: userId, label: name.trim(), days_of_week: dow, start_time: startTime, enabled: true }
 
         if (isEdit && program.schedule) {
           const { error: e3 } = await supabase.from('group_schedules').update(schedData).eq('group_id', groupId)
           if (e3) throw e3
         } else {
-          // Remove any existing schedule first (avoid duplicate)
           await supabase.from('group_schedules').delete().eq('group_id', groupId)
           const { error: e3 } = await supabase.from('group_schedules').insert(schedData)
           if (e3) throw e3
         }
       } else if (isEdit && program.schedule) {
-        // Remove schedule if user cleared it
         await supabase.from('group_schedules').delete().eq('group_id', groupId)
       }
 
@@ -246,7 +241,8 @@ function ProgramModal({ program, onClose, onSaved }) {
 }
 
 export default function Programs() {
-  const { programs, loading, reload } = usePrograms()
+  const { programs, loading, reload }           = usePrograms()
+  const { irrigationId, userId, loading: ctxLoading } = useUserContext()
   const [expanded, setExpanded] = useState(null)
   const [filter, setFilter]     = useState('All')
   const [modal, setModal]       = useState(null) // null | 'new' | program object
@@ -364,9 +360,11 @@ export default function Programs() {
         {programs.length} programs — {programs.filter(p => p.schedule?.enabled !== false).length} active — {programs.filter(p => p.schedule?.enabled === false).length} paused
       </p>
 
-      {modal !== null && (
+      {modal !== null && !ctxLoading && (
         <ProgramModal
           program={modal === 'new' ? null : modal}
+          deviceId={irrigationId}
+          userId={userId}
           onClose={() => setModal(null)}
           onSaved={() => { reload(); setExpanded(null) }}
         />

@@ -150,7 +150,7 @@ export default function ZoneDetail() {
               {history.map((h) => {
                 const start  = new Date(h.started_at)
                 const isOpen = !h.ended_at
-                const durMin = h.duration_min ? Number(h.duration_min).toFixed(0) : null
+                const durMin = fmtDuration(h)
                 return (
                   <div
                     key={h.id}
@@ -163,7 +163,7 @@ export default function ZoneDetail() {
                       </div>
                       <div>
                         <p className="text-xs text-[#40493d]">Duration</p>
-                        <p className="text-sm font-semibold text-[#1a1c1c]">{durMin ? `${durMin} min` : 'Running…'}</p>
+                        <p className="text-sm font-semibold text-[#1a1c1c]">{durMin}</p>
                       </div>
                       <div>
                         <p className="text-xs text-[#40493d]">Source</p>
@@ -183,6 +183,16 @@ export default function ZoneDetail() {
       </div>
     </div>
   )
+}
+
+function fmtDuration(h) {
+  let mins = h.duration_min != null ? Number(h.duration_min) : null
+  if (mins === null && h.ended_at) {
+    mins = (new Date(h.ended_at) - new Date(h.started_at)) / 60000
+  }
+  if (mins === null) return 'Running…'
+  if (mins < 1) return '< 1 min'
+  return `${Math.round(mins)} min`
 }
 
 function fmtDate(d) {
