@@ -49,8 +49,12 @@ export async function closeOpenHistoryRecord(zoneNum) {
   }
 }
 
-export function allZonesOff() {
-  return mqttPublish('farm/irrigation1/all/off', '')
+export async function allZonesOff() {
+  await Promise.all(
+    [1,2,3,4,5,6,7,8].map(z =>
+      mqttPublish(`farm/irrigation1/zone/${z}/cmd`, { cmd: 'off' })
+    )
+  )
 }
 
 // ── Filter commands (old irrigation controller) ────────────────────────────
