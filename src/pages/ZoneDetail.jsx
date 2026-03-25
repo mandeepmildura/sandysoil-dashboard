@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -7,7 +7,7 @@ import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useZoneHistory } from '../hooks/useZoneHistory'
-import { zoneOn, zoneOff, allZonesOff, durationToMinutes } from '../lib/commands'
+import { zoneOn, zoneOff, allZonesOff, closeOpenHistoryRecord, durationToMinutes } from '../lib/commands'
 
 const DURATIONS = ['15 min', '30 min', '1 hour', 'Custom']
 
@@ -30,6 +30,8 @@ export default function ZoneDetail() {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
+
+  const prevRunning = useRef(null)
 
   async function handleStart() {
     setCmdSending(true); setCmdError(null)
@@ -59,6 +61,15 @@ export default function ZoneDetail() {
   const zones = irr?.zones ?? []
   const zone  = zones.find(z => z.id === zoneNum) ?? null
   const isRunning = zone?.on ?? false
+
+  // Detect when zone turns off automatically (firmware timer expired).
+  // When isRunning transitions true → false, close any open history record.
+  useEffect(() => {
+    if (prevRunning.current === true && isRunning === false) {
+      closeOpenHistoryRecord(zoneNum).then(reload)
+    }
+    prevRunning.current = isRunning
+  }, [isRunning]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Active run (open history entry)
   const activeRun   = history.find(h => !h.ended_at)
