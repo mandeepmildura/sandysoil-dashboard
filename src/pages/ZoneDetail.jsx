@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
@@ -82,15 +82,19 @@ export default function ZoneDetail() {
   const todayRuns  = history.filter(h => h.ended_at && new Date(h.started_at).toDateString() === todayStr)
   const todayMins  = todayRuns.reduce((sum, h) => sum + (h.duration_min ? Number(h.duration_min) : 0), 0)
 
-  // Chart data — last 10 completed runs, oldest first
+  const SOURCE_COLORS = { manual: '#0d631b', schedule: '#00639a', program: '#6750a4' }
+
+  // Chart data — last 10 completed runs with meaningful duration, oldest first
   const chartData = [...history]
-    .filter(h => h.duration_min)
+    .filter(h => h.duration_min && Number(h.duration_min) >= 0.5)
     .slice(0, 10)
     .reverse()
     .map(h => ({
-      label: fmtTime(new Date(h.started_at)),
+      label:    fmtTime(new Date(h.started_at)),
       fullDate: fmtDate(new Date(h.started_at)) + ' ' + fmtTime(new Date(h.started_at)),
       duration: Number(Number(h.duration_min).toFixed(1)),
+      source:   (h.source ?? 'manual').toLowerCase(),
+      color:    SOURCE_COLORS[(h.source ?? 'manual').toLowerCase()] ?? SOURCE_COLORS.manual,
     }))
 
   // Vitals — add Time Left / Elapsed card when running
@@ -148,9 +152,14 @@ export default function ZoneDetail() {
           <Card accent="blue">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Run Duration History</h2>
-              <button onClick={reload} className="text-xs text-[#00639a] font-semibold hover:underline">
-                Refresh
-              </button>
+              <div className="flex items-center gap-3">
+                {[['manual','#0d631b'],['schedule','#00639a'],['program','#6750a4']].map(([src,col]) => (
+                  <span key={src} className="flex items-center gap-1 text-[10px] text-[#40493d] capitalize">
+                    <span className="w-2 h-2 rounded-full inline-block" style={{ background: col }} />{src}
+                  </span>
+                ))}
+                <button onClick={reload} className="text-xs text-[#00639a] font-semibold hover:underline ml-2">Refresh</button>
+              </div>
             </div>
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={chartData} margin={{ top: 4, right: 4, left: 8, bottom: 0 }}>
@@ -171,12 +180,17 @@ export default function ZoneDetail() {
                     return (
                       <div className="bg-white shadow-lg rounded-lg px-3 py-2 text-xs border border-[#f3f3f3]">
                         <p className="font-semibold text-[#1a1c1c] mb-0.5">{d.fullDate}</p>
-                        <p className="text-[#40493d]">Duration: <span className="font-semibold text-[#0d631b]">{formatDur(d.duration)}</span></p>
+                        <p className="text-[#40493d]">Duration: <span className="font-semibold" style={{ color: d.color }}>{formatDur(d.duration)}</span></p>
+                        <p className="text-[#40493d] capitalize">Source: {d.source}</p>
                       </div>
                     )
                   }}
                 />
-                <Bar dataKey="duration" fill="#0d631b" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="duration" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -348,7 +362,7 @@ function fmtCountdown(sec) {
 
 /** Format minutes → "Xh Ym" or "Xm" */
 function formatDur(min) {
-  if (!min) return '< 1 min'
+  if (!min || min < 0.5) return '< 1 min'
   const m = Math.round(min)
   if (m < 60) return `${m} min`
   const h = Math.floor(m / 60)
