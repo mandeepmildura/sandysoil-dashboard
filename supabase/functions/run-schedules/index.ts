@@ -148,34 +148,36 @@ Deno.serve(async (_req) => {
       console.log(`[run-schedules] running "${group.name}" (${zones.length} zones, ${group.run_mode})`)
 
       if (group.run_mode === 'sequential') {
-        // Send a sequential-run command — the device runs each zone in order
-        await mqttPublish('farm/irrigation1/program/run', {
-          program_id: group.id,
-          name:       group.name,
-          run_mode:   'sequential',
-          source:     'schedule',
-          zones:      zones.map(z => ({ zone: z.zone_num, duration: z.duration_min })),
-        })
+        // Each zone has a calculated start time = schedule start + cumulative offset.
+        // The cron runs every minute so this naturally handles sequencing without a queue.
+        const [sh, sm] = sched.start_time.split(':').map(Number)
+        let offsetMin = 0
+        for (const z of zones) {
+          const totalMin  = sh * 60 + sm + offsetMin
+          const zoneHHMM  = `${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`
+          if (zoneHHMM === now) {
+            await mqttPublish(`farm/irrigation1/zone/${z.zone_num}/cmd`, {
+              cmd: 'on', duration: z.duration_min, source: 'schedule',
+            })
+            await supabase.from('zone_history').insert({
+              zone_num: z.zone_num, started_at: new Date().toISOString(), source: 'schedule',
+            })
+            results.push(`${group.name} → Zone ${z.zone_num} started (sequential offset ${offsetMin}min)`)
+          }
+          offsetMin += z.duration_min
+        }
       } else {
         // Parallel: start all zones simultaneously
         for (const z of zones) {
           await mqttPublish(`farm/irrigation1/zone/${z.zone_num}/cmd`, {
-            cmd:      'on',
-            duration: z.duration_min,
-            source:   'schedule',
+            cmd: 'on', duration: z.duration_min, source: 'schedule',
+          })
+          await supabase.from('zone_history').insert({
+            zone_num: z.zone_num, started_at: new Date().toISOString(), source: 'schedule',
           })
         }
+        results.push(`${group.name} → ${zones.length} zone(s) started (parallel)`)
       }
-
-      // Log to zone_history for each zone in the program
-      const historyRows = zones.map(z => ({
-        zone_num:   z.zone_num,
-        started_at: new Date().toISOString(),
-        source:     'schedule',
-      }))
-      await supabase.from('zone_history').insert(historyRows)
-
-      results.push(`${group.name} → ${zones.length} zone(s) started`)
     }
 
     return new Response(
