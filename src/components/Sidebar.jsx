@@ -13,7 +13,7 @@ const nav = [
 
 export default function Sidebar({ session }) {
   return (
-    <aside className="w-56 min-h-screen bg-[#304047] flex flex-col shrink-0">
+    <aside className="hidden md:flex w-56 min-h-screen bg-[#304047] flex-col shrink-0">
       {/* Logo */}
       <div className="px-5 py-6 border-b border-white/10">
         <div className="flex items-center gap-3">
