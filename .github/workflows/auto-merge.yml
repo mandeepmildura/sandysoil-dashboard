@@ -11,16 +11,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge into main
+      - name: Merge branch into main via GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout main
-          git merge --ff-only origin/${{ github.ref_name }} || git merge --no-ff origin/${{ github.ref_name }} -m "Auto-merge ${{ github.ref_name }} into main"
-          git push origin main
+          gh api repos/${{ github.repository }}/merges \
+            -f base=main \
+            -f head=${{ github.ref_name }} \
+            -f commit_message="Auto-merge ${{ github.ref_name }} into main"
