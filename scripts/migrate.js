@@ -12,7 +12,7 @@
  *   SUPABASE_ACCESS_TOKEN=sbp_xxx node scripts/migrate.js
  */
 
-import { readFileSync } from 'fs'
+import { readFileSync, readdirSync } from 'fs'
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import path from 'path'
@@ -26,7 +26,11 @@ const PROJECT_REF       = 'lecssjvuskqemjzvjimo'
 const ACCESS_TOKEN      = process.env.SUPABASE_ACCESS_TOKEN
 const DB_PASSWORD       = process.env.SUPABASE_DB_PASSWORD
 
-const SQL_FILE = path.join(__dirname, '../supabase/migrations/001_full_schema.sql')
+const MIGRATIONS_DIR = path.join(__dirname, '../supabase/migrations')
+const SQL_FILES = readdirSync(MIGRATIONS_DIR)
+  .filter(f => f.endsWith('.sql'))
+  .sort()
+  .map(f => path.join(MIGRATIONS_DIR, f))
 
 function request(url, options, body) {
   return new Promise((resolve, reject) => {
@@ -176,7 +180,7 @@ async function runViaSeedApi() {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-const sql = readFileSync(SQL_FILE, 'utf8')
+const sql = SQL_FILES.map(f => readFileSync(f, 'utf8')).join('\n')
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 console.log('  Sandy Soil — Supabase Migration Runner')
@@ -216,7 +220,7 @@ if (ACCESS_TOKEN) {
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('  To run the full SQL migration:')
   console.log('  1. Open: https://supabase.com/dashboard/project/lecssjvuskqemjzvjimo/sql')
-  console.log('  2. Paste the contents of: supabase/migrations/001_full_schema.sql')
+  console.log('  2. Paste the contents of each file in: supabase/migrations/ (in order)')
   console.log('  3. Click Run')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 }
