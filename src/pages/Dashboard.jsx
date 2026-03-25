@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-import { startBackwash, allZonesOff, zoneOn, zoneOff } from '../lib/commands'
+import { startBackwash, allZonesOff, zoneOn, zoneOff, b16mOutputOn, b16mOutputOff } from '../lib/commands'
 
 const IRR_TOPIC = 'farm/irrigation1/status'
 const PRESSURE_TOPIC = 'farm/filter1/pressure'
@@ -13,6 +13,7 @@ const TOPICS = [IRR_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC]
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
   const [busy, setBusy] = useState({})
+  const [b16mBusy, setB16mBusy] = useState({})
 
   async function handleZoneOn(id) {
     setBusy(b => ({ ...b, [id]: true }))
@@ -39,8 +40,17 @@ export default function Dashboard() {
   const diffPsi     = pressure?.differential_psi ?? '—'
   const bwState     = backwash?.state ?? '—'
 
-  const b16mOutputs = b16m ? Array.from({ length: 16 }, (_, i) => b16m[`output${i + 1}`]?.value ?? false) : null
-  const b16mActiveOutputs = b16mOutputs ? b16mOutputs.filter(Boolean).length : '—'
+  const b16mOutputs = Array.from({ length: 16 }, (_, i) => b16m?.[`output${i + 1}`]?.value ?? false)
+  const b16mInputs  = Array.from({ length: 16 }, (_, i) => b16m?.[`input${i + 1}`]?.value ?? false)
+  const b16mAdc     = [1, 2, 3, 4].map(n => b16m?.[`adc${n}`]?.value ?? 0)
+
+  async function handleB16mToggle(n, currentlyOn) {
+    setB16mBusy(b => ({ ...b, [n]: true }))
+    try {
+      currentlyOn ? await b16mOutputOff(n) : await b16mOutputOn(n)
+    } catch (e) { console.error(e) }
+    setB16mBusy(b => ({ ...b, [n]: false }))
+  }
 
   const vitals = [
     { label: 'Supply Pressure', value: supplyPsi, unit: 'PSI', status: irr?.online ? 'online' : 'offline', statusLabel: irr?.online ? 'ONLINE' : 'OFFLINE' },
@@ -131,17 +141,14 @@ export default function Dashboard() {
             </button>
           </Card>
 
-          {/* B16M monitor */}
+          {/* B16M status summary */}
           <Card accent="green">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">B16M Monitor</h2>
+            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">B16M (Test)</h2>
             <div className="space-y-2 text-xs font-body">
               {[
-                { label: 'Status',   value: b16m ? 'Online' : 'Offline' },
-                { label: 'Outputs',  value: b16m ? `${b16mActiveOutputs} / 16 active` : '—' },
-                { label: 'ADC 1',    value: b16m?.adc1?.value > 0 ? b16m.adc1.value : '—' },
-                { label: 'ADC 2',    value: b16m?.adc2?.value > 0 ? b16m.adc2.value : '—' },
-                { label: 'ADC 3',    value: b16m?.adc3?.value > 0 ? b16m.adc3.value : '—' },
-                { label: 'ADC 4',    value: b16m?.adc4?.value > 0 ? b16m.adc4.value : '—' },
+                { label: 'Status',  value: b16m ? 'Online' : 'Offline' },
+                { label: 'Outputs', value: `${b16mOutputs.filter(Boolean).length} / 16 on` },
+                { label: 'Inputs',  value: `${b16mInputs.filter(Boolean).length} / 16 active` },
               ].map(r => (
                 <div key={r.label} className="flex justify-between">
                   <span className="text-[#40493d]">{r.label}</span>
@@ -150,6 +157,76 @@ export default function Dashboard() {
               ))}
             </div>
           </Card>
+        </div>
+      </div>
+
+      {/* B16M full detail — outputs, inputs, ADC */}
+      <div className="mt-6">
+        <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">
+          B16M Detail
+          <span className={`ml-2 inline-block w-2 h-2 rounded-full align-middle ${b16m ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Outputs */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Outputs (DO1–DO16)</h3>
+            <div className="grid grid-cols-4 gap-1.5">
+              {b16mOutputs.map((on, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleB16mToggle(i + 1, on)}
+                  disabled={!!b16mBusy[i + 1]}
+                  className={`py-1.5 rounded text-[10px] font-semibold transition-all disabled:opacity-40 ${
+                    on
+                      ? 'bg-[#0d631b] text-white'
+                      : 'bg-[#e2e2e2] text-[#40493d] hover:bg-[#d5d5d5]'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Inputs */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Inputs (DI1–DI16)</h3>
+            <div className="grid grid-cols-4 gap-1.5">
+              {b16mInputs.map((active, i) => (
+                <div
+                  key={i}
+                  className={`py-1.5 rounded text-[10px] font-semibold text-center ${
+                    active ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'
+                  }`}
+                >
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* ADC */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Analog (CH1–CH4)</h3>
+            <div className="space-y-3">
+              {b16mAdc.map((val, i) => (
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-[#40493d]">CH{i + 1}</span>
+                    <span className="font-semibold text-[#1a1c1c]">{val}</span>
+                  </div>
+                  <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#0d631b] rounded-full transition-all"
+                      style={{ width: `${Math.min((val / 4095) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
         </div>
       </div>
     </div>
