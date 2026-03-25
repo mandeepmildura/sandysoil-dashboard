@@ -97,7 +97,7 @@ function ProgramModal({ program, onClose, onSaved }) {
       // Handle schedule
       if (hasSchedule) {
         const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
-        const schedData = { group_id: groupId, label: name.trim(), days_of_week: dow, start_time: startTime, enabled: true }
+        const schedData = { group_id: groupId, label: name.trim(), days_of_week: dow, start_time: startTime, enabled: true, customer_id: user?.id }
 
         if (isEdit && program.schedule) {
           const { error: e3 } = await supabase.from('group_schedules').update(schedData).eq('group_id', groupId)

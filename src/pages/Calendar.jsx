@@ -68,7 +68,7 @@ function AddScheduleModal({ onClose, onSaved }) {
       const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
       const { error: e3 } = await supabase.from('group_schedules').insert({
         group_id: group.id, label: label.trim(),
-        days_of_week: dow, start_time: startTime, enabled: true,
+        days_of_week: dow, start_time: startTime, enabled: true, customer_id: user?.id,
       })
       if (e3) throw e3
 
