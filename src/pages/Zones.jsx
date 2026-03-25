@@ -6,10 +6,16 @@ import { allZonesOff } from '../lib/commands'
 
 export default function Zones() {
   const navigate = useNavigate()
-  const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status'])
+  const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/zone/+/state'])
 
-  const irr   = live['farm/irrigation1/status'] ?? null
-  const zones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  const irr = live['farm/irrigation1/status'] ?? null
+  const zoneOverrides = {}
+  Object.entries(live).forEach(([topic, payload]) => {
+    const m = topic.match(/^farm\/irrigation1\/zone\/(\d+)\/state$/)
+    if (m) zoneOverrides[Number(m[1])] = payload
+  })
+  const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  const zones = baseZones.map(z => zoneOverrides[z.id] ? { ...z, ...zoneOverrides[z.id] } : z)
 
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">

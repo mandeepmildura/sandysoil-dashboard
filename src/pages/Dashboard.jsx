@@ -5,10 +5,11 @@ import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { startBackwash, allZonesOff, zoneOn, zoneOff, b16mOutputOn, b16mOutputOff } from '../lib/commands'
 
 const IRR_TOPIC = 'farm/irrigation1/status'
+const ZONE_STATE_TOPIC = 'farm/irrigation1/zone/+/state'
 const PRESSURE_TOPIC = 'farm/filter1/pressure'
 const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
 const B16M_TOPIC = 'B16M/CCBA97071FD8/STATE'
-const TOPICS = [IRR_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC]
+const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC]
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
@@ -32,7 +33,14 @@ export default function Dashboard() {
   const backwash = data[BACKWASH_TOPIC] ?? null
   const b16m     = data[B16M_TOPIC]     ?? null
 
-  const zones       = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  // Merge per-zone state updates over the full status zones array
+  const zoneOverrides = {}
+  Object.entries(data).forEach(([topic, payload]) => {
+    const m = topic.match(/^farm\/irrigation1\/zone\/(\d+)\/state$/)
+    if (m) zoneOverrides[Number(m[1])] = payload
+  })
+  const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  const zones = baseZones.map(z => zoneOverrides[z.id] ? { ...z, ...zoneOverrides[z.id] } : z)
   const supplyPsi   = irr?.supply_psi ?? '—'
   const activeCount = zones.filter(z => z.on).length
   const inletPsi    = pressure?.inlet_psi ?? '—'
