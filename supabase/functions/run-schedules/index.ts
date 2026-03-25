@@ -43,9 +43,10 @@ const MQTT_HOST               = Deno.env.get('MQTT_HOST')!
 const MQTT_USER               = Deno.env.get('MQTT_USER')!
 const MQTT_PASS               = Deno.env.get('MQTT_PASS')!
 
-// Timezone offset in decimal hours, e.g. "11" for AEDT (UTC+11), "10.5" for ACST (UTC+10:30)
-// Set this in Supabase Dashboard → Edge Functions → Secrets as TIMEZONE_OFFSET_HOURS
-const TZ_OFFSET_HOURS = parseFloat(Deno.env.get('TIMEZONE_OFFSET_HOURS') ?? '0')
+// IANA timezone name — handles daylight saving automatically
+// Set this in Supabase Dashboard → Edge Functions → Secrets as TIMEZONE
+// e.g. "Australia/Melbourne" for VIC/Mildura (auto-switches AEST↔AEDT)
+const TIMEZONE = Deno.env.get('TIMEZONE') ?? 'UTC'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -72,30 +73,28 @@ async function mqttPublish(topic: string, payload: unknown): Promise<void> {
   }
 }
 
-// Shift UTC time to local time using the configured timezone offset
-function localNow(): Date {
-  return new Date(Date.now() + TZ_OFFSET_HOURS * 3600 * 1000)
+// Get local time parts using the IANA timezone (handles DST automatically)
+function localTimeParts() {
+  const now = new Date()
+  const fmt = new Intl.DateTimeFormat('en-AU', {
+    timeZone: TIMEZONE,
+    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
+  })
+  const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
+  const hhmm = `${parts.hour.padStart(2, '0')}:${parts.minute.padStart(2, '0')}`
+  const dow  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(parts.weekday)
+  return { hhmm, dow }
 }
 
-// day-of-week in local timezone: 0=Sun … 6=Sat (matches group_schedules.days_of_week)
-function currentDOW(): number {
-  return localNow().getUTCDay()
-}
-
-// HH:MM string for current local time
-function currentHHMM(): string {
-  const local = localNow()
-  const h = String(local.getUTCHours()).padStart(2, '0')
-  const m = String(local.getUTCMinutes()).padStart(2, '0')
-  return `${h}:${m}`
-}
+function currentHHMM(): string { return localTimeParts().hhmm }
+function currentDOW():  number { return localTimeParts().dow }
 
 Deno.serve(async (_req) => {
   try {
     const now    = currentHHMM()
     const dow    = currentDOW()
 
-    console.log(`[run-schedules] checking at ${now} DOW=${dow} (UTC offset +${TZ_OFFSET_HOURS}h)`)
+    console.log(`[run-schedules] checking at ${now} DOW=${dow} (tz=${TIMEZONE})`)
 
     // Find enabled schedules whose start_time matches this minute
     // and today's DOW is in days_of_week
