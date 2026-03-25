@@ -1,13 +1,12 @@
 import { mqttPublish } from './mqttClient'
 import { supabase } from './supabase'
 
+const SET_TOPIC = 'B16M/CCBA97071FD8/SET'
+
 // ── Zone commands ──────────────────────────────────────────────────────────
 
 export async function zoneOn(zoneNum, durationMin, source = 'manual') {
-  await mqttPublish(
-    `farm/irrigation1/zone/${zoneNum}/cmd`,
-    { cmd: 'on', duration: durationMin }
-  )
+  await mqttPublish(SET_TOPIC, { [`output${zoneNum}`]: { value: true } })
   // Record the start of this run in zone_history
   try {
     await supabase
@@ -19,10 +18,7 @@ export async function zoneOn(zoneNum, durationMin, source = 'manual') {
 }
 
 export async function zoneOff(zoneNum) {
-  await mqttPublish(
-    `farm/irrigation1/zone/${zoneNum}/cmd`,
-    { cmd: 'off' }
-  )
+  await mqttPublish(SET_TOPIC, { [`output${zoneNum}`]: { value: false } })
   await closeOpenHistoryRecord(zoneNum)
 }
 
@@ -48,21 +44,24 @@ export async function closeOpenHistoryRecord(zoneNum) {
 }
 
 export function allZonesOff() {
-  return mqttPublish('farm/irrigation1/all/off', '')
+  const payload = {}
+  for (let i = 1; i <= 16; i++) payload[`output${i}`] = { value: false }
+  return mqttPublish(SET_TOPIC, payload)
 }
 
 // ── Filter commands ────────────────────────────────────────────────────────
+// Map backwash to whichever relay is wired to your filter valve
 
 export function startBackwash() {
-  return mqttPublish('farm/filter1/backwash/start', '')
+  return mqttPublish(SET_TOPIC, { output16: { value: true } })
 }
 
 export function stopBackwash() {
-  return mqttPublish('farm/filter1/backwash/stop', '')
+  return mqttPublish(SET_TOPIC, { output16: { value: false } })
 }
 
 export function resetBackwash() {
-  return mqttPublish('farm/filter1/backwash/reset', '')
+  return mqttPublish(SET_TOPIC, { output16: { value: false } })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
