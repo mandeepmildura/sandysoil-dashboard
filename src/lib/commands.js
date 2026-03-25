@@ -1,12 +1,15 @@
 import { mqttPublish } from './mqttClient'
 import { supabase } from './supabase'
 
-const SET_TOPIC = 'B16M/CCBA97071FD8/SET'
+export const B16M_SET_TOPIC = 'B16M/CCBA97071FD8/SET'
 
-// ── Zone commands ──────────────────────────────────────────────────────────
+// ── Zone commands (old irrigation controller) ──────────────────────────────
 
 export async function zoneOn(zoneNum, durationMin, source = 'manual') {
-  await mqttPublish(SET_TOPIC, { [`output${zoneNum}`]: { value: true } })
+  await mqttPublish(
+    `farm/irrigation1/zone/${zoneNum}/cmd`,
+    { cmd: 'on', duration: durationMin }
+  )
   // Record the start of this run in zone_history
   try {
     await supabase
@@ -18,7 +21,10 @@ export async function zoneOn(zoneNum, durationMin, source = 'manual') {
 }
 
 export async function zoneOff(zoneNum) {
-  await mqttPublish(SET_TOPIC, { [`output${zoneNum}`]: { value: false } })
+  await mqttPublish(
+    `farm/irrigation1/zone/${zoneNum}/cmd`,
+    { cmd: 'off' }
+  )
   await closeOpenHistoryRecord(zoneNum)
 }
 
@@ -44,24 +50,31 @@ export async function closeOpenHistoryRecord(zoneNum) {
 }
 
 export function allZonesOff() {
-  const payload = {}
-  for (let i = 1; i <= 16; i++) payload[`output${i}`] = { value: false }
-  return mqttPublish(SET_TOPIC, payload)
+  return mqttPublish('farm/irrigation1/all/off', '')
 }
 
-// ── Filter commands ────────────────────────────────────────────────────────
-// Map backwash to whichever relay is wired to your filter valve
+// ── Filter commands (old irrigation controller) ────────────────────────────
 
 export function startBackwash() {
-  return mqttPublish(SET_TOPIC, { output16: { value: true } })
+  return mqttPublish('farm/filter1/backwash/start', '')
 }
 
 export function stopBackwash() {
-  return mqttPublish(SET_TOPIC, { output16: { value: false } })
+  return mqttPublish('farm/filter1/backwash/stop', '')
 }
 
 export function resetBackwash() {
-  return mqttPublish(SET_TOPIC, { output16: { value: false } })
+  return mqttPublish('farm/filter1/backwash/reset', '')
+}
+
+// ── B16M commands ──────────────────────────────────────────────────────────
+
+export function b16mOutputOn(outputNum) {
+  return mqttPublish(B16M_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
+}
+
+export function b16mOutputOff(outputNum) {
+  return mqttPublish(B16M_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

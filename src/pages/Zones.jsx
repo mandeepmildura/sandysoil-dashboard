@@ -6,16 +6,10 @@ import { allZonesOff } from '../lib/commands'
 
 export default function Zones() {
   const navigate = useNavigate()
-  const STATE_TOPIC = 'B16M/CCBA97071FD8/STATE'
-  const { data: live, connected } = useLiveTelemetry([STATE_TOPIC])
+  const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status'])
 
-  const raw   = live[STATE_TOPIC] ?? null
-  const zones = Array.from({ length: 16 }, (_, i) => ({
-    id: i + 1,
-    name: `Zone ${i + 1}`,
-    on: raw?.[`output${i + 1}`]?.value ?? false,
-    state: raw?.[`output${i + 1}`]?.value ? 'running' : 'off',
-  }))
+  const irr   = live['farm/irrigation1/status'] ?? null
+  const zones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
 
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
@@ -35,10 +29,12 @@ export default function Zones() {
         </button>
       </div>
 
-      {raw && (
+      {irr && (
         <div className="flex gap-4 mb-5 text-xs font-body">
-          <span className="text-[#40493d]">Board: <strong className="text-[#1a1c1c]">B16M</strong></span>
-          <span className="text-[#40493d]">Active: <strong className="text-[#1a1c1c]">{zones.filter(z => z.on).length} / 16</strong></span>
+          <span className="text-[#40493d]">Supply: <strong className="text-[#1a1c1c]">{irr.supply_psi} PSI</strong></span>
+          <span className="text-[#40493d]">Firmware: <strong className="text-[#1a1c1c]">v{irr.fw}</strong></span>
+          <span className="text-[#40493d]">RSSI: <strong className="text-[#1a1c1c]">{irr.rssi} dBm</strong></span>
+          <span className="text-[#40493d]">Uptime: <strong className="text-[#1a1c1c]">{fmtUptime(irr.uptime)}</strong></span>
         </div>
       )}
 
