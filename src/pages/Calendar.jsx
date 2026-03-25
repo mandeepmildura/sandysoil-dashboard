@@ -54,7 +54,7 @@ function AddScheduleModal({ onClose, onSaved }) {
       // 1. Create zone_group — device_id is optional after migration
       const { data: group, error: e1 } = await supabase
         .from('zone_groups')
-        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id })
+        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id, customer_id: user?.id })
         .select('id').single()
       if (e1) throw e1
 
