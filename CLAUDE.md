@@ -1,0 +1,101 @@
+# Sandy Soil Automations — Project Context
+
+## Stack
+- **Frontend**: React + Vite, Tailwind CSS, deployed on Cloudflare Pages (`sandysoil.pages.dev`)
+- **Database**: Supabase (PostgreSQL) — zone history, schedules, programs, alerts, auth
+- **MQTT Broker**: HiveMQ Cloud (`eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud`)
+  - Dashboard connects via WSS port **8884**
+  - Devices connect via MQTTS (TLS) port **8883**
+
+## Devices
+
+### 1. Old 8-Zone Irrigation Controller (`sandysoil-8z`)
+- **Repo**: `mandeepmildura/sandysoil-8z` (private, C++/ESP32 firmware)
+- **Firmware version**: 2.3.1
+- **Local IP**: 192.168.1.201
+- **MQTT publish topic**: `farm/irrigation1/status`
+- **MQTT subscribe topic**: `farm/irrigation1/zone/+/cmd`
+- **Command payload**: `{"cmd": "on", "duration": 30}` or `{"cmd": "off"}`
+- **State response topic**: `farm/irrigation1/zone/{N}/state`
+- **State response payload**: `{"zone": 1, "name": "Zone 1", "on": true, "state": "manual"}`
+- **Status payload example**:
+  ```json
+  {"device":"irrigation1","fw":"2.3.1","online":true,"supply_psi":35,
+   "uptime":83595,"rssi":-45,"ip":"192.168.1.201",
+   "zones":[{"id":1,"name":"Zone 1","on":false,"state":"off"}, ...]}
+  ```
+- **Zones**: 8 zones (Zone 1–8)
+- **Known issue**: Does NOT execute schedules automatically — only responds to MQTT commands
+
+### 2. KinCony B16M (Test Board)
+- **Model**: KinCony B16M (16-channel MOSFET outputs)
+- **Firmware**: KCSv3 v3.24.2 (built Mar 24 2026), TLS support added in v3.23.2
+- **Serial**: CCBA97071FD8
+- **Local IP**: 192.168.1.29 (web UI at `http://192.168.1.29`)
+- **MQTT publish topic**: `B16M/CCBA97071FD8/STATE`
+- **MQTT subscribe topic**: `B16M/CCBA97071FD8/SET`
+- **State payload**:
+  ```json
+  {"output1":{"value":false}, ..., "output16":{"value":false},
+   "input1":{"value":false}, ..., "input16":{"value":false},
+   "adc1":{"value":0}, "adc2":{"value":0}, "adc3":{"value":0}, "adc4":{"value":0}}
+  ```
+- **Command payload**: `{"output1": {"value": true}}`
+- **Hardware**: 16 MOSFET outputs (DO1–DO16), 16 digital inputs (DI1–DI16), 4 analog inputs (CH1–CH4), RS485, I2C, Ethernet (RJ45)
+- **Status**: Test board only — not in production irrigation use
+
+## MQTT Topic Map
+
+| Topic | Direction | Source | Description |
+|-------|-----------|--------|-------------|
+| `farm/irrigation1/status` | publish | 8-zone controller | Full device + zone status |
+| `farm/irrigation1/zone/+/cmd` | subscribe | 8-zone controller | Zone on/off commands |
+| `farm/irrigation1/zone/+/state` | publish | 8-zone controller | Per-zone state update after command |
+| `farm/filter1/pressure` | publish | (TBD) | Filter inlet/outlet pressure |
+| `farm/filter1/backwash/state` | publish | (TBD) | Backwash state |
+| `farm/filter1/backwash/start` | subscribe | (TBD) | Start backwash command |
+| `B16M/CCBA97071FD8/STATE` | publish | B16M board | Full I/O state |
+| `B16M/CCBA97071FD8/SET` | subscribe | B16M board | Output control commands |
+
+## Supabase Tables
+- `zone_history` — zone run records (started_at, ended_at, zone_num, source)
+- `zone_groups` — irrigation programs/groups
+- `zone_group_members` — zones within a program (zone_num, duration_min, sort_order)
+- `group_schedules` — program schedules (days_of_week, start_time, enabled)
+- `zone_schedules` — per-zone schedules
+- `pressure_log` — historical pressure readings
+- `device_alerts` — alerts with acknowledge/dismiss
+
+## Key Source Files
+| File | Purpose |
+|------|---------|
+| `src/lib/mqttClient.js` | MQTT WSS client, subscribe/publish |
+| `src/lib/commands.js` | Zone on/off, backwash, B16M output commands |
+| `src/lib/supabase.js` | Supabase client |
+| `src/hooks/useLiveTelemetry.js` | Subscribe to MQTT topics, return live data |
+| `src/hooks/useZoneHistory.js` | Fetch zone run history |
+| `src/hooks/usePressureHistory.js` | Fetch/downsample pressure history |
+| `src/hooks/useAlerts.js` | Device alerts |
+| `src/hooks/usePrograms.js` | Irrigation programs |
+| `src/hooks/useScheduleRules.js` | Zone + group schedules |
+| `src/pages/Dashboard.jsx` | Main dashboard — live zone status, B16M detail |
+| `src/pages/Calendar.jsx` | Schedule calendar — display + Run Now |
+| `src/pages/Zones.jsx` | Zone list with live state |
+
+## Known Issues / TODO
+- [ ] **Schedule auto-execution**: Schedules are stored in Supabase and displayed in Calendar but nothing executes them automatically at the scheduled time. Options: (A) add scheduling to `sandysoil-8z` firmware to poll Supabase, (B) Supabase Edge Function + pg_cron that publishes MQTT at schedule time
+- [ ] **Filter pressure sensors**: `farm/filter1/pressure` topic not yet publishing — no sensor wired
+- [ ] **Backwash control**: `farm/filter1/backwash/*` topics not yet wired to a device
+- [ ] **B16M ADC**: CH1–CH4 all reading 0 — no sensors connected yet
+
+## Environment Variables
+```
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_MQTT_HOST=eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud
+VITE_MQTT_USER=your-mqtt-user
+VITE_MQTT_PASS=your-mqtt-password
+```
+
+## Git Branch Convention
+Claude works on branches named `claude/*` which are auto-merged into main via GitHub Actions.
