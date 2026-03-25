@@ -43,6 +43,10 @@ const MQTT_HOST               = Deno.env.get('MQTT_HOST')!
 const MQTT_USER               = Deno.env.get('MQTT_USER')!
 const MQTT_PASS               = Deno.env.get('MQTT_PASS')!
 
+// Timezone offset in decimal hours, e.g. "11" for AEDT (UTC+11), "10.5" for ACST (UTC+10:30)
+// Set this in Supabase Dashboard → Edge Functions → Secrets as TIMEZONE_OFFSET_HOURS
+const TZ_OFFSET_HOURS = parseFloat(Deno.env.get('TIMEZONE_OFFSET_HOURS') ?? '0')
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 // HiveMQ Cloud HTTP API — publish an MQTT message
@@ -68,16 +72,21 @@ async function mqttPublish(topic: string, payload: unknown): Promise<void> {
   }
 }
 
-// day-of-week: JS getDay() → 0=Sun … 6=Sat (matches group_schedules.days_of_week)
-function currentDOW(): number {
-  return new Date().getDay()
+// Shift UTC time to local time using the configured timezone offset
+function localNow(): Date {
+  return new Date(Date.now() + TZ_OFFSET_HOURS * 3600 * 1000)
 }
 
-// HH:MM string for current time in local time (UTC — Edge Functions run UTC)
+// day-of-week in local timezone: 0=Sun … 6=Sat (matches group_schedules.days_of_week)
+function currentDOW(): number {
+  return localNow().getUTCDay()
+}
+
+// HH:MM string for current local time
 function currentHHMM(): string {
-  const now = new Date()
-  const h = String(now.getUTCHours()).padStart(2, '0')
-  const m = String(now.getUTCMinutes()).padStart(2, '0')
+  const local = localNow()
+  const h = String(local.getUTCHours()).padStart(2, '0')
+  const m = String(local.getUTCMinutes()).padStart(2, '0')
   return `${h}:${m}`
 }
 
@@ -86,7 +95,7 @@ Deno.serve(async (_req) => {
     const now    = currentHHMM()
     const dow    = currentDOW()
 
-    console.log(`[run-schedules] checking at ${now} DOW=${dow}`)
+    console.log(`[run-schedules] checking at ${now} DOW=${dow} (UTC offset +${TZ_OFFSET_HOURS}h)`)
 
     // Find enabled schedules whose start_time matches this minute
     // and today's DOW is in days_of_week
