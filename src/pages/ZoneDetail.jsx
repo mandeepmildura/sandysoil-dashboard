@@ -1,12 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useZoneHistory } from '../hooks/useZoneHistory'
-import { zoneOn, zoneOff, allZonesOff, durationToMinutes } from '../lib/commands'
+import { zoneOn, zoneOff, allZonesOff, closeOpenHistoryRecord, durationToMinutes } from '../lib/commands'
 
 const DURATIONS = ['15 min', '30 min', '1 hour', 'Custom']
+
+const SOURCE_STYLES = {
+  manual:   'bg-[#0d631b]/10 text-[#0d631b]',
+  schedule: 'bg-[#00639a]/10 text-[#00639a]',
+  program:  'bg-[#6750a4]/10 text-[#6750a4]',
+}
 
 export default function ZoneDetail() {
   const { id = '1' } = useParams()
@@ -14,6 +23,15 @@ export default function ZoneDetail() {
   const [selectedDuration, setSelectedDuration] = useState('30 min')
   const [cmdSending, setCmdSending] = useState(false)
   const [cmdError, setCmdError]     = useState(null)
+  const [now, setNow] = useState(Date.now())
+
+  // Live 1-second ticker for elapsed / countdown
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const prevRunning = useRef(null)
 
   async function handleStart() {
     setCmdSending(true); setCmdError(null)
@@ -37,12 +55,58 @@ export default function ZoneDetail() {
   }
 
   const { data: live } = useLiveTelemetry(['farm/irrigation1/status'])
-  const { history, loading } = useZoneHistory(zoneNum, 20)
+  const { history, loading, reload } = useZoneHistory(zoneNum, 20)
 
   const irr   = live['farm/irrigation1/status'] ?? null
   const zones = irr?.zones ?? []
   const zone  = zones.find(z => z.id === zoneNum) ?? null
   const isRunning = zone?.on ?? false
+
+  // Detect when zone turns off automatically (firmware timer expired).
+  // When isRunning transitions true → false, close any open history record.
+  useEffect(() => {
+    if (prevRunning.current === true && isRunning === false) {
+      closeOpenHistoryRecord(zoneNum).then(reload)
+    }
+    prevRunning.current = isRunning
+  }, [isRunning]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Active run (open history entry)
+  const activeRun   = history.find(h => !h.ended_at)
+  const elapsedSec  = activeRun ? Math.floor((now - new Date(activeRun.started_at)) / 1000) : 0
+  // Remaining time from firmware (if it publishes zone.remaining_sec)
+  const remainingSec = zone?.remaining_sec ?? null
+
+  // Today's stats
+  const todayStr   = new Date().toDateString()
+  const todayRuns  = history.filter(h => h.ended_at && new Date(h.started_at).toDateString() === todayStr)
+  const todayMins  = todayRuns.reduce((sum, h) => sum + (h.duration_min ? Number(h.duration_min) : 0), 0)
+
+  // Chart data — last 10 completed runs, oldest first
+  const chartData = [...history]
+    .filter(h => h.duration_min)
+    .slice(0, 10)
+    .reverse()
+    .map(h => ({
+      label: fmtTime(new Date(h.started_at)),
+      fullDate: fmtDate(new Date(h.started_at)) + ' ' + fmtTime(new Date(h.started_at)),
+      duration: Number(Number(h.duration_min).toFixed(1)),
+    }))
+
+  // Vitals — add Time Left / Elapsed card when running
+  const vitals = [
+    { label: 'Supply PSI', value: irr?.supply_psi ?? '—', unit: 'PSI' },
+    { label: 'Zone State', value: zone?.state ?? '—',     unit: '' },
+    { label: 'Device',     value: irr?.online ? 'Online' : 'Offline', unit: '' },
+    ...(isRunning
+      ? [{
+          label: remainingSec != null ? 'Time Left' : 'Elapsed',
+          value: remainingSec != null ? fmtCountdown(remainingSec) : fmtCountdown(elapsedSec),
+          unit: '',
+          highlight: true,
+        }]
+      : []),
+  ]
 
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
@@ -61,21 +125,63 @@ export default function ZoneDetail() {
       </div>
 
       {/* Vitals */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        {[
-          { label: 'Supply PSI',    value: irr?.supply_psi ?? '—', unit: 'PSI' },
-          { label: 'Zone State',    value: zone?.state ?? '—',     unit: '' },
-          { label: 'Device',        value: irr?.online ? 'Online' : 'Offline', unit: '' },
-        ].map(v => (
-          <div key={v.label} className="bg-[#ffffff] rounded-xl shadow-card p-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        {vitals.map(v => (
+          <div
+            key={v.label}
+            className={`rounded-xl shadow-card p-4 ${v.highlight ? 'bg-[#0d631b]/5 border border-[#0d631b]/20' : 'bg-[#ffffff]'}`}
+          >
             <p className="text-xs font-body text-[#40493d] uppercase tracking-[0.02em] mb-1">{v.label}</p>
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-headline font-bold text-[#1a1c1c] leading-none">{v.value}</span>
+              <span className={`text-3xl font-headline font-bold leading-none ${v.highlight ? 'text-[#0d631b]' : 'text-[#1a1c1c]'}`}>
+                {v.value}
+              </span>
               {v.unit && <span className="text-sm text-[#40493d] mb-0.5">{v.unit}</span>}
             </div>
           </div>
         ))}
       </div>
+
+      {/* History chart */}
+      {chartData.length > 0 && (
+        <div className="mb-6">
+          <Card accent="blue">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Run Duration History</h2>
+              <button onClick={reload} className="text-xs text-[#00639a] font-semibold hover:underline">
+                Refresh
+              </button>
+            </div>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={chartData} margin={{ top: 4, right: 4, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f3f3" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#40493d' }} />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#40493d' }}
+                  domain={[0, 'auto']}
+                  allowDecimals={false}
+                  tickCount={5}
+                  tickFormatter={(v) => `${v}m`}
+                  width={32}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const d = payload[0].payload
+                    return (
+                      <div className="bg-white shadow-lg rounded-lg px-3 py-2 text-xs border border-[#f3f3f3]">
+                        <p className="font-semibold text-[#1a1c1c] mb-0.5">{d.fullDate}</p>
+                        <p className="text-[#40493d]">Duration: <span className="font-semibold text-[#0d631b]">{formatDur(d.duration)}</span></p>
+                      </div>
+                    )
+                  }}
+                />
+                <Bar dataKey="duration" fill="#0d631b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-6">
         {/* Manual control */}
@@ -87,6 +193,11 @@ export default function ZoneDetail() {
                 <div className="mb-4 bg-[#0d631b]/5 rounded-xl p-4 text-center">
                   <p className="text-xs text-[#40493d] mb-1">Zone is running</p>
                   <p className="text-2xl font-headline font-bold text-[#0d631b]">{zone?.state}</p>
+                  <p className="text-xs text-[#40493d] mt-1">
+                    {remainingSec != null
+                      ? `${fmtCountdown(remainingSec)} remaining`
+                      : `${fmtCountdown(elapsedSec)} elapsed`}
+                  </p>
                 </div>
                 <button
                   onClick={handleStop}
@@ -139,10 +250,28 @@ export default function ZoneDetail() {
         {/* Run history */}
         <div className="col-span-2">
           <Card accent="blue">
-            <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-4">
-              Run History
-              {loading && <span className="ml-2 text-xs font-body text-[#40493d] font-normal">Loading…</span>}
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">
+                Run History
+                {loading && <span className="ml-2 text-xs font-body text-[#40493d] font-normal">Loading…</span>}
+              </h2>
+              <button onClick={reload} className="text-xs text-[#00639a] font-semibold hover:underline">
+                Refresh
+              </button>
+            </div>
+
+            {/* Today's stats */}
+            {todayRuns.length > 0 && (
+              <div className="flex gap-4 mb-3 px-3 py-2 bg-[#f3f3f3] rounded-lg">
+                <span className="text-xs text-[#40493d]">
+                  Today: <span className="font-semibold text-[#1a1c1c]">{todayRuns.length} run{todayRuns.length !== 1 ? 's' : ''}</span>
+                </span>
+                <span className="text-xs text-[#40493d]">
+                  Total: <span className="font-semibold text-[#0d631b]">{formatDur(todayMins)}</span>
+                </span>
+              </div>
+            )}
+
             {history.length === 0 && !loading && (
               <p className="text-sm text-[#40493d]">No run history for this zone.</p>
             )}
@@ -150,11 +279,13 @@ export default function ZoneDetail() {
               {history.map((h) => {
                 const start  = new Date(h.started_at)
                 const isOpen = !h.ended_at
-                const durMin = fmtDuration(h)
+                const durMin = h.duration_min ? Number(h.duration_min) : null
+                const src    = (h.source ?? 'manual').toLowerCase()
+                const sourceStyle = SOURCE_STYLES[src] ?? SOURCE_STYLES.manual
                 return (
                   <div
                     key={h.id}
-                    className={`rounded-xl p-4 flex items-center justify-between ${isOpen ? 'bg-[#0d631b]/5' : 'bg-[#f3f3f3]'}`}
+                    className={`rounded-xl p-4 flex items-center justify-between ${isOpen ? 'bg-[#0d631b]/5 border border-[#0d631b]/20' : 'bg-[#f3f3f3]'}`}
                   >
                     <div className="flex items-center gap-4">
                       <div>
@@ -163,11 +294,17 @@ export default function ZoneDetail() {
                       </div>
                       <div>
                         <p className="text-xs text-[#40493d]">Duration</p>
-                        <p className="text-sm font-semibold text-[#1a1c1c]">{durMin}</p>
+                        <p className="text-sm font-semibold text-[#1a1c1c]">
+                          {isOpen
+                            ? <span className="text-[#0d631b]">{fmtCountdown(elapsedSec)} elapsed</span>
+                            : durMin && durMin > 0 ? formatDur(durMin) : '< 1 min'}
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#40493d]">Source</p>
-                        <p className="text-sm font-semibold text-[#1a1c1c] capitalize">{h.source}</p>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${sourceStyle}`}>
+                          {h.source ?? 'manual'}
+                        </span>
                       </div>
                     </div>
                     <StatusChip
@@ -185,16 +322,6 @@ export default function ZoneDetail() {
   )
 }
 
-function fmtDuration(h) {
-  let mins = h.duration_min != null ? Number(h.duration_min) : null
-  if (mins === null && h.ended_at) {
-    mins = (new Date(h.ended_at) - new Date(h.started_at)) / 60000
-  }
-  if (mins === null) return 'Running…'
-  if (mins < 1) return '< 1 min'
-  return `${Math.round(mins)} min`
-}
-
 function fmtDate(d) {
   const now   = new Date()
   const today = now.toDateString()
@@ -203,6 +330,28 @@ function fmtDate(d) {
   if (d.toDateString() === yest)  return 'Yesterday'
   return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
 }
+
 function fmtTime(d) {
   return d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Format seconds → "Xm Ys" or "Xh Ym" */
+function fmtCountdown(sec) {
+  if (sec < 60)  return `${sec}s`
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`
+  const h = Math.floor(m / 60)
+  const rm = m % 60
+  return rm > 0 ? `${h}h ${rm}m` : `${h}h`
+}
+
+/** Format minutes → "Xh Ym" or "Xm" */
+function formatDur(min) {
+  if (!min) return '< 1 min'
+  const m = Math.round(min)
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  const rm = m % 60
+  return rm > 0 ? `${h} hr ${rm} min` : `${h} hr`
 }

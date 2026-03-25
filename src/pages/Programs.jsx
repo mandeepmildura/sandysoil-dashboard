@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import StatusChip from '../components/StatusChip'
 import { usePrograms } from '../hooks/usePrograms'
-import { useUserContext } from '../hooks/useUserContext'
 import { supabase } from '../lib/supabase'
+import { zoneOn } from '../lib/commands'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -28,7 +28,7 @@ function dowToBools(dow) {
   return bools
 }
 
-function ProgramModal({ program, deviceId, userId, onClose, onSaved }) {
+function ProgramModal({ program, onClose, onSaved }) {
   const isEdit = !!program
 
   const [name, setName]       = useState(isEdit ? program.name : '')
@@ -64,45 +64,52 @@ function ProgramModal({ program, deviceId, userId, onClose, onSaved }) {
     if (!name.trim())           { setError('Enter a program name'); return }
     if (zones.length === 0)     { setError('Add at least one zone'); return }
     if (hasSchedule && !days.some(Boolean)) { setError('Select at least one day for the schedule'); return }
-    if (!deviceId || !userId) { setError('Device not loaded — try refreshing'); return }
     setSaving(true)
     setError(null)
 
     try {
       let groupId
+      const { data: { user } } = await supabase.auth.getUser()
 
       if (isEdit) {
+        // Update zone_group
         const { error: e1 } = await supabase.from('zone_groups')
           .update({ name: name.trim(), run_mode: runMode }).eq('id', program.id)
         if (e1) throw e1
         groupId = program.id
+
+        // Replace zone members
         await supabase.from('zone_group_members').delete().eq('group_id', groupId)
       } else {
+        // Create zone_group — device_id is optional after migration
         const { data: group, error: e1 } = await supabase.from('zone_groups')
-          .insert({ name: name.trim(), run_mode: runMode, device_id: deviceId, customer_id: userId })
-          .select('id').single()
+          .insert({ name: name.trim(), run_mode: runMode, owner_id: user?.id, customer_id: user?.id }).select('id').single()
         if (e1) throw e1
         groupId = group.id
       }
 
+      // Insert zone members
       const { error: e2 } = await supabase.from('zone_group_members').insert(
         zones.map((z, i) => ({ group_id: groupId, zone_num: z.num, duration_min: z.duration, sort_order: i }))
       )
       if (e2) throw e2
 
+      // Handle schedule
       if (hasSchedule) {
         const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
-        const schedData = { group_id: groupId, device_id: deviceId, customer_id: userId, label: name.trim(), days_of_week: dow, start_time: startTime, enabled: true }
+        const schedData = { group_id: groupId, label: name.trim(), days_of_week: dow, start_time: startTime, enabled: true, customer_id: user?.id }
 
         if (isEdit && program.schedule) {
           const { error: e3 } = await supabase.from('group_schedules').update(schedData).eq('group_id', groupId)
           if (e3) throw e3
         } else {
+          // Remove any existing schedule first (avoid duplicate)
           await supabase.from('group_schedules').delete().eq('group_id', groupId)
           const { error: e3 } = await supabase.from('group_schedules').insert(schedData)
           if (e3) throw e3
         }
       } else if (isEdit && program.schedule) {
+        // Remove schedule if user cleared it
         await supabase.from('group_schedules').delete().eq('group_id', groupId)
       }
 
@@ -240,12 +247,23 @@ function ProgramModal({ program, deviceId, userId, onClose, onSaved }) {
   )
 }
 
+async function runProgramNow(program) {
+  if (!program.zones?.length) return
+  // Send first zone immediately; for sequential, the device continues the sequence
+  const first = program.zones[0]
+  try {
+    await zoneOn(first.zone_num, first.duration_min)
+  } catch (e) {
+    alert(`Failed to start program: ${e.message}`)
+  }
+}
+
 export default function Programs() {
-  const { programs, loading, reload }           = usePrograms()
-  const { irrigationId, userId, loading: ctxLoading } = useUserContext()
+  const { programs, loading, reload } = usePrograms()
   const [expanded, setExpanded] = useState(null)
   const [filter, setFilter]     = useState('All')
   const [modal, setModal]       = useState(null) // null | 'new' | program object
+  const [runningId, setRunningId] = useState(null)
   const filters = ['All', 'Active', 'Paused']
 
   const filtered = programs.filter(p => {
@@ -256,7 +274,7 @@ export default function Programs() {
   })
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
+    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Programs</h1>
         <button
@@ -268,8 +286,8 @@ export default function Programs() {
       </div>
 
       {/* Filter */}
-      <div className="flex items-center gap-3 mb-5">
-        <input placeholder="Search programs…" className="bg-[#ffffff] rounded-xl px-4 py-2 text-sm font-body text-[#1a1c1c] shadow-card outline-none w-64" />
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <input placeholder="Search programs…" className="bg-[#ffffff] rounded-xl px-4 py-2 text-sm font-body text-[#1a1c1c] shadow-card outline-none flex-1 min-w-0" />
         <div className="flex gap-1.5">
           {filters.map(f => (
             <button key={f} onClick={() => setFilter(f)}
@@ -283,9 +301,65 @@ export default function Programs() {
 
       {loading && <p className="text-sm text-[#40493d]">Loading programs…</p>}
 
-      {/* Table */}
+      {/* Mobile card list */}
       {!loading && (
-        <div className="bg-[#ffffff] rounded-xl shadow-card overflow-hidden mb-4">
+        <div className="md:hidden space-y-3 mb-4">
+          {filtered.length === 0 && (
+            <p className="text-center text-sm text-[#40493d] py-8">No programs found.</p>
+          )}
+          {filtered.map(p => {
+            const active = p.schedule?.enabled !== false
+            const sched  = p.schedule
+            const isOpen = expanded === p.id
+            return (
+              <div key={p.id} className="bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
+                <button
+                  className="w-full text-left px-4 py-3 flex items-center justify-between"
+                  onClick={() => setExpanded(isOpen ? null : p.id)}
+                >
+                  <div>
+                    <p className="font-semibold text-sm text-[#1a1c1c]">{p.name}</p>
+                    <p className="text-xs text-[#40493d] mt-0.5">
+                      {sched ? `${fmtTime(sched.start_time)} · ${fmtDays(sched.days_of_week)}` : 'No schedule'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusChip status={active ? 'online' : 'paused'} label={active ? 'ACTIVE' : 'PAUSED'} />
+                    <span className="text-[#40493d] text-xs">{isOpen ? '▲' : '▼'}</span>
+                  </div>
+                </button>
+                {isOpen && (
+                  <div className="px-4 pb-4 border-t border-[#f3f3f3]">
+                    <div className="flex gap-1 flex-wrap mt-3 mb-2">
+                      {p.zones.map((z, i) => (
+                        <span key={z.zone_num} className="px-2 py-1 bg-[#f3f3f3] rounded-lg text-xs">
+                          {i + 1}. Z{z.zone_num} — {z.duration_min}m
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-[#40493d] mb-3 capitalize">Mode: {p.run_mode}</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => { setRunningId(p.id); await runProgramNow(p); setRunningId(null) }}
+                        disabled={runningId === p.id}
+                        className="flex-1 py-2 rounded-lg gradient-primary text-white text-xs font-semibold disabled:opacity-50"
+                      >{runningId === p.id ? 'Starting…' : 'Run Now'}</button>
+                      <button
+                        onClick={() => setModal(p)}
+                        className="flex-1 py-2 rounded-lg bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold"
+                      >Edit</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Desktop table */}
+      {!loading && (
+        <div className="hidden md:block bg-[#ffffff] rounded-xl shadow-card overflow-hidden mb-4">
           <table className="w-full text-sm font-body">
             <thead>
               <tr className="bg-[#f3f3f3]">
@@ -335,7 +409,16 @@ export default function Programs() {
                               </div>
                             </div>
                             <div className="flex gap-3 shrink-0">
-                              <button className="gradient-primary text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-fab hover:opacity-90">Run Now</button>
+                              <button
+                                onClick={async e => {
+                                  e.stopPropagation()
+                                  setRunningId(p.id)
+                                  await runProgramNow(p)
+                                  setRunningId(null)
+                                }}
+                                disabled={runningId === p.id}
+                                className="gradient-primary text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-fab hover:opacity-90 disabled:opacity-50"
+                              >{runningId === p.id ? 'Starting…' : 'Run Now'}</button>
                               <button
                                 onClick={e => { e.stopPropagation(); setModal(p) }}
                                 className="bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#e8e8e8]"
@@ -360,11 +443,9 @@ export default function Programs() {
         {programs.length} programs — {programs.filter(p => p.schedule?.enabled !== false).length} active — {programs.filter(p => p.schedule?.enabled === false).length} paused
       </p>
 
-      {modal !== null && !ctxLoading && (
+      {modal !== null && (
         <ProgramModal
           program={modal === 'new' ? null : modal}
-          deviceId={irrigationId}
-          userId={userId}
           onClose={() => setModal(null)}
           onSaved={() => { reload(); setExpanded(null) }}
         />

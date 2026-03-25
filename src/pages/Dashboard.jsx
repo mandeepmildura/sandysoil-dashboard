@@ -2,17 +2,19 @@ import { useState } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-import { startBackwash, allZonesOff, zoneOn, zoneOff } from '../lib/commands'
+import { startBackwash, allZonesOff, zoneOn, zoneOff, b16mOutputOn, b16mOutputOff } from '../lib/commands'
 
-const TOPICS = [
-  'farm/irrigation1/status',
-  'farm/filter1/pressure',
-  'farm/filter1/backwash/state',
-]
+const IRR_TOPIC = 'farm/irrigation1/status'
+const ZONE_STATE_TOPIC = 'farm/irrigation1/zone/+/state'
+const PRESSURE_TOPIC = 'farm/filter1/pressure'
+const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
+const B16M_TOPIC = 'B16M/CCBA97071FD8/STATE'
+const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC]
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
   const [busy, setBusy] = useState({})
+  const [b16mBusy, setB16mBusy] = useState({})
 
   async function handleZoneOn(id) {
     setBusy(b => ({ ...b, [id]: true }))
@@ -26,17 +28,37 @@ export default function Dashboard() {
     setBusy(b => ({ ...b, [id]: false }))
   }
 
-  const irr      = data['farm/irrigation1/status']   ?? null
-  const pressure = data['farm/filter1/pressure']      ?? null
-  const backwash = data['farm/filter1/backwash/state'] ?? null
+  const irr      = data[IRR_TOPIC]      ?? null
+  const pressure = data[PRESSURE_TOPIC] ?? null
+  const backwash = data[BACKWASH_TOPIC] ?? null
+  const b16m     = data[B16M_TOPIC]     ?? null
 
-  const zones       = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  // Merge per-zone state updates over the full status zones array
+  const zoneOverrides = {}
+  Object.entries(data).forEach(([topic, payload]) => {
+    const m = topic.match(/^farm\/irrigation1\/zone\/(\d+)\/state$/)
+    if (m) zoneOverrides[Number(m[1])] = payload
+  })
+  const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
+  const zones = baseZones.map(z => zoneOverrides[z.id] ? { ...z, ...zoneOverrides[z.id] } : z)
   const supplyPsi   = irr?.supply_psi ?? '—'
   const activeCount = zones.filter(z => z.on).length
   const inletPsi    = pressure?.inlet_psi ?? '—'
   const outletPsi   = pressure?.outlet_psi ?? '—'
   const diffPsi     = pressure?.differential_psi ?? '—'
   const bwState     = backwash?.state ?? '—'
+
+  const b16mOutputs = Array.from({ length: 16 }, (_, i) => b16m?.[`output${i + 1}`]?.value ?? false)
+  const b16mInputs  = Array.from({ length: 16 }, (_, i) => b16m?.[`input${i + 1}`]?.value ?? false)
+  const b16mAdc     = [1, 2, 3, 4].map(n => b16m?.[`adc${n}`]?.value ?? 0)
+
+  async function handleB16mToggle(n, currentlyOn) {
+    setB16mBusy(b => ({ ...b, [n]: true }))
+    try {
+      currentlyOn ? await b16mOutputOff(n) : await b16mOutputOn(n)
+    } catch (e) { console.error(e) }
+    setB16mBusy(b => ({ ...b, [n]: false }))
+  }
 
   const vitals = [
     { label: 'Supply Pressure', value: supplyPsi, unit: 'PSI', status: irr?.online ? 'online' : 'offline', statusLabel: irr?.online ? 'ONLINE' : 'OFFLINE' },
@@ -46,7 +68,7 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
+    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Farm Dashboard</h1>
         <div className="flex items-center gap-2">
@@ -69,9 +91,9 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Zone grid */}
-        <div className="col-span-2">
+        <div className="lg:col-span-2">
           <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">Irrigation Zones</h2>
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             {zones.map(zone => (
@@ -127,15 +149,14 @@ export default function Dashboard() {
             </button>
           </Card>
 
-          {/* Device info */}
+          {/* B16M status summary */}
           <Card accent="green">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Device Status</h2>
+            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">B16M (Test)</h2>
             <div className="space-y-2 text-xs font-body">
               {[
-                { label: 'Firmware',  value: irr?.fw      ?? '—' },
-                { label: 'RSSI',      value: irr?.rssi != null ? `${irr.rssi} dBm` : '—' },
-                { label: 'Uptime',    value: irr?.uptime  != null ? fmtUptime(irr.uptime) : '—' },
-                { label: 'Status',    value: irr?.online  ? 'Online' : 'Offline' },
+                { label: 'Status',  value: b16m ? 'Online' : 'Offline' },
+                { label: 'Outputs', value: `${b16mOutputs.filter(Boolean).length} / 16 on` },
+                { label: 'Inputs',  value: `${b16mInputs.filter(Boolean).length} / 16 active` },
               ].map(r => (
                 <div key={r.label} className="flex justify-between">
                   <span className="text-[#40493d]">{r.label}</span>
@@ -144,6 +165,76 @@ export default function Dashboard() {
               ))}
             </div>
           </Card>
+        </div>
+      </div>
+
+      {/* B16M full detail — outputs, inputs, ADC */}
+      <div className="mt-6">
+        <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">
+          B16M Detail
+          <span className={`ml-2 inline-block w-2 h-2 rounded-full align-middle ${b16m ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Outputs */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Outputs (DO1–DO16)</h3>
+            <div className="grid grid-cols-4 gap-1.5">
+              {b16mOutputs.map((on, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleB16mToggle(i + 1, on)}
+                  disabled={!!b16mBusy[i + 1]}
+                  className={`py-1.5 rounded text-[10px] font-semibold transition-all disabled:opacity-40 ${
+                    on
+                      ? 'bg-[#0d631b] text-white'
+                      : 'bg-[#e2e2e2] text-[#40493d] hover:bg-[#d5d5d5]'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Inputs */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Inputs (DI1–DI16)</h3>
+            <div className="grid grid-cols-4 gap-1.5">
+              {b16mInputs.map((active, i) => (
+                <div
+                  key={i}
+                  className={`py-1.5 rounded text-[10px] font-semibold text-center ${
+                    active ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'
+                  }`}
+                >
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* ADC */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Analog (CH1–CH4)</h3>
+            <div className="space-y-3">
+              {b16mAdc.map((val, i) => (
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-[#40493d]">CH{i + 1}</span>
+                    <span className="font-semibold text-[#1a1c1c]">{val}</span>
+                  </div>
+                  <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#0d631b] rounded-full transition-all"
+                      style={{ width: `${Math.min((val / 4095) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
         </div>
       </div>
     </div>

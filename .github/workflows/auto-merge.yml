@@ -1,0 +1,21 @@
+name: Auto-merge to main
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Merge branch into main via GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/merges \
+            -f base=main \
+            -f head=${{ github.ref_name }} \
+            -f commit_message="Auto-merge ${{ github.ref_name }} into main"

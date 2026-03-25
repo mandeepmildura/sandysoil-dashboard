@@ -1,37 +1,112 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import StatusChip from '../components/StatusChip'
 import { supabase } from '../lib/supabase'
-import { useUserContext } from '../hooks/useUserContext'
 import { zoneOn } from '../lib/commands'
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const DATES = [17, 18, 19, 20, 21, 22, 23]
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
+const COLORS = ['#0d631b', '#2e7d32', '#00639a', '#6a4c93', '#c0392b', '#d35400', '#16a085', '#8e44ad']
 
-const EVENTS = [
-  { day: 0, start: 6,   duration: 0.5,  zone: 'Zone 1', color: '#0d631b' },
-  { day: 0, start: 6.5, duration: 0.75, zone: 'Zone 2', color: '#2e7d32' },
-  { day: 0, start: 7.5, duration: 1,    zone: 'Zone 3', color: '#0d631b' },
-  { day: 1, start: 6,   duration: 0.5,  zone: 'Zone 1', color: '#0d631b' },
-  { day: 1, start: 6.5, duration: 0.75, zone: 'Zone 2', color: '#2e7d32' },
-  { day: 2, start: 6,   duration: 1.5,  zone: 'Zone 4', color: '#00639a' },
-  { day: 2, start: 7.5, duration: 0.5,  zone: 'Backwash', color: '#00639a' },
-  { day: 3, start: 6,   duration: 0.5,  zone: 'Zone 1', color: '#0d631b' },
-  { day: 4, start: 6,   duration: 2,    zone: 'Zone 5', color: '#2e7d32' },
-  { day: 5, start: 7,   duration: 1,    zone: 'Zone 6', color: '#0d631b' },
-  { day: 6, start: 6,   duration: 0.5,  zone: 'Zone 1', color: '#0d631b' },
-]
+function dbDayToCalIdx(d) { return d === 0 ? 6 : d - 1 }
 
-const TODAY_SCHEDULE = [
-  { time: '06:00', zone: 'Zone 1 — North Block', duration: '30 min', status: 'completed' },
-  { time: '06:30', zone: 'Zone 2 — South Block', duration: '45 min', status: 'completed' },
-  { time: '07:30', zone: 'Zone 3 — East Row',    duration: '60 min', status: 'running'   },
-  { time: '09:00', zone: 'Zone 6 — Orchard B',   duration: '60 min', status: 'upcoming'  },
-  { time: '10:30', zone: 'Backwash',              duration: '15 min', status: 'upcoming'  },
-]
+function getWeekMonday(date) {
+  const d = new Date(date)
+  const dow = d.getDay()
+  d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow))
+  d.setHours(0, 0, 0, 0)
+  return d
+}
 
-const HOURS = Array.from({ length: 16 }, (_, i) => i + 5) // 5am–8pm
+function fmtTime(t) { return t ? t.slice(0, 5) : '—' }
 
-function AddScheduleModal({ deviceId, userId, onClose, onSaved }) {
+function fmtDuration(min) {
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60), m = min % 60
+  return m ? `${h}h ${m}m` : `${h}h`
+}
+
+function fmtDays(days) {
+  if (!days?.length) return 'No days'
+  return days.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d] ?? d).join(', ')
+}
+
+function totalDuration(p) {
+  if (!p.zones.length) return 0
+  return p.run_mode === 'sequential'
+    ? p.zones.reduce((s, z) => s + z.duration_min, 0)
+    : Math.max(...p.zones.map(z => z.duration_min))
+}
+
+// ── Event detail modal ──────────────────────────────────────────────────────
+function EventModal({ event, onClose }) {
+  const p = event.program
+  const [running, setRunning] = useState(false)
+
+  async function runNow() {
+    if (!p.zones?.length) return
+    setRunning(true)
+    try { await zoneOn(p.zones[0].zone_num, p.zones[0].duration_min) } catch (e) { console.error(e) }
+    setRunning(false)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: event.color }} />
+              <h2 className="font-headline font-bold text-base text-[#1a1c1c]">{p.name}</h2>
+            </div>
+            <p className="text-xs text-[#40493d]">{fmtTime(p.schedule.start_time)} · {fmtDuration(totalDuration(p))}</p>
+          </div>
+          <button onClick={onClose} className="text-[#40493d] text-lg leading-none ml-3">✕</button>
+        </div>
+
+        <div className="space-y-2 text-xs mb-4">
+          <div className="flex justify-between">
+            <span className="text-[#40493d]">Days</span>
+            <span className="font-semibold text-[#1a1c1c] text-right max-w-[60%]">{fmtDays(p.schedule.days_of_week)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#40493d]">Mode</span>
+            <span className="font-semibold text-[#1a1c1c] capitalize">{p.run_mode}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[#40493d]">Status</span>
+            <StatusChip status={p.schedule.enabled ? 'online' : 'paused'} label={p.schedule.enabled ? 'ACTIVE' : 'PAUSED'} />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-[#1a1c1c] mb-2">Zones</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {p.zones.map((z, i) => (
+              <span key={z.zone_num} className="px-2 py-1 bg-[#f3f3f3] rounded-lg text-xs">
+                {i + 1}. Zone {z.zone_num} — {z.duration_min} min
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={runNow} disabled={running}
+            className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity">
+            {running ? 'Starting…' : 'Run Now'}
+          </button>
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d] hover:bg-[#e8e8e8] transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Add schedule modal ──────────────────────────────────────────────────────
+function AddScheduleModal({ onClose, onSaved }) {
   const [label, setLabel]         = useState('')
   const [zone, setZone]           = useState(1)
   const [days, setDays]           = useState([false,false,false,false,false,false,false])
@@ -40,40 +115,34 @@ function AddScheduleModal({ deviceId, userId, onClose, onSaved }) {
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState(null)
 
-  function toggleDay(i) {
-    setDays(prev => prev.map((v, j) => j === i ? !v : v))
-  }
+  function toggleDay(i) { setDays(prev => prev.map((v, j) => j === i ? !v : v)) }
 
   async function save() {
     if (!label.trim())       { setError('Enter a schedule name'); return }
     if (!days.some(Boolean)) { setError('Select at least one day'); return }
-    if (!deviceId || !userId) { setError('Device not loaded — try refreshing'); return }
-
-    setSaving(true)
-    setError(null)
+    setSaving(true); setError(null)
     try {
-      // days_of_week: 0=Sun, 1=Mon, …, 6=Sat (PostgreSQL convention)
-      const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: group, error: e1 } = await supabase.from('zone_groups')
+        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id, customer_id: user?.id })
+        .select('id').single()
+      if (e1) throw e1
 
-      const { error: e } = await supabase.from('zone_schedules').insert({
-        device_id:   deviceId,
-        customer_id: userId,
-        zone_num:    zone,
-        label:       label.trim(),
-        days_of_week: dow,
-        start_time:  startTime,
-        duration_min: duration,
-        enabled:     true,
+      const { error: e2 } = await supabase.from('zone_group_members').insert({
+        group_id: group.id, zone_num: zone, duration_min: duration, sort_order: 0,
       })
-      if (e) throw e
+      if (e2) throw e2
 
-      onSaved()
-      onClose()
+      const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
+      const { error: e3 } = await supabase.from('group_schedules').insert({
+        group_id: group.id, label: label.trim(),
+        days_of_week: dow, start_time: startTime, enabled: true, customer_id: user?.id,
+      })
+      if (e3) throw e3
+      onSaved(); onClose()
     } catch (err) {
       setError(err.message ?? 'Save failed')
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }
 
   return (
@@ -83,47 +152,41 @@ function AddScheduleModal({ deviceId, userId, onClose, onSaved }) {
         <div className="space-y-4">
           <div>
             <label className="text-xs font-body text-[#40493d] block mb-1">Schedule Name</label>
-            <input value={label} onChange={e => setLabel(e.target.value)}
-              placeholder="e.g. Morning Zone 1"
+            <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Morning Zone 1"
               className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-body text-[#40493d] block mb-1">Zone</label>
               <select value={zone} onChange={e => setZone(Number(e.target.value))}
-                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none">
+                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
                 {[1,2,3,4,5,6,7,8].map(z => <option key={z} value={z}>Zone {z}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs font-body text-[#40493d] block mb-1">Duration (min)</label>
-              <input type="number" min={5} max={240} value={duration}
+              <input type="number" min={5} max={120} value={duration}
                 onChange={e => setDuration(Number(e.target.value))}
-                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
+                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
             </div>
           </div>
-
           <div>
             <label className="text-xs font-body text-[#40493d] block mb-2">Days</label>
             <div className="flex gap-1.5">
-              {DAYS.map((d, i) => (
+              {DAY_NAMES.map((d, i) => (
                 <button key={i} type="button" onClick={() => toggleDay(i)}
-                  className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${
-                    days[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'
-                  }`}>{d[0]}</button>
+                  className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${days[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                  {d[0]}
+                </button>
               ))}
             </div>
           </div>
-
           <div>
             <label className="text-xs font-body text-[#40493d] block mb-1">Start Time</label>
             <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
+              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
           </div>
-
           {error && <p className="text-xs text-[#ba1a1a]">{error}</p>}
-
           <div className="flex gap-3 pt-1">
             <button onClick={onClose}
               className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d] hover:bg-[#e8e8e8] transition-colors">
@@ -140,6 +203,7 @@ function AddScheduleModal({ deviceId, userId, onClose, onSaved }) {
   )
 }
 
+// ── Run zone modal ──────────────────────────────────────────────────────────
 function RunZoneModal({ onClose }) {
   const [zone, setZone]         = useState(1)
   const [duration, setDuration] = useState(30)
@@ -186,25 +250,125 @@ function RunZoneModal({ onClose }) {
   )
 }
 
+// ── Time grid (shared by week + day views) ──────────────────────────────────
+function EventBlock({ event, onClick }) {
+  return (
+    <button
+      onClick={() => onClick(event)}
+      className="w-full text-left rounded-md px-1.5 py-0.5 text-[10px] font-body font-medium text-white mb-0.5 truncate hover:opacity-80 transition-opacity"
+      style={{ backgroundColor: event.color }}
+    >
+      {event.label}
+    </button>
+  )
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
 export default function Calendar() {
-  const { irrigationId, userId, loading: ctxLoading } = useUserContext()
   const [view, setView]               = useState('week')
+  const [selectedDay, setSelectedDay] = useState(new Date())
   const [showAddModal, setShowAddModal] = useState(false)
   const [showRunModal, setShowRunModal] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState(null)
   const [saved, setSaved]             = useState(false)
+  const [programs, setPrograms]       = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [tick, setTick]               = useState(0)
+
+  const reload = useCallback(() => setTick(t => t + 1), [])
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      const [groupsRes, membersRes, schedulesRes] = await Promise.all([
+        supabase.from('zone_groups').select('id, name, run_mode'),
+        supabase.from('zone_group_members').select('group_id, zone_num, duration_min, sort_order').order('sort_order'),
+        supabase.from('group_schedules').select('group_id, label, days_of_week, start_time, enabled'),
+      ])
+      if (groupsRes.data) {
+        const members   = membersRes.data   ?? []
+        const schedules = schedulesRes.data ?? []
+        const merged = groupsRes.data
+          .map(g => ({
+            ...g,
+            zones:    members.filter(m => m.group_id === g.id).sort((a, b) => a.sort_order - b.sort_order),
+            schedule: schedules.find(s => s.group_id === g.id) ?? null,
+          }))
+          .filter(g => g.schedule)
+        setPrograms(merged)
+      }
+      setLoading(false)
+    }
+    load()
+  }, [tick])
 
   function onSaved() {
-    setSaved(true)
+    setSaved(true); reload()
     setTimeout(() => setSaved(false), 3000)
   }
 
+  const today       = new Date()
+  const weekMonday  = getWeekMonday(today)
+  const weekDates   = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekMonday)
+    d.setDate(weekMonday.getDate() + i)
+    return d
+  })
+  const todayDbDow  = today.getDay()
+  const todayCalIdx = dbDayToCalIdx(todayDbDow)
+
+  // Build events from programs
+  const events = []
+  programs.forEach((p, pi) => {
+    if (!p.schedule?.days_of_week?.length) return
+    const [hh, mm] = p.schedule.start_time.split(':').map(Number)
+    const start  = hh + mm / 60
+    const dur    = totalDuration(p) / 60
+    const color  = COLORS[pi % COLORS.length]
+    p.schedule.days_of_week.forEach(dbDay => {
+      events.push({ day: dbDayToCalIdx(dbDay), start, duration: dur, label: p.name, color, program: p })
+    })
+  })
+
+  // Today's programs
+  const todayPrograms = programs
+    .filter(p => p.schedule?.days_of_week?.includes(todayDbDow))
+    .sort((a, b) => (a.schedule.start_time > b.schedule.start_time ? 1 : -1))
+
+  // Day view: selected day's DB day of week
+  const selDbDow  = selectedDay.getDay()
+  const selCalIdx = dbDayToCalIdx(selDbDow)
+  const dayEvents = events
+    .filter(e => e.day === selCalIdx)
+    .sort((a, b) => a.start - b.start)
+
+  function prevDay() {
+    const d = new Date(selectedDay)
+    d.setDate(d.getDate() - 1)
+    setSelectedDay(d)
+  }
+  function nextDay() {
+    const d = new Date(selectedDay)
+    d.setDate(d.getDate() + 1)
+    setSelectedDay(d)
+  }
+
+  const isToday = (d) =>
+    d.getDate() === today.getDate() &&
+    d.getMonth() === today.getMonth() &&
+    d.getFullYear() === today.getFullYear()
+
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
+    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Irrigation Calendar</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {['week', 'day'].map(v => (
-            <button key={v} onClick={() => setView(v)}
+            <button key={v} onClick={() => {
+              setView(v)
+              if (v === 'day') setSelectedDay(today)
+            }}
               className={`px-4 py-1.5 rounded-lg text-sm font-body font-medium transition-colors capitalize ${
                 view === v ? 'bg-[#0d631b] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
               }`}>{v}</button>
@@ -214,63 +378,136 @@ export default function Calendar() {
 
       {saved && (
         <div className="mb-4 px-4 py-3 bg-[#0d631b]/10 border border-[#0d631b]/20 rounded-xl text-sm text-[#0d631b] font-semibold">
-          Schedule saved. The device will load it on next reboot.
+          Schedule saved successfully.
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-6">
-        {/* Calendar grid */}
-        <div className="col-span-3 bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
-          <div className="grid grid-cols-8 border-b border-[#f3f3f3]">
-            <div className="p-3 text-xs text-[#40493d] font-body" />
-            {DAYS.map((d, i) => (
-              <div key={d} className={`p-3 text-center ${i === 3 ? 'bg-[#0d631b]/5' : ''}`}>
-                <p className="text-xs text-[#40493d] font-body">{d}</p>
-                <p className={`text-lg font-headline font-bold ${i === 3 ? 'text-[#0d631b]' : 'text-[#1a1c1c]'}`}>{DATES[i]}</p>
-              </div>
-            ))}
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-          <div className="overflow-y-auto max-h-96">
-            {HOURS.map(hour => (
-              <div key={hour} className="grid grid-cols-8 border-b border-[#f3f3f3]/50 min-h-[48px]">
-                <div className="p-2 text-[10px] text-[#40493d] font-body text-right pr-3 pt-1">
-                  {`${String(hour).padStart(2, '0')}:00`}
-                </div>
-                {DAYS.map((_, dayIdx) => {
-                  const eventsInSlot = EVENTS.filter(e => e.day === dayIdx && Math.floor(e.start) === hour)
-                  return (
-                    <div key={dayIdx} className={`relative border-l border-[#f3f3f3]/50 p-1 ${dayIdx === 3 ? 'bg-[#0d631b]/[0.02]' : ''}`}>
-                      {eventsInSlot.map((e, ei) => (
-                        <div key={ei} className="rounded-md px-1.5 py-0.5 text-[10px] font-body font-medium text-white mb-0.5 truncate"
-                          style={{ backgroundColor: e.color, opacity: 0.9 }}>
-                          {e.zone}
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })}
+        {/* ── Calendar grid ──────────────────────────────────────────────── */}
+        <div className="lg:col-span-3 bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
+
+          {/* WEEK VIEW */}
+          {view === 'week' && (
+            <>
+              <div className="grid grid-cols-8 border-b border-[#f3f3f3]">
+                <div className="p-3" />
+                {weekDates.map((d, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setSelectedDay(d); setView('day') }}
+                    className={`p-3 text-center hover:bg-[#f3f3f3] transition-colors ${i === todayCalIdx ? 'bg-[#0d631b]/5' : ''}`}
+                  >
+                    <p className="text-xs text-[#40493d] font-body">{DAY_NAMES[i]}</p>
+                    <p className={`text-lg font-headline font-bold ${i === todayCalIdx ? 'text-[#0d631b]' : 'text-[#1a1c1c]'}`}>{d.getDate()}</p>
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
+              <div className="overflow-y-auto max-h-96">
+                {loading ? (
+                  <div className="p-8 text-center text-sm text-[#40493d]">Loading schedules…</div>
+                ) : (
+                  HOURS.map(hour => (
+                    <div key={hour} className="grid grid-cols-8 border-b border-[#f3f3f3]/50 min-h-[48px]">
+                      <div className="p-2 text-[10px] text-[#40493d] font-body text-right pr-3 pt-1">
+                        {`${String(hour).padStart(2,'0')}:00`}
+                      </div>
+                      {DAY_NAMES.map((_, dayIdx) => {
+                        const slot = events.filter(e => e.day === dayIdx && Math.floor(e.start) === hour)
+                        return (
+                          <div key={dayIdx} className={`relative border-l border-[#f3f3f3]/50 p-1 ${dayIdx === todayCalIdx ? 'bg-[#0d631b]/[0.02]' : ''}`}>
+                            {slot.map((e, ei) => <EventBlock key={ei} event={e} onClick={setSelectedEvent} />)}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
+          {/* DAY VIEW */}
+          {view === 'day' && (
+            <>
+              {/* Day nav */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#f3f3f3]">
+                <button onClick={prevDay} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#f3f3f3] text-[#40493d] transition-colors">‹</button>
+                <div className="text-center">
+                  <p className={`font-headline font-bold text-base ${isToday(selectedDay) ? 'text-[#0d631b]' : 'text-[#1a1c1c]'}`}>
+                    {DAY_NAMES[selCalIdx]} {selectedDay.getDate()}
+                    {isToday(selectedDay) && <span className="ml-2 text-xs font-body text-[#0d631b]">Today</span>}
+                  </p>
+                  <p className="text-xs text-[#40493d]">
+                    {selectedDay.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+                <button onClick={nextDay} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#f3f3f3] text-[#40493d] transition-colors">›</button>
+              </div>
+
+              <div className="overflow-y-auto max-h-[480px]">
+                {loading ? (
+                  <div className="p-8 text-center text-sm text-[#40493d]">Loading schedules…</div>
+                ) : dayEvents.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-[#40493d]">No schedules on this day.</div>
+                ) : (
+                  HOURS.map(hour => {
+                    const slot = dayEvents.filter(e => Math.floor(e.start) === hour)
+                    return (
+                      <div key={hour} className={`flex border-b border-[#f3f3f3]/50 min-h-[56px] ${slot.length ? 'bg-[#f9f9f9]/50' : ''}`}>
+                        <div className="w-16 shrink-0 p-2 text-[10px] text-[#40493d] font-body text-right pr-3 pt-2">
+                          {`${String(hour).padStart(2,'0')}:00`}
+                        </div>
+                        <div className="flex-1 p-1.5 space-y-1">
+                          {slot.map((e, i) => (
+                            <button
+                              key={i}
+                              onClick={() => setSelectedEvent(e)}
+                              className="w-full text-left rounded-lg px-3 py-2 text-white hover:opacity-90 transition-opacity"
+                              style={{ backgroundColor: e.color }}
+                            >
+                              <p className="text-sm font-semibold font-body leading-tight">{e.label}</p>
+                              <p className="text-[11px] opacity-80">{fmtTime(e.program.schedule.start_time)} · {fmtDuration(totalDuration(e.program))}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Today's schedule + buttons */}
+        {/* ── Sidebar ────────────────────────────────────────────────────── */}
         <div className="space-y-4">
           <div className="bg-[#ffffff] rounded-xl shadow-card p-4">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Today — Mon 20</h2>
-            <div className="space-y-2">
-              {TODAY_SCHEDULE.map((s, i) => (
-                <div key={i} className={`rounded-lg p-3 ${s.status === 'running' ? 'bg-[#0d631b]/5' : s.status === 'completed' ? 'bg-[#f3f3f3]' : 'bg-[#f9f9f9]'}`}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-body font-semibold text-[#1a1c1c]">{s.time}</span>
-                    <StatusChip status={s.status} />
-                  </div>
-                  <p className="text-[11px] text-[#40493d]">{s.zone}</p>
-                  <p className="text-[10px] text-[#40493d]">{s.duration}</p>
-                </div>
-              ))}
-            </div>
+            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">
+              Today — {DAY_NAMES[todayCalIdx]} {today.getDate()}
+            </h2>
+            {loading ? (
+              <p className="text-xs text-[#40493d]">Loading…</p>
+            ) : todayPrograms.length === 0 ? (
+              <p className="text-xs text-[#40493d]">No schedules today.</p>
+            ) : (
+              <div className="space-y-2">
+                {todayPrograms.map((p, pi) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedEvent({ program: p, color: COLORS[programs.indexOf(p) % COLORS.length], label: p.name })}
+                    className="w-full text-left rounded-lg p-3 bg-[#f9f9f9] hover:bg-[#f3f3f3] transition-colors"
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs font-body font-semibold text-[#1a1c1c]">{fmtTime(p.schedule.start_time)}</span>
+                      <StatusChip status={p.schedule.enabled ? 'online' : 'paused'} label={p.schedule.enabled ? 'ACTIVE' : 'PAUSED'} />
+                    </div>
+                    <p className="text-[11px] text-[#40493d]">{p.name}</p>
+                    <p className="text-[10px] text-[#40493d]">{fmtDuration(totalDuration(p))}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <button onClick={() => setShowAddModal(true)}
@@ -284,17 +521,9 @@ export default function Calendar() {
         </div>
       </div>
 
-      {showAddModal && !ctxLoading && (
-        <AddScheduleModal
-          deviceId={irrigationId}
-          userId={userId}
-          onClose={() => setShowAddModal(false)}
-          onSaved={onSaved}
-        />
-      )}
-      {showRunModal && (
-        <RunZoneModal onClose={() => setShowRunModal(false)} />
-      )}
+      {showAddModal    && <AddScheduleModal onClose={() => setShowAddModal(false)} onSaved={onSaved} />}
+      {showRunModal    && <RunZoneModal onClose={() => setShowRunModal(false)} />}
+      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
     </div>
   )
 }
