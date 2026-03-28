@@ -7,6 +7,7 @@ const PASS = import.meta.env.VITE_MQTT_PASS
 let _client    = null
 let _pending   = null
 const _subs    = new Map() // topic → Set of callbacks
+const _cache   = new Map() // topic → last payload (persists across page navigation)
 
 function getClient() {
   if (_client?.connected) return Promise.resolve(_client)
@@ -33,6 +34,8 @@ function getClient() {
       let payload
       try { payload = JSON.parse(buf.toString()) }
       catch { payload = buf.toString() }
+
+      _cache.set(topic, payload)
 
       // Exact match
       const exact = _subs.get(topic)
@@ -79,6 +82,11 @@ export async function mqttPublish(topic, payload, qos = 1) {
   return new Promise((resolve, reject) => {
     c.publish(topic, msg, { qos }, err => (err ? reject(err) : resolve()))
   })
+}
+
+/** Returns all cached topic payloads as a plain object { topic: payload } */
+export function getMqttCache() {
+  return Object.fromEntries(_cache)
 }
 
 /** Simple MQTT wildcard matcher for single-level '+' wildcards */

@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 
 const nav = [
   { to: '/',         label: 'Dashboard',  icon: <GridIcon /> },
@@ -12,6 +13,11 @@ const nav = [
 ]
 
 export default function Sidebar({ session }) {
+  const { data } = useLiveTelemetry(['farm/irrigation1/status'])
+  const irr = data['farm/irrigation1/status'] ?? {}
+  const supplyPsi = irr.supply_psi ?? '—'
+  const online = irr.online ?? false
+
   return (
     <aside className="hidden md:flex w-56 min-h-screen bg-[#304047] flex-col shrink-0">
       {/* Logo */}
@@ -52,6 +58,16 @@ export default function Sidebar({ session }) {
           </NavLink>
         ))}
       </nav>
+
+      {/* Live supply pressure */}
+      <div className="px-4 py-3 border-t border-white/10">
+        <p className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Supply Pressure</p>
+        <div className="flex items-center gap-2">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${online ? 'bg-[#4caf50] animate-pulse' : 'bg-white/20'}`} />
+          <span className="font-headline font-bold text-white text-lg leading-none">{supplyPsi}</span>
+          {supplyPsi !== '—' && <span className="text-white/50 text-xs">PSI</span>}
+        </div>
+      </div>
 
       {/* Footer */}
       <div className="px-4 py-4 border-t border-white/10 space-y-2">
