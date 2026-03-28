@@ -23,21 +23,32 @@ export function usePressureHistory(hours = 24) {
         .order('ts', { ascending: true })
 
       if (!error && rows) {
-        // Downsample — keep one row per 5-minute bucket for chart performance
+        // Downsample — average values per 5-minute bucket for chart performance
         const buckets = {}
         for (const row of rows) {
           const d = new Date(row.ts)
-          const key = `${String(d.getHours()).padStart(2,'0')}:${String(Math.floor(d.getMinutes() / 5) * 5).padStart(2,'0')}`
-          buckets[key] = {
-            time:       key,
-            inlet:      parseFloat(row.inlet_psi  ?? 0),
-            outlet:     parseFloat(row.outlet_psi ?? 0),
-            diff:       parseFloat(row.diff_psi   ?? 0),
-            supply:     row.supply_psi != null ? parseFloat(row.supply_psi) : null,
-            simulated:  row.simulated ?? false,
+          // Include date in key to avoid cross-day collisions
+          const mm = Math.floor(d.getMinutes() / 5) * 5
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
+          if (!buckets[key]) {
+            buckets[key] = { time: `${String(d.getHours()).padStart(2,'0')}:${String(mm).padStart(2,'0')}`, _ts: d.getTime(), inlet: [], outlet: [], diff: [], supply: [], simulated: false }
           }
+          buckets[key].inlet.push(parseFloat(row.inlet_psi ?? 0))
+          buckets[key].outlet.push(parseFloat(row.outlet_psi ?? 0))
+          buckets[key].diff.push(parseFloat(row.diff_psi ?? 0))
+          if (row.supply_psi != null) buckets[key].supply.push(parseFloat(row.supply_psi))
+          if (row.simulated) buckets[key].simulated = true
         }
-        setData(Object.values(buckets))
+        const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0
+        const sorted = Object.values(buckets).sort((a, b) => a._ts - b._ts)
+        setData(sorted.map(b => ({
+          time:      b.time,
+          inlet:     avg(b.inlet),
+          outlet:    avg(b.outlet),
+          diff:      avg(b.diff),
+          supply:    b.supply.length ? avg(b.supply) : null,
+          simulated: b.simulated,
+        })))
       }
       setLoading(false)
     }
