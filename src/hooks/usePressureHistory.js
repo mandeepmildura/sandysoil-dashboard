@@ -16,7 +16,7 @@ export function usePressureHistory(hours = 24) {
 
       const { data: rows, error } = await supabase
         .from('pressure_log')
-        .select('ts, inlet_psi, outlet_psi, diff_psi')
+        .select('ts, inlet_psi, outlet_psi, diff_psi, supply_psi, simulated')
         .gte('ts', since)
         .order('ts', { ascending: true })
 
@@ -27,10 +27,12 @@ export function usePressureHistory(hours = 24) {
           const d = new Date(row.ts)
           const key = `${String(d.getHours()).padStart(2,'0')}:${String(Math.floor(d.getMinutes() / 5) * 5).padStart(2,'0')}`
           buckets[key] = {
-            time: key,
-            inlet:  parseFloat(row.inlet_psi),
-            outlet: parseFloat(row.outlet_psi),
-            diff:   parseFloat(row.diff_psi),
+            time:       key,
+            inlet:      parseFloat(row.inlet_psi  ?? 0),
+            outlet:     parseFloat(row.outlet_psi ?? 0),
+            diff:       parseFloat(row.diff_psi   ?? 0),
+            supply:     row.supply_psi != null ? parseFloat(row.supply_psi) : null,
+            simulated:  row.simulated ?? false,
           }
         }
         setData(Object.values(buckets))
