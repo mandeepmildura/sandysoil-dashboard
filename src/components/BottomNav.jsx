@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useAlerts } from '../hooks/useAlerts'
 
 const nav = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
@@ -9,6 +10,9 @@ const nav = [
 ]
 
 export default function BottomNav() {
+  const { alerts } = useAlerts()
+  const unreadCount = alerts.filter(a => !a.acknowledged).length
+
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#304047] border-t border-white/10 flex">
       {nav.map(({ to, label, icon, badge }) => (
@@ -24,9 +28,9 @@ export default function BottomNav() {
         >
           <span className="w-5 h-5 relative">
             {icon}
-            {badge && (
+            {badge && unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
-                2
+                {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </span>
