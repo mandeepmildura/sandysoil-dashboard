@@ -107,6 +107,8 @@ export default function PressureAnalysis() {
   const stopSim = useCallback(() => {
     if (simRef.current) { clearInterval(simRef.current); simRef.current = null }
     setSimRunning(false)
+    setSimStatus('done')
+    setLiveSimPsi(null)
   }, [])
 
   async function runSimulator() {
@@ -123,17 +125,19 @@ export default function PressureAnalysis() {
     setSimTotal(steps.length)
 
     let i = 0
+    let cycle = 1
     simRef.current = setInterval(async () => {
       if (i >= steps.length) {
-        stopSim()
-        setSimStatus('done')
-        setLiveSimPsi(null)
+        i = 0
+        cycle++
         reloadHistory()
-        return
       }
       const { psi } = steps[i]
       setSimStep(i + 1)
+      setSimTotal(steps.length)
       setLiveSimPsi(psi)
+      // eslint-disable-next-line no-unused-vars
+      void cycle
 
       // Write to Supabase pressure_log
       await supabase.from('pressure_log').insert({
@@ -288,7 +292,7 @@ export default function PressureAnalysis() {
             {simRunning && (
               <div className="mb-3">
                 <div className="flex justify-between text-[10px] text-[#40493d] mb-1">
-                  <span>Step {simStep} / {simTotal}</span>
+                  <span>Step {simStep} / {simTotal} · loops until stopped</span>
                   <span style={{ color: '#00639a', fontWeight: 600 }}>{liveSimPsi} PSI</span>
                 </div>
                 <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
