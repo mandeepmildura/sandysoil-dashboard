@@ -3,6 +3,8 @@ import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import VitalsStrip from '../components/VitalsStrip'
 import { supabase } from '../lib/supabase'
+import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { mqttPublish } from '../lib/mqttClient'
 
 const ACTIVITY = [
   { farm: 'Mildura Block A',    event: 'Zone 3 started',        time: '2 min ago' },
@@ -157,6 +159,50 @@ export default function AdminConsole() {
     return matchSearch && matchStatus
   })
 
+  // ── Firmware OTA ─────────────────────────────────────────────────────────
+  const { data: mqttData } = useLiveTelemetry([
+    'farm/irrigation1/status',
+    'farm/irrigation1/ota/status',
+  ])
+  const irr     = mqttData['farm/irrigation1/status']
+  const otaMsg  = mqttData['farm/irrigation1/ota/status']
+
+  const [otaState,     setOtaState]     = useState('idle') // idle | checking | update_available | up_to_date | updating | done | error
+  const [otaLatest,    setOtaLatest]    = useState(null)
+  const [otaError,     setOtaError]     = useState(null)
+
+  // When device replies to check or update command, update state
+  useEffect(() => {
+    if (!otaMsg) return
+    if (otaMsg.update_available === true) {
+      setOtaLatest(otaMsg.latest ?? null)
+      setOtaState('update_available')
+    } else if (otaMsg.update_available === false) {
+      setOtaState('up_to_date')
+    } else if (otaMsg.status === 'downloading' || otaMsg.status === 'flashing') {
+      setOtaState('updating')
+    } else if (otaMsg.status === 'up_to_date') {
+      setOtaState('up_to_date')
+    } else if (otaMsg.status === 'done') {
+      setOtaState('done')
+    } else if (otaMsg.status?.startsWith('error')) {
+      setOtaState('error')
+      setOtaError(otaMsg.status)
+    }
+  }, [otaMsg])
+
+  async function checkFirmware() {
+    setOtaState('checking')
+    setOtaError(null)
+    await mqttPublish('farm/irrigation1/cmd/ota', { action: 'check' })
+  }
+
+  async function pushFirmwareUpdate() {
+    setOtaState('updating')
+    setOtaError(null)
+    await mqttPublish('farm/irrigation1/cmd/ota', { action: 'update' })
+  }
+
   // ── Vitals ────────────────────────────────────────────────────────────────
   const onlineFarms = farms.filter(f => f.status === 'online').length
   const faultFarms  = farms.filter(f => f.status === 'fault').length
@@ -284,27 +330,56 @@ export default function AdminConsole() {
 
             <Card accent="green">
               <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Firmware Status</h2>
-              <div className="space-y-2 mb-4">
-                {[
-                  { model: 'KC868-A8v3', count: 12, version: 'v2.3.1', update: false },
-                  { model: 'ALR-V13',    count: 12, version: 'v1.2.0', update: true  },
-                ].map(d => (
-                  <div key={d.model} className="bg-[#f3f3f3] rounded-lg p-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs font-semibold text-[#1a1c1c]">{d.model}</p>
-                        <p className="text-[10px] text-[#40493d]">{d.count} devices · {d.version}</p>
-                      </div>
-                      {d.update && (
-                        <span className="text-[10px] bg-[#e65100]/10 text-[#e65100] font-semibold px-2 py-0.5 rounded-full">Update</span>
-                      )}
-                    </div>
+              <div className="bg-[#f3f3f3] rounded-lg p-3 mb-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs font-semibold text-[#1a1c1c]">Irrigation Controller</p>
+                    <p className="text-[10px] text-[#40493d] mt-0.5">
+                      Current: <span className="font-semibold">{irr?.fw ? `v${irr.fw}` : '—'}</span>
+                      {otaLatest && <span className="ml-1">→ v{otaLatest} available</span>}
+                    </p>
+                    <p className="text-[10px] text-[#40493d]">
+                      Device: <span className={irr?.online ? 'text-[#0d631b] font-semibold' : 'text-[#ba1a1a] font-semibold'}>
+                        {irr?.online ? 'Online' : irr ? 'Offline' : '—'}
+                      </span>
+                    </p>
                   </div>
-                ))}
+                  {otaState === 'update_available' && (
+                    <span className="text-[10px] bg-[#e65100]/10 text-[#e65100] font-semibold px-2 py-0.5 rounded-full">Update</span>
+                  )}
+                  {otaState === 'up_to_date' && (
+                    <span className="text-[10px] bg-[#0d631b]/10 text-[#0d631b] font-semibold px-2 py-0.5 rounded-full">Up to date</span>
+                  )}
+                  {otaState === 'done' && (
+                    <span className="text-[10px] bg-[#0d631b]/10 text-[#0d631b] font-semibold px-2 py-0.5 rounded-full">Updated ✓</span>
+                  )}
+                  {otaState === 'updating' && (
+                    <span className="text-[10px] bg-[#00639a]/10 text-[#00639a] font-semibold px-2 py-0.5 rounded-full">
+                      {otaMsg?.status === 'flashing' ? 'Flashing…' : 'Downloading…'}
+                    </span>
+                  )}
+                </div>
+                {otaState === 'error' && (
+                  <p className="text-[10px] text-[#ba1a1a] mt-1">{otaError}</p>
+                )}
               </div>
-              <button className="w-full gradient-primary text-white text-xs font-semibold py-2.5 rounded-xl shadow-fab hover:opacity-90 transition-opacity">
-                Push Firmware Update
-              </button>
+
+              <div className="space-y-2">
+                <button
+                  onClick={checkFirmware}
+                  disabled={otaState === 'checking' || otaState === 'updating' || !irr?.online}
+                  className="w-full bg-[#f3f3f3] text-[#1a1c1c] text-xs font-semibold py-2 rounded-xl hover:bg-[#e8e8e8] disabled:opacity-40 transition-colors"
+                >
+                  {otaState === 'checking' ? 'Checking…' : 'Check for Update'}
+                </button>
+                <button
+                  onClick={pushFirmwareUpdate}
+                  disabled={otaState === 'updating' || otaState === 'checking' || !irr?.online}
+                  className="w-full gradient-primary text-white text-xs font-semibold py-2.5 rounded-xl shadow-fab hover:opacity-90 disabled:opacity-40 transition-opacity"
+                >
+                  {otaState === 'updating' ? 'Updating…' : 'Push Firmware Update'}
+                </button>
+              </div>
             </Card>
           </div>
         </div>
