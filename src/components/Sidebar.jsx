@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { useAlerts } from '../hooks/useAlerts'
 
 const nav = [
   { to: '/',         label: 'Dashboard',  icon: <GridIcon /> },
@@ -18,6 +19,9 @@ export default function Sidebar({ session }) {
   const { data } = useLiveTelemetry(['farm/irrigation1/status'])
   const irr = data['farm/irrigation1/status'] ?? {}
   const online = irr.online ?? false
+
+  const { alerts } = useAlerts()
+  const unreadCount = alerts.filter(a => !a.acknowledged).length
 
   // Poll latest supply PSI from pressure_log every 10s — works for both
   // real device data and simulated data, persists across page navigation
@@ -74,9 +78,9 @@ export default function Sidebar({ session }) {
           >
             <span className="w-5 h-5 shrink-0">{icon}</span>
             {label}
-            {badge && (
+            {badge && unreadCount > 0 && (
               <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                2
+                {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </NavLink>
