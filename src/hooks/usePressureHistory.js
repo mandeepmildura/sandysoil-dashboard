@@ -8,6 +8,8 @@ import { supabase } from '../lib/supabase'
 export function usePressureHistory(hours = 24) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const reload = () => setRefreshKey(k => k + 1)
 
   useEffect(() => {
     async function fetch() {
@@ -40,7 +42,7 @@ export function usePressureHistory(hours = 24) {
       setLoading(false)
     }
     fetch()
-  }, [hours])
+  }, [hours, refreshKey])
 
-  return { data, loading }
+  return { data, loading, reload }
 }

@@ -83,7 +83,7 @@ export default function PressureAnalysis() {
   ])
 
   const [historyHours, setHistoryHours] = useState(24)
-  const { data: history, loading, } = usePressureHistory(historyHours)
+  const { data: history, loading, reload: reloadHistory } = usePressureHistory(historyHours)
 
   const irr      = live['farm/irrigation1/status'] ?? {}
   const pressure = live['farm/filter1/pressure']      ?? {}
@@ -128,6 +128,7 @@ export default function PressureAnalysis() {
         stopSim()
         setSimStatus('done')
         setLiveSimPsi(null)
+        reloadHistory()
         return
       }
       const { psi } = steps[i]
@@ -155,6 +156,7 @@ export default function PressureAnalysis() {
     await supabase.from('pressure_log').delete().eq('simulated', true)
     setSimStatus('idle')
     setLiveSimPsi(null)
+    reloadHistory()
   }
 
   useEffect(() => () => stopSim(), [stopSim])
