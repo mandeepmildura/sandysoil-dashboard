@@ -5,63 +5,10 @@ import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { usePressureHistory } from '../hooks/usePressureHistory'
 import { supabase } from '../lib/supabase'
-import { mqttPublish } from '../lib/mqttClient'
 
-// Per-zone pressure draw profile (PSI drop from base when zone is running)
-// Larger zones pull more water = bigger pressure drop
+// Per-zone pressure draw shown in UI (matches edge function ZONE_DRAW)
 const ZONE_DRAW = { 1: 8, 2: 6, 3: 12, 4: 10, 5: 7, 6: 9, 7: 5, 8: 11 }
-
-const PUMP_BASE_PSI   = 52   // pump idle pressure
-const PUMP_RAMP_STEPS = 10   // steps to ramp up/down
-const NOISE           = () => (Math.random() - 0.5) * 3  // ±1.5 PSI noise
-
-// Simulate a full pump cycle for a given zone
-function buildCycle(zoneNum) {
-  const draw   = ZONE_DRAW[zoneNum] ?? 8
-  const runPsi = PUMP_BASE_PSI - draw
-  const steps  = []
-
-  // Ramp up (0 → base)
-  for (let i = 1; i <= PUMP_RAMP_STEPS; i++)
-    steps.push({ psi: parseFloat(((PUMP_BASE_PSI * i) / PUMP_RAMP_STEPS + NOISE()).toFixed(1)), label: 'ramp-up' })
-
-  // Zone opens — pressure drops to run level
-  for (let i = 0; i < 4; i++)
-    steps.push({ psi: parseFloat((runPsi + NOISE()).toFixed(1)), label: 'zone-open' })
-
-  // Zone running — sustained with fluctuation
-  for (let i = 0; i < 20; i++)
-    steps.push({ psi: parseFloat((runPsi + NOISE()).toFixed(1)), label: 'running' })
-
-  // Zone closes — pressure recovers
-  for (let i = 0; i < 4; i++)
-    steps.push({ psi: parseFloat((PUMP_BASE_PSI + NOISE()).toFixed(1)), label: 'zone-close' })
-
-  // Pump off — ramp down
-  for (let i = PUMP_RAMP_STEPS; i >= 0; i--)
-    steps.push({ psi: parseFloat(((PUMP_BASE_PSI * i) / PUMP_RAMP_STEPS + (i > 0 ? NOISE() : 0)).toFixed(1)), label: 'ramp-down' })
-
-  return steps
-}
-
-function buildLowPressureEvent(zoneNum) {
-  const draw   = ZONE_DRAW[zoneNum] ?? 8
-  const runPsi = PUMP_BASE_PSI - draw
-  const steps  = []
-  // Normal start
-  for (let i = 1; i <= PUMP_RAMP_STEPS; i++)
-    steps.push({ psi: parseFloat(((PUMP_BASE_PSI * i) / PUMP_RAMP_STEPS + NOISE()).toFixed(1)), label: 'ramp-up' })
-  // Running normally
-  for (let i = 0; i < 8; i++)
-    steps.push({ psi: parseFloat((runPsi + NOISE()).toFixed(1)), label: 'running' })
-  // Pressure drop event (pump fault / burst line)
-  for (let i = 0; i < 6; i++)
-    steps.push({ psi: parseFloat((15 - i * 1.5 + NOISE()).toFixed(1)), label: 'low-pressure' })
-  // Stays low
-  for (let i = 0; i < 8; i++)
-    steps.push({ psi: parseFloat((6 + NOISE()).toFixed(1)), label: 'fault' })
-  return steps
-}
+const PUMP_BASE_PSI = 52
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
@@ -94,66 +41,109 @@ export default function PressureAnalysis() {
   const outletPsi = pressure.outlet_psi       ?? '—'
   const diffPsi   = pressure.differential_psi ?? '—'
 
-  // ── Simulator ─────────────────────────────────────────────────
+  // ── Simulator (server-side via sim-tick edge function + pg_cron) ──
   const [simRunning,  setSimRunning]  = useState(false)
-  const [simStatus,   setSimStatus]   = useState('idle') // idle | running | done | error
+  const [simStatus,   setSimStatus]   = useState('idle') // idle | starting | running | stopped | error
   const [simZone,     setSimZone]     = useState(3)
   const [simScenario, setSimScenario] = useState('full_cycle')
-  const [simStep,     setSimStep]     = useState(0)
-  const [simTotal,    setSimTotal]    = useState(0)
+  const [sessionId,   setSessionId]   = useState(null)
   const [liveSimPsi,  setLiveSimPsi]  = useState(null)
-  const simRef = useRef(null)
+  const pollRef = useRef(null)
 
-  const stopSim = useCallback(() => {
-    if (simRef.current) { clearInterval(simRef.current); simRef.current = null }
-    setSimRunning(false)
-    setSimStatus('done')
-    setLiveSimPsi(null)
+  // Poll pressure_log for latest simulated value (for live PSI display)
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return
+    pollRef.current = setInterval(async () => {
+      const { data } = await supabase
+        .from('pressure_log')
+        .select('supply_psi, ts')
+        .eq('simulated', true)
+        .order('ts', { ascending: false })
+        .limit(1)
+        .single()
+      if (data?.supply_psi != null) setLiveSimPsi(data.supply_psi)
+      reloadHistory()
+    }, 10000)
+  }, [reloadHistory])
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }, [])
 
-  async function runSimulator() {
-    let steps = []
-    if (simScenario === 'full_cycle')    steps = buildCycle(simZone)
-    if (simScenario === 'low_pressure')  steps = buildLowPressureEvent(simZone)
-    if (simScenario === 'ramp_up')       steps = buildCycle(simZone).filter(s => s.label === 'ramp-up')
-    if (simScenario === 'ramp_down')     steps = buildCycle(simZone).filter(s => s.label === 'ramp-down')
-
-    if (!steps.length) return
-    setSimRunning(true)
-    setSimStatus('running')
-    setSimStep(0)
-    setSimTotal(steps.length)
-
-    let i = 0
-    let cycle = 1
-    simRef.current = setInterval(async () => {
-      if (i >= steps.length) {
-        i = 0
-        cycle++
-        reloadHistory()
+  // On mount: check if there is already an active session from a previous page visit
+  useEffect(() => {
+    async function checkActive() {
+      const { data } = await supabase
+        .from('sim_sessions')
+        .select('id, scenario, zone_num')
+        .eq('status', 'running')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (data) {
+        setSessionId(data.id)
+        setSimZone(data.zone_num)
+        setSimScenario(data.scenario)
+        setSimRunning(true)
+        setSimStatus('running')
+        startPolling()
       }
-      const { psi } = steps[i]
-      setSimStep(i + 1)
-      setSimTotal(steps.length)
-      setLiveSimPsi(psi)
-      // eslint-disable-next-line no-unused-vars
-      void cycle
+    }
+    checkActive()
+    return () => stopPolling()
+  }, [startPolling, stopPolling])
 
-      // Write to Supabase pressure_log
-      await supabase.from('pressure_log').insert({
-        ts:         new Date().toISOString(),
-        supply_psi: psi,
-        inlet_psi:  0,
-        outlet_psi: 0,
-        diff_psi:   0,
-        simulated:  true,
-      })
+  async function startSimulator() {
+    setSimStatus('starting')
+    try {
+      // Look up irrigation1 device_id
+      const { data: device } = await supabase
+        .from('devices')
+        .select('id')
+        .eq('mqtt_topic_base', 'farm/irrigation1')
+        .single()
 
-      // Publish to MQTT for live display
-      await mqttPublish('farm/irrigation1/sim/pressure', { supply_psi: psi, simulated: true, zone: simZone })
+      // Stop any existing session first
+      await supabase
+        .from('sim_sessions')
+        .update({ status: 'stopped' })
+        .eq('status', 'running')
 
-      i++
-    }, 1000)
+      const { data: session, error } = await supabase
+        .from('sim_sessions')
+        .insert({
+          device_id: device?.id ?? null,
+          scenario:  simScenario,
+          zone_num:  simZone,
+          status:    'running',
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      setSessionId(session.id)
+      setSimRunning(true)
+      setSimStatus('running')
+      startPolling()
+    } catch (e) {
+      setSimStatus('error')
+      alert(`Failed to start simulator: ${e.message}`)
+    }
+  }
+
+  async function stopSimulator() {
+    stopPolling()
+    if (sessionId) {
+      await supabase
+        .from('sim_sessions')
+        .update({ status: 'stopped' })
+        .eq('id', sessionId)
+    }
+    setSimRunning(false)
+    setSimStatus('stopped')
+    setSessionId(null)
+    setLiveSimPsi(null)
+    reloadHistory()
   }
 
   async function clearSimData() {
@@ -162,8 +152,6 @@ export default function PressureAnalysis() {
     setLiveSimPsi(null)
     reloadHistory()
   }
-
-  useEffect(() => () => stopSim(), [stopSim])
 
   // Chart data — filter to supply PSI rows if any exist, else show filter data
   const hasSupply = history.some(d => d.supply != null && d.supply > 0)
@@ -288,30 +276,34 @@ export default function PressureAnalysis() {
               </div>
             </div>
 
-            {/* Progress */}
-            {simRunning && (
-              <div className="mb-3">
-                <div className="flex justify-between text-[10px] text-[#40493d] mb-1">
-                  <span>Step {simStep} / {simTotal} · loops until stopped</span>
-                  <span style={{ color: '#00639a', fontWeight: 600 }}>{liveSimPsi} PSI</span>
+            {/* Status */}
+            {simStatus === 'running' && (
+              <div className="mb-3 bg-[#00639a]/10 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-[#00639a] animate-pulse" />
+                  <span className="text-[10px] font-semibold text-[#00639a]">Server-side · runs while you navigate</span>
                 </div>
-                <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
-                  <div className="h-full bg-[#00639a] rounded-full transition-all" style={{ width: `${(simStep / simTotal) * 100}%` }} />
-                </div>
+                {liveSimPsi != null && (
+                  <p className="text-[10px] text-[#40493d]">Latest: <span style={{ color: '#00639a', fontWeight: 600 }}>{liveSimPsi} PSI</span> · chart updates every 10s</p>
+                )}
               </div>
             )}
-
-            {simStatus === 'done' && !simRunning && (
-              <p className="text-xs text-[#0d631b] font-semibold mb-2">Simulation complete — check the chart.</p>
+            {simStatus === 'starting' && (
+              <p className="text-xs text-[#40493d] mb-2">Starting…</p>
+            )}
+            {simStatus === 'stopped' && (
+              <p className="text-xs text-[#0d631b] font-semibold mb-2">Simulation stopped — chart updated.</p>
             )}
             {simStatus === 'error' && (
               <p className="text-xs text-[#ba1a1a] font-semibold mb-2">Simulation failed.</p>
             )}
 
             <div className="space-y-2">
-              <button onClick={simRunning ? stopSim : runSimulator}
-                className={`w-full py-2.5 rounded-xl text-white text-xs font-semibold shadow-fab transition-opacity ${simRunning ? 'bg-[#ba1a1a] hover:opacity-90' : 'gradient-primary hover:opacity-90'}`}>
-                {simRunning ? 'Stop Simulation' : 'Run Simulation'}
+              <button
+                onClick={simRunning ? stopSimulator : startSimulator}
+                disabled={simStatus === 'starting'}
+                className={`w-full py-2.5 rounded-xl text-white text-xs font-semibold shadow-fab transition-opacity disabled:opacity-50 ${simRunning ? 'bg-[#ba1a1a] hover:opacity-90' : 'gradient-primary hover:opacity-90'}`}>
+                {simStatus === 'starting' ? 'Starting…' : simRunning ? 'Stop Simulation' : 'Run Simulation'}
               </button>
               <button onClick={clearSimData} disabled={simRunning}
                 className="w-full py-2 rounded-xl bg-[#f3f3f3] text-[#40493d] text-xs font-semibold hover:bg-[#e8e8e8] disabled:opacity-40 transition-colors">
