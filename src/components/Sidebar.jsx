@@ -13,9 +13,11 @@ const nav = [
 ]
 
 export default function Sidebar({ session }) {
-  const { data } = useLiveTelemetry(['farm/irrigation1/status'])
+  const { data } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/sim/pressure'])
   const irr = data['farm/irrigation1/status'] ?? {}
-  const supplyPsi = irr.supply_psi ?? '—'
+  const sim = data['farm/irrigation1/sim/pressure'] ?? {}
+  // Show simulated PSI when sim is running, otherwise show real device PSI
+  const supplyPsi = sim.supply_psi ?? irr.supply_psi ?? '—'
   const online = irr.online ?? false
 
   return (

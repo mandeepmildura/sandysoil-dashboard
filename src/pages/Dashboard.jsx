@@ -9,7 +9,8 @@ const ZONE_STATE_TOPIC = 'farm/irrigation1/zone/+/state'
 const PRESSURE_TOPIC = 'farm/filter1/pressure'
 const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
 const B16M_TOPIC = 'B16M/CCBA97071FD8/STATE'
-const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC]
+const SIM_TOPIC = 'farm/irrigation1/sim/pressure'
+const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC, SIM_TOPIC]
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
@@ -41,7 +42,8 @@ export default function Dashboard() {
   })
   const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
   const zones = baseZones.map(z => zoneOverrides[z.id] ? { ...z, ...zoneOverrides[z.id] } : z)
-  const supplyPsi   = irr?.supply_psi ?? '—'
+  const sim         = data[SIM_TOPIC]  ?? null
+  const supplyPsi   = sim?.supply_psi ?? irr?.supply_psi ?? '—'
   const activeCount = zones.filter(z => z.on).length
   const inletPsi    = pressure?.inlet_psi ?? '—'
   const outletPsi   = pressure?.outlet_psi ?? '—'
