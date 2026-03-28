@@ -11,11 +11,7 @@ import { zoneOn, zoneOff, allZonesOff, closeOpenHistoryRecord, durationToMinutes
 
 const DURATIONS = ['15 min', '30 min', '1 hour', 'Custom']
 
-const SOURCE_STYLES = {
-  manual:   'bg-[#0d631b]/10 text-[#0d631b]',
-  schedule: 'bg-[#00639a]/10 text-[#00639a]',
-  program:  'bg-[#6750a4]/10 text-[#6750a4]',
-}
+const SOURCE_COLORS = { manual: '#0d631b', schedule: '#00639a', program: '#6750a4' }
 
 export default function ZoneDetail() {
   const { id = '1' } = useParams()
@@ -81,8 +77,6 @@ export default function ZoneDetail() {
   const todayStr   = new Date().toDateString()
   const todayRuns  = history.filter(h => h.ended_at && new Date(h.started_at).toDateString() === todayStr)
   const todayMins  = todayRuns.reduce((sum, h) => sum + (h.duration_min ? Number(h.duration_min) : 0), 0)
-
-  const SOURCE_COLORS = { manual: '#0d631b', schedule: '#00639a', program: '#6750a4' }
 
   // Chart data — last 10 completed runs with meaningful duration, oldest first
   const chartData = [...history]
@@ -295,7 +289,7 @@ export default function ZoneDetail() {
                 const isOpen = !h.ended_at
                 const durMin = h.duration_min ? Number(h.duration_min) : null
                 const src    = (h.source ?? 'manual').toLowerCase()
-                const sourceStyle = SOURCE_STYLES[src] ?? SOURCE_STYLES.manual
+                const srcCol = SOURCE_COLORS[src] ?? SOURCE_COLORS.manual
                 return (
                   <div
                     key={h.id}
@@ -316,7 +310,10 @@ export default function ZoneDetail() {
                       </div>
                       <div>
                         <p className="text-xs text-[#40493d]">Source</p>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${sourceStyle}`}>
+                        <span
+                          className="text-xs font-semibold px-2 py-0.5 rounded-full capitalize"
+                          style={{ background: `${srcCol}1a`, color: srcCol }}
+                        >
                           {h.source ?? 'manual'}
                         </span>
                       </div>
