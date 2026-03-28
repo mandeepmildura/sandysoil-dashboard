@@ -11,6 +11,7 @@ import Programs       from './pages/Programs'
 import PressureAnalysis from './pages/PressureAnalysis'
 import Alerts         from './pages/Alerts'
 import AdminConsole   from './pages/AdminConsole'
+import PressureBar    from './components/PressureBar'
 import { useAuth }    from './hooks/useAuth'
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
     <div className="flex min-h-screen">
       <Sidebar session={session} />
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden pb-16 md:pb-0">
+        <PressureBar />
         <Routes>
           <Route path="/"           element={<Dashboard />} />
           <Route path="/zones"      element={<Zones />} />
