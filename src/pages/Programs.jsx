@@ -249,10 +249,32 @@ function ProgramModal({ program, onClose, onSaved }) {
 
 async function runProgramNow(program) {
   if (!program.zones?.length) return
-  // Send first zone immediately; for sequential, the device continues the sequence
-  const first = program.zones[0]
+  const zones   = program.zones
+  const runMode = program.run_mode ?? 'sequential'
+  const now     = new Date()
+
   try {
-    await zoneOn(first.zone_num, first.duration_min)
+    if (runMode === 'parallel') {
+      await Promise.all(zones.map(z => zoneOn(z.zone_num, z.duration_min, 'program')))
+    } else {
+      // Fire zone 1 immediately
+      await zoneOn(zones[0].zone_num, zones[0].duration_min, 'program')
+      // Queue the rest via program_queue so schedule-runner fires them in order
+      if (zones.length > 1) {
+        let offsetMs = zones[0].duration_min * 60 * 1000
+        const { data: device } = await supabase
+          .from('devices')
+          .select('id')
+          .eq('mqtt_topic_base', 'farm/irrigation1')
+          .single()
+        const rows = zones.slice(1).map(z => {
+          const fireAt = new Date(now.getTime() + offsetMs)
+          offsetMs += z.duration_min * 60 * 1000
+          return { group_id: program.id, device_id: device?.id, zone_num: z.zone_num, duration_min: z.duration_min, fire_at: fireAt.toISOString() }
+        })
+        await supabase.from('program_queue').insert(rows)
+      }
+    }
   } catch (e) {
     alert(`Failed to start program: ${e.message}`)
   }
