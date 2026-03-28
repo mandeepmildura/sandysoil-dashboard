@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
@@ -13,12 +14,32 @@ const nav = [
 ]
 
 export default function Sidebar({ session }) {
-  const { data } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/sim/pressure'])
+  const { data } = useLiveTelemetry(['farm/irrigation1/status'])
   const irr = data['farm/irrigation1/status'] ?? {}
-  const sim = data['farm/irrigation1/sim/pressure'] ?? {}
-  // Show simulated PSI when sim is running, otherwise show real device PSI
-  const supplyPsi = sim.supply_psi ?? irr.supply_psi ?? '—'
   const online = irr.online ?? false
+
+  // Poll latest supply PSI from pressure_log every 10s — works for both
+  // real device data and simulated data, persists across page navigation
+  const [dbPsi, setDbPsi] = useState(null)
+  useEffect(() => {
+    async function fetchLatest() {
+      const { data: row } = await supabase
+        .from('pressure_log')
+        .select('supply_psi')
+        .not('supply_psi', 'is', null)
+        .order('ts', { ascending: false })
+        .limit(1)
+        .single()
+      if (row?.supply_psi != null) setDbPsi(parseFloat(row.supply_psi))
+    }
+    fetchLatest()
+    const id = setInterval(fetchLatest, 10000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Prefer real MQTT value when device is online & reporting > 0, else use DB
+  const mqttPsi = irr.supply_psi
+  const supplyPsi = (mqttPsi != null && mqttPsi > 0) ? mqttPsi : dbPsi ?? mqttPsi ?? '—'
 
   return (
     <aside className="hidden md:flex w-56 min-h-screen bg-[#304047] flex-col shrink-0">
