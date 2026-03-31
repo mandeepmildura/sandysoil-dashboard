@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 const ZONES = [1, 2, 3, 4, 5, 6, 7, 8]
-const LITERS_PER_MIN = 10 // rough estimate per zone
+
 const TIME_LABELS = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '23:59']
 const SOURCE_COLORS = {
   manual:   { bar: 'from-[#17362e] to-[#2e4d44]', badge: 'bg-[#c7eade] text-[#17362e]' },
@@ -71,7 +71,6 @@ export default function ZoneHistory() {
 
   // Stats
   const totalMins   = history.filter(h => h.duration_min).reduce((s, h) => s + Number(h.duration_min), 0)
-  const totalLiters = Math.round(totalMins * LITERS_PER_MIN)
   const activeZones = new Set(history.map(h => h.zone_num)).size
   const runCount    = history.length
 
@@ -179,22 +178,16 @@ export default function ZoneHistory() {
         {/* KPI card */}
         <div className="bg-white p-8 rounded-[2rem] shadow-[0px_12px_32px_rgba(25,28,28,0.04)]">
           <div className="flex justify-between items-start mb-6">
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#717975]">Daily Consumption</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-[#717975]">Daily Summary</span>
             <div className="bg-[#17362e] p-1.5 rounded-lg">
-              <Icon name="water_drop" className="text-[#accec2] text-sm" />
+              <Icon name="bar_chart" className="text-[#accec2] text-sm" />
             </div>
           </div>
           <div className="space-y-1">
-            <span className="text-5xl font-extrabold tracking-tight text-[#17362e]">
-              {totalLiters.toLocaleString()}
-            </span>
-            <span className="text-sm font-bold text-[#717975] block">Litres (Est.)</span>
+            <span className="text-5xl font-extrabold tracking-tight text-[#17362e]">{fmtDur(totalMins)}</span>
+            <span className="text-sm font-bold text-[#717975] block">Total run time</span>
           </div>
           <div className="mt-8 pt-6 border-t border-[#e1e3e2]/50 space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-[#717975] font-medium">Total run time</span>
-              <span className="font-bold text-[#17362e]">{fmtDur(totalMins)}</span>
-            </div>
             <div className="flex justify-between text-xs">
               <span className="text-[#717975] font-medium">Zones used</span>
               <span className="font-bold text-[#17362e]">{activeZones} / 8</span>
@@ -269,7 +262,6 @@ export default function ZoneHistory() {
                 { label: 'Ended',    value: selected.ended_at ? new Date(selected.ended_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Still running' },
                 { label: 'Duration', value: fmtDur(selected.duration_min) },
                 { label: 'Source',   value: selected.source ?? 'manual' },
-                { label: 'Est. water', value: `${Math.round((Number(selected.duration_min) || 0) * LITERS_PER_MIN)} L` },
               ].map(r => (
                 <div key={r.label} className="flex justify-between bg-[#f2f4f3] rounded-xl px-4 py-3">
                   <span className="text-xs font-semibold text-[#717975]">{r.label}</span>
