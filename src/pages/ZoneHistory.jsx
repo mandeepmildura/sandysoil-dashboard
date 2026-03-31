@@ -15,7 +15,10 @@ function Icon({ name, className = '' }) {
 }
 
 function toDateStr(d) {
-  return d.toISOString().slice(0, 10)
+  const y  = d.getFullYear()
+  const m  = String(d.getMonth() + 1).padStart(2, '0')
+  const dy = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dy}`
 }
 
 function fmtDateLabel(dateStr) {
@@ -100,10 +103,17 @@ export default function ZoneHistory() {
           <button onClick={prevDay} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e]">
             <Icon name="chevron_left" />
           </button>
-          <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-sm">
+          <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-sm cursor-pointer">
             <Icon name="calendar_month" className="text-sm text-[#17362e]" />
             <span className="text-xs font-bold text-[#17362e]">{fmtDateLabel(dateStr)}</span>
-          </div>
+            <input
+              type="date"
+              value={dateStr}
+              max={toDateStr(new Date())}
+              onChange={e => e.target.value && setDateStr(e.target.value)}
+              className="absolute opacity-0 w-0 h-0"
+            />
+          </label>
           <button onClick={nextDay} disabled={isToday}
             className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e] disabled:opacity-30">
             <Icon name="chevron_right" />
