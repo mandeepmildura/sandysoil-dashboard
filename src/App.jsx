@@ -11,7 +11,7 @@ import Programs       from './pages/Programs'
 import PressureAnalysis from './pages/PressureAnalysis'
 import Alerts         from './pages/Alerts'
 import AdminConsole   from './pages/AdminConsole'
-import Monitoring     from './pages/Monitoring'
+
 import PressureBar    from './components/PressureBar'
 import { useAuth }    from './hooks/useAuth'
 
@@ -47,7 +47,7 @@ export default function App() {
           <Route path="/programs"   element={<Programs />} />
           <Route path="/pressure"   element={<PressureAnalysis />} />
           <Route path="/alerts"     element={<Alerts />} />
-          <Route path="/monitoring" element={<Monitoring />} />
+
           <Route path="/admin"      element={<AdminConsole />} />
           <Route path="*"           element={<Navigate to="/" replace />} />
         </Routes>
