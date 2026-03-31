@@ -15,7 +15,9 @@ export default function Zones() {
     if (m) zoneOverrides[Number(m[1])] = payload
   })
   const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
-  const zones = baseZones.map(z => zoneOverrides[z.id] ? { ...z, ...zoneOverrides[z.id] } : z)
+  // Only apply per-zone overrides when the device is online — prevents stale
+  // cached MQTT state from showing zones as ON when the board is disconnected
+  const zones = baseZones.map(z => (irr?.online && zoneOverrides[z.id]) ? { ...z, ...zoneOverrides[z.id] } : z)
 
   return (
     <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
