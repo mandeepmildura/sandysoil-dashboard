@@ -5,6 +5,7 @@ import Login          from './pages/Login'
 import Dashboard      from './pages/Dashboard'
 import Zones          from './pages/Zones'
 import ZoneDetail     from './pages/ZoneDetail'
+import ZoneHistory    from './pages/ZoneHistory'
 import Calendar       from './pages/Calendar'
 import ScheduleRules  from './pages/ScheduleRules'
 import Programs       from './pages/Programs'
@@ -41,6 +42,7 @@ export default function App() {
         <Routes>
           <Route path="/"           element={<Dashboard />} />
           <Route path="/zones"      element={<Zones />} />
+          <Route path="/history"    element={<ZoneHistory />} />
           <Route path="/zones/:id"  element={<ZoneDetail />} />
           <Route path="/calendar"   element={<Calendar />} />
           <Route path="/rules"      element={<ScheduleRules />} />
