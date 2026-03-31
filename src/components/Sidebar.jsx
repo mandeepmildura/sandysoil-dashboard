@@ -10,7 +10,7 @@ const nav = [
   { to: '/calendar', label: 'Schedule',   icon: <CalIcon /> },
   { to: '/programs', label: 'Programs',   icon: <ListIcon /> },
   { to: '/pressure', label: 'Pressure',   icon: <GaugeIcon /> },
-  { to: '/monitoring', label: 'Monitoring', icon: <ChartIcon /> },
+
   { to: '/alerts',   label: 'Alerts',     icon: <BellIcon />, badge: true },
   { to: '/admin',    label: 'Admin',      icon: <AdminIcon /> },
 ]
@@ -158,13 +158,7 @@ function BellIcon() {
     </svg>
   )
 }
-function ChartIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/>
-    </svg>
-  )
-}
+
 function AdminIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
