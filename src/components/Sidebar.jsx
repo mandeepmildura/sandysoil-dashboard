@@ -7,6 +7,7 @@ import { useAlerts } from '../hooks/useAlerts'
 const nav = [
   { to: '/',         label: 'Dashboard',  icon: <GridIcon /> },
   { to: '/zones',    label: 'Zones',      icon: <DropIcon /> },
+  { to: '/history',  label: 'History',    icon: <HistoryIcon /> },
   { to: '/calendar', label: 'Schedule',   icon: <CalIcon /> },
   { to: '/programs', label: 'Programs',   icon: <ListIcon /> },
   { to: '/pressure', label: 'Pressure',   icon: <GaugeIcon /> },
@@ -159,6 +160,14 @@ function BellIcon() {
   )
 }
 
+function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+      <path d="M12 7v5l4 2"/>
+    </svg>
+  )
+}
 function AdminIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
