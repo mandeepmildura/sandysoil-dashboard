@@ -2,6 +2,7 @@ import { mqttPublish } from './mqttClient'
 import { supabase } from './supabase'
 
 export const B16M_SET_TOPIC = 'B16M/CCBA97071FD8/SET'
+export const A6V3_SET_TOPIC = 'A6v3/8CBFEA03002C/SET'
 
 // ── Zone commands (old irrigation controller) ──────────────────────────────
 
@@ -79,6 +80,16 @@ export function b16mOutputOn(outputNum) {
 
 export function b16mOutputOff(outputNum) {
   return mqttPublish(B16M_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
+}
+
+// ── A6v3 commands ──────────────────────────────────────────────────────────
+
+export function a6v3OutputOn(outputNum) {
+  return mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
+}
+
+export function a6v3OutputOff(outputNum) {
+  return mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

@@ -1,14 +1,28 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-import { allZonesOff } from '../lib/commands'
+import { allZonesOff, a6v3OutputOn, a6v3OutputOff } from '../lib/commands'
+
+const A6V3_TOPIC = 'A6v3/8CBFEA03002C/STATE'
 
 export default function Zones() {
   const navigate = useNavigate()
-  const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/zone/+/state'])
+  const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/zone/+/state', A6V3_TOPIC])
+  const [a6v3Busy, setA6v3Busy] = useState({})
 
-  const irr = live['farm/irrigation1/status'] ?? null
+  const irr  = live['farm/irrigation1/status'] ?? null
+  const a6v3 = live[A6V3_TOPIC] ?? null
+  const a6v3Outputs = Array.from({ length: 6 }, (_, i) => a6v3?.[`output${i + 1}`]?.value ?? false)
+
+  async function handleA6v3Toggle(n, currentlyOn) {
+    setA6v3Busy(b => ({ ...b, [n]: true }))
+    try {
+      currentlyOn ? await a6v3OutputOff(n) : await a6v3OutputOn(n)
+    } catch (e) { console.error(e) }
+    setA6v3Busy(b => ({ ...b, [n]: false }))
+  }
   const zoneOverrides = {}
   Object.entries(live).forEach(([topic, payload]) => {
     const m = topic.match(/^farm\/irrigation1\/zone\/(\d+)\/state$/)
@@ -66,6 +80,41 @@ export default function Zones() {
             </div>
           </Card>
         ))}
+      </div>
+
+      {/* A6v3 Relays */}
+      <div className="mt-8">
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="font-headline font-semibold text-lg text-[#1a1c1c]">A6v3 Relays</h2>
+          <span className={`w-2 h-2 rounded-full ${a6v3 ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+          <span className="text-xs font-body text-[#40493d]">{a6v3 ? 'Online' : 'Offline'}</span>
+        </div>
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+          {a6v3Outputs.map((on, i) => (
+            <Card key={i} accent={on ? 'green' : undefined}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className="font-headline font-bold text-[#1a1c1c]">Relay {i + 1}</p>
+                  <p className="text-xs text-[#40493d]">DO{i + 1}</p>
+                </div>
+                <span className={`w-3 h-3 rounded-full mt-0.5 ${on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+              </div>
+              <StatusChip status={on ? 'running' : 'offline'} label={on ? 'ON' : 'OFF'} />
+              <div className="flex gap-1 mt-2">
+                <button
+                  onClick={() => handleA6v3Toggle(i + 1, on)}
+                  disabled={!!a6v3Busy[i + 1] || on}
+                  className="flex-1 py-1 rounded-md bg-[#0d631b] text-white text-[10px] font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
+                >On</button>
+                <button
+                  onClick={() => handleA6v3Toggle(i + 1, on)}
+                  disabled={!!a6v3Busy[i + 1] || !on}
+                  className="flex-1 py-1 rounded-md bg-[#e2e2e2] text-[#1a1c1c] text-[10px] font-semibold hover:bg-[#d5d5d5] disabled:opacity-40 transition-all"
+                >Off</button>
+              </div>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   )

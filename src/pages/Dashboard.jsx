@@ -2,20 +2,22 @@ import { useState } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-import { startBackwash, allZonesOff, zoneOn, zoneOff, b16mOutputOn, b16mOutputOff } from '../lib/commands'
+import { startBackwash, allZonesOff, zoneOn, zoneOff, b16mOutputOn, b16mOutputOff, a6v3OutputOn, a6v3OutputOff } from '../lib/commands'
 
 const IRR_TOPIC = 'farm/irrigation1/status'
 const ZONE_STATE_TOPIC = 'farm/irrigation1/zone/+/state'
 const PRESSURE_TOPIC = 'farm/filter1/pressure'
 const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
 const B16M_TOPIC = 'B16M/CCBA97071FD8/STATE'
+const A6V3_TOPIC = 'A6v3/8CBFEA03002C/STATE'
 const SIM_TOPIC = 'farm/irrigation1/sim/pressure'
-const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC, SIM_TOPIC]
+const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC, A6V3_TOPIC, SIM_TOPIC]
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
   const [busy, setBusy] = useState({})
   const [b16mBusy, setB16mBusy] = useState({})
+  const [a6v3Busy, setA6v3Busy] = useState({})
 
   async function handleZoneOn(id) {
     setBusy(b => ({ ...b, [id]: true }))
@@ -33,6 +35,7 @@ export default function Dashboard() {
   const pressure = data[PRESSURE_TOPIC] ?? null
   const backwash = data[BACKWASH_TOPIC] ?? null
   const b16m     = data[B16M_TOPIC]     ?? null
+  const a6v3     = data[A6V3_TOPIC]     ?? null
 
   // Merge per-zone state updates over the full status zones array
   const zoneOverrides = {}
@@ -56,12 +59,24 @@ export default function Dashboard() {
   const b16mInputs  = Array.from({ length: 16 }, (_, i) => b16m?.[`input${i + 1}`]?.value ?? false)
   const b16mAdc     = [1, 2, 3, 4].map(n => b16m?.[`adc${n}`]?.value ?? 0)
 
+  const a6v3Outputs = Array.from({ length: 6 }, (_, i) => a6v3?.[`output${i + 1}`]?.value ?? false)
+  const a6v3Inputs  = Array.from({ length: 6 }, (_, i) => a6v3?.[`input${i + 1}`]?.value ?? false)
+  const a6v3Adc     = [1, 2, 3, 4].map(n => a6v3?.[`adc${n}`]?.value ?? 0)
+
   async function handleB16mToggle(n, currentlyOn) {
     setB16mBusy(b => ({ ...b, [n]: true }))
     try {
       currentlyOn ? await b16mOutputOff(n) : await b16mOutputOn(n)
     } catch (e) { console.error(e) }
     setB16mBusy(b => ({ ...b, [n]: false }))
+  }
+
+  async function handleA6v3Toggle(n, currentlyOn) {
+    setA6v3Busy(b => ({ ...b, [n]: true }))
+    try {
+      currentlyOn ? await a6v3OutputOff(n) : await a6v3OutputOn(n)
+    } catch (e) { console.error(e) }
+    setA6v3Busy(b => ({ ...b, [n]: false }))
   }
 
   const vitals = [
@@ -169,6 +184,93 @@ export default function Dashboard() {
               ))}
             </div>
           </Card>
+
+          {/* A6v3 status summary */}
+          <Card accent="green">
+            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">A6v3 Controller</h2>
+            <div className="space-y-2 text-xs font-body">
+              {[
+                { label: 'Status',  value: a6v3 ? 'Online' : 'Offline' },
+                { label: 'Outputs', value: `${a6v3Outputs.filter(Boolean).length} / 6 on` },
+                { label: 'Inputs',  value: `${a6v3Inputs.filter(Boolean).length} / 6 active` },
+              ].map(r => (
+                <div key={r.label} className="flex justify-between">
+                  <span className="text-[#40493d]">{r.label}</span>
+                  <span className="font-semibold text-[#1a1c1c]">{r.value}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* A6v3 full detail — outputs, inputs, ADC */}
+      <div className="mt-6">
+        <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">
+          A6v3 Detail
+          <span className={`ml-2 inline-block w-2 h-2 rounded-full align-middle ${a6v3 ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Outputs */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Outputs (DO1–DO6)</h3>
+            <div className="grid grid-cols-3 gap-1.5">
+              {a6v3Outputs.map((on, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleA6v3Toggle(i + 1, on)}
+                  disabled={!!a6v3Busy[i + 1]}
+                  className={`py-1.5 rounded text-[10px] font-semibold transition-all disabled:opacity-40 ${
+                    on
+                      ? 'bg-[#0d631b] text-white'
+                      : 'bg-[#e2e2e2] text-[#40493d] hover:bg-[#d5d5d5]'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Inputs */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Inputs (DI1–DI6)</h3>
+            <div className="grid grid-cols-3 gap-1.5">
+              {a6v3Inputs.map((active, i) => (
+                <div
+                  key={i}
+                  className={`py-1.5 rounded text-[10px] font-semibold text-center ${
+                    active ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'
+                  }`}
+                >
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* ADC */}
+          <Card>
+            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Analog (CH1–CH4)</h3>
+            <div className="space-y-3">
+              {a6v3Adc.map((val, i) => (
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-[#40493d]">CH{i + 1}</span>
+                    <span className="font-semibold text-[#1a1c1c]">{val}</span>
+                  </div>
+                  <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#0d631b] rounded-full transition-all"
+                      style={{ width: `${Math.min((val / 4095) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
         </div>
       </div>
 

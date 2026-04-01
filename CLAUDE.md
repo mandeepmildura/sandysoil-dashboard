@@ -27,7 +27,23 @@
 - **Zones**: 8 zones (Zone 1–8)
 - **Known issue**: Does NOT execute schedules automatically — only responds to MQTT commands
 
-### 2. KinCony B16M (Test Board)
+### 2. KC868-A6v3 (6-Channel Relay Controller)
+- **Model**: KinCony KC868-A6v3 (6-channel relay ESP32-S3)
+- **Firmware**: KCS v3 (same as B16M)
+- **Serial**: 8CBFEA03002C
+- **MQTT publish topic**: `A6v3/8CBFEA03002C/STATE`
+- **MQTT subscribe topic**: `A6v3/8CBFEA03002C/SET`
+- **State payload**:
+  ```json
+  {"output1":{"value":false}, ..., "output6":{"value":false},
+   "input1":{"value":false}, ..., "input6":{"value":false},
+   "adc1":{"value":0}, "adc2":{"value":0}, "adc3":{"value":0}, "adc4":{"value":0},
+   "dac1":{"value":0}, "dac2":{"value":0}}
+  ```
+- **Command payload**: `{"output1": {"value": true}}`
+- **Hardware**: 6 relay outputs, 6 digital inputs, 4 analog inputs, 2 DAC outputs, LCD display, RS485, I2C
+
+### 3. KinCony B16M (Test Board)
 - **Model**: KinCony B16M (16-channel MOSFET outputs)
 - **Firmware**: KCSv3 v3.24.2 (built Mar 24 2026), TLS support added in v3.23.2
 - **Serial**: CCBA97071FD8
@@ -56,6 +72,8 @@
 | `farm/filter1/backwash/start` | subscribe | (TBD) | Start backwash command |
 | `B16M/CCBA97071FD8/STATE` | publish | B16M board | Full I/O state |
 | `B16M/CCBA97071FD8/SET` | subscribe | B16M board | Output control commands |
+| `A6v3/8CBFEA03002C/STATE` | publish | A6v3 controller | Full I/O state |
+| `A6v3/8CBFEA03002C/SET` | subscribe | A6v3 controller | Relay output control commands |
 
 ## Supabase Tables
 - `zone_history` — zone run records (started_at, ended_at, zone_num, source)
