@@ -115,12 +115,11 @@ export default function ZoneHistory() {
             ref={dateInputRef}
             type="date"
             value={dateStr}
-            max={toDateStr(new Date())}
             onChange={e => e.target.value && setDateStr(e.target.value)}
             className="absolute opacity-0 pointer-events-none w-0 h-0"
           />
-          <button onClick={nextDay} disabled={isToday}
-            className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e] disabled:opacity-30">
+          <button onClick={nextDay}
+            className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e]">
             <Icon name="chevron_right" />
           </button>
         </div>
