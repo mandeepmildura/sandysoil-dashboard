@@ -3,6 +3,7 @@ import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useA6v3PressureHistory } from '../hooks/useA6v3PressureHistory'
+import { useZoneNames } from '../hooks/useZoneNames'
 import { a6v3OutputOn, a6v3OutputOff, logA6v3Pressure } from '../lib/commands'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -86,10 +87,27 @@ function CustomTooltip({ active, payload, label }) {
 
 export default function A6v3Controller() {
   const { data: live, connected } = useLiveTelemetry([A6V3_TOPIC])
+  const { names, renameZone } = useZoneNames('a6v3')
   const [a6v3Busy, setA6v3Busy] = useState({})
+  const [editingRelay, setEditingRelay] = useState(null)
+  const [relayNameInput, setRelayNameInput] = useState('')
+  const relayNameRef = useRef(null)
   const [showGraph, setShowGraph] = useState(false)
   const [historyHours, setHistoryHours] = useState(6)
   const lastLogRef = useRef(0)
+
+  function startRelayEdit(n, currentName) {
+    setRelayNameInput(currentName)
+    setEditingRelay(n)
+    setTimeout(() => relayNameRef.current?.select(), 0)
+  }
+
+  async function commitRelayRename(n) {
+    setEditingRelay(null)
+    if (relayNameInput.trim() && relayNameInput.trim() !== (names[n] ?? `Relay ${n}`)) {
+      await renameZone(n, relayNameInput.trim())
+    }
+  }
 
   const { data: history, loading: histLoading, reload } = useA6v3PressureHistory(historyHours)
 
@@ -213,14 +231,37 @@ export default function A6v3Controller() {
         <div className="lg:col-span-2">
           <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">Relays (DO1–DO6)</h2>
           <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-            {a6v3Outputs.map((on, i) => (
+            {a6v3Outputs.map((on, i) => {
+              const relayNum = i + 1
+              const relayName = names[relayNum] ?? `Relay ${relayNum}`
+              return (
               <Card key={i} accent={on ? 'green' : undefined}>
                 <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-headline font-bold text-[#1a1c1c]">Relay {i + 1}</p>
-                    <p className="text-xs text-[#40493d]">DO{i + 1}</p>
+                  <div className="flex-1 min-w-0">
+                    {editingRelay === relayNum ? (
+                      <input
+                        ref={relayNameRef}
+                        value={relayNameInput}
+                        onChange={e => setRelayNameInput(e.target.value)}
+                        onBlur={() => commitRelayRename(relayNum)}
+                        onKeyDown={e => { if (e.key === 'Enter') commitRelayRename(relayNum); if (e.key === 'Escape') setEditingRelay(null) }}
+                        className="font-headline font-bold text-[#1a1c1c] bg-transparent border-b-2 border-[#0d631b] outline-none w-full text-sm"
+                        maxLength={32}
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        onClick={() => startRelayEdit(relayNum, relayName)}
+                        className="font-headline font-bold text-[#1a1c1c] hover:text-[#0d631b] transition-colors flex items-center gap-1 group text-sm"
+                        title="Click to rename"
+                      >
+                        <span className="truncate">{relayName}</span>
+                        <span className="opacity-0 group-hover:opacity-60 transition-opacity text-xs">✏️</span>
+                      </button>
+                    )}
+                    <p className="text-xs text-[#40493d]">DO{relayNum}</p>
                   </div>
-                  <span className={`w-3 h-3 rounded-full mt-0.5 ${on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+                  <span className={`w-3 h-3 rounded-full mt-0.5 shrink-0 ${on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
                 </div>
                 <StatusChip status={on ? 'running' : 'offline'} label={on ? 'ON' : 'OFF'} />
                 <div className="flex gap-1 mt-2">
@@ -236,7 +277,7 @@ export default function A6v3Controller() {
                   >Off</button>
                 </div>
               </Card>
-            ))}
+            )})}
           </div>
         </div>
       </div>
