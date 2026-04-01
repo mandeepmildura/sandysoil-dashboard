@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import StatusChip from '../components/StatusChip'
 import { supabase } from '../lib/supabase'
 import { zoneOn } from '../lib/commands'
+import { useZoneNames } from '../hooks/useZoneNames'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
@@ -80,11 +81,13 @@ function EventModal({ event, onClose }) {
         </div>
 
         <div className="mb-4">
-          <p className="text-xs font-semibold text-[#1a1c1c] mb-2">Zones</p>
+          <p className="text-xs font-semibold text-[#1a1c1c] mb-2">
+            {p.zones.some(z => z.device === 'a6v3') ? 'Relays' : 'Zones'}
+          </p>
           <div className="flex gap-1.5 flex-wrap">
             {p.zones.map((z, i) => (
               <span key={z.zone_num} className="px-2 py-1 bg-[#f3f3f3] rounded-lg text-xs">
-                {i + 1}. Zone {z.zone_num} — {z.duration_min} min
+                {i + 1}. {z.device === 'a6v3' ? 'Relay' : 'Zone'} {z.zone_num} — {z.duration_min} min
               </span>
             ))}
           </div>
@@ -108,12 +111,26 @@ function EventModal({ event, onClose }) {
 // ── Add schedule modal ──────────────────────────────────────────────────────
 function AddScheduleModal({ onClose, onSaved }) {
   const [label, setLabel]         = useState('')
-  const [zone, setZone]           = useState(1)
+  const [device, setDevice]       = useState('irrigation1')
+  const [zoneNum, setZoneNum]     = useState(1)
   const [days, setDays]           = useState([false,false,false,false,false,false,false])
   const [startTime, setStartTime] = useState('06:00')
   const [duration, setDuration]   = useState(30)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState(null)
+
+  const { names: irrNames } = useZoneNames('irrigation1')
+  const { names: a6v3Names } = useZoneNames('a6v3')
+
+  const isA6v3    = device === 'a6v3'
+  const slotCount = isA6v3 ? 6 : 8
+  const names     = isA6v3 ? a6v3Names : irrNames
+  const slotLabel = isA6v3 ? 'Relay' : 'Zone'
+
+  function switchDevice(d) {
+    setDevice(d)
+    setZoneNum(1)
+  }
 
   function toggleDay(i) { setDays(prev => prev.map((v, j) => j === i ? !v : v)) }
 
@@ -129,7 +146,7 @@ function AddScheduleModal({ onClose, onSaved }) {
       if (e1) throw e1
 
       const { error: e2 } = await supabase.from('zone_group_members').insert({
-        group_id: group.id, zone_num: zone, duration_min: duration, sort_order: 0,
+        group_id: group.id, zone_num: zoneNum, duration_min: duration, sort_order: 0, device,
       })
       if (e2) throw e2
 
@@ -155,12 +172,27 @@ function AddScheduleModal({ onClose, onSaved }) {
             <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Morning Zone 1"
               className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
           </div>
+          <div>
+            <label className="text-xs font-body text-[#40493d] block mb-2">Device</label>
+            <div className="flex rounded-lg overflow-hidden border border-[#e2e2e2]">
+              <button type="button" onClick={() => switchDevice('irrigation1')}
+                className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${!isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d] hover:bg-[#f3f3f3]'}`}>
+                Irrigation Zone
+              </button>
+              <button type="button" onClick={() => switchDevice('a6v3')}
+                className={`flex-1 py-1.5 text-xs font-semibold transition-colors border-l border-[#e2e2e2] ${isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d] hover:bg-[#f3f3f3]'}`}>
+                A6v3 Relay
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-body text-[#40493d] block mb-1">Zone</label>
-              <select value={zone} onChange={e => setZone(Number(e.target.value))}
+              <label className="text-xs font-body text-[#40493d] block mb-1">{slotLabel}</label>
+              <select value={zoneNum} onChange={e => setZoneNum(Number(e.target.value))}
                 className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
-                {[1,2,3,4,5,6,7,8].map(z => <option key={z} value={z}>Zone {z}</option>)}
+                {Array.from({ length: slotCount }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={n}>{names[n] ?? `${slotLabel} ${n}`}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -282,7 +314,7 @@ export default function Calendar() {
       setLoading(true)
       const [groupsRes, membersRes, schedulesRes] = await Promise.all([
         supabase.from('zone_groups').select('id, name, run_mode'),
-        supabase.from('zone_group_members').select('group_id, zone_num, duration_min, sort_order').order('sort_order'),
+        supabase.from('zone_group_members').select('group_id, zone_num, duration_min, sort_order, device').order('sort_order'),
         supabase.from('group_schedules').select('group_id, label, days_of_week, start_time, enabled'),
       ])
       if (groupsRes.data) {

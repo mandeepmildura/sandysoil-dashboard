@@ -69,6 +69,9 @@ export default function ScheduleRules() {
               const dbDay = i === 6 ? 0 : i + 1
               return r.days_of_week?.includes(dbDay) ?? false
             })
+            const members   = r.zone_groups?.zone_group_members ?? []
+            const hasA6v3   = members.some(m => m.device === 'a6v3')
+            const hasIrr    = members.some(m => !m.device || m.device === 'irrigation1')
             return (
               <Card key={r.group_id} accent={active ? 'green' : undefined}
                 className={`cursor-pointer transition-all ${selected === r.group_id ? 'ring-2 ring-[#0d631b]/30' : ''}`}
@@ -76,7 +79,11 @@ export default function ScheduleRules() {
                 <div onClick={() => setSelected(selected === r.group_id ? null : r.group_id)}>
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="font-headline font-semibold text-[#1a1c1c]">{r.label ?? r.zone_groups?.name ?? 'Unnamed'}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-headline font-semibold text-[#1a1c1c]">{r.label ?? r.zone_groups?.name ?? 'Unnamed'}</p>
+                        {hasA6v3 && <span className="px-1.5 py-0.5 bg-[#e8f5e9] text-[#0d631b] text-[9px] font-semibold rounded">A6v3</span>}
+                        {hasIrr && <span className="px-1.5 py-0.5 bg-[#e3f2fd] text-[#00639a] text-[9px] font-semibold rounded">Irrigation</span>}
+                      </div>
                       <p className="text-xs text-[#40493d] mt-0.5">
                         {fmtTime(r.start_time)} · {fmtDays(r.days_of_week)}
                       </p>
@@ -93,13 +100,24 @@ export default function ScheduleRules() {
                   </div>
 
                   {/* Day chips */}
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-1.5 mb-2">
                     {DAY_LABELS.map((d, i) => (
                       <span key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-body font-semibold ${
                         dowBools[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'
                       }`}>{d}</span>
                     ))}
                   </div>
+
+                  {/* Members */}
+                  {members.length > 0 && (
+                    <div className="flex gap-1.5 flex-wrap">
+                      {members.sort((a, b) => a.sort_order - b.sort_order).map((m, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-[#f3f3f3] rounded text-[10px] text-[#40493d]">
+                          {m.device === 'a6v3' ? 'Relay' : 'Zone'} {m.zone_num} · {m.duration_min}m
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </Card>
             )
@@ -113,23 +131,31 @@ export default function ScheduleRules() {
                 <table className="w-full text-sm font-body">
                   <thead>
                     <tr className="bg-[#f3f3f3]">
-                      {['Zone', 'Days', 'Start Time', 'Duration', 'Status'].map(h => (
+                      {['Device', 'Zone / Relay', 'Days', 'Start Time', 'Duration', 'Status'].map(h => (
                         <th key={h} className="text-left text-xs font-semibold text-[#40493d] px-4 py-3 first:pl-5">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {zoneSchedules.map((z, i) => (
-                      <tr key={z.id} className={`hover:bg-[#f9f9f9] transition-colors ${i % 2 !== 0 ? 'bg-[#f3f3f3]/40' : ''}`}>
-                        <td className="px-5 py-3 font-semibold text-[#1a1c1c]">Zone {z.zone_num}</td>
-                        <td className="px-4 py-3 text-xs text-[#40493d]">{fmtDays(z.days_of_week)}</td>
-                        <td className="px-4 py-3 text-[#40493d]">{fmtTime(z.start_time)}</td>
-                        <td className="px-4 py-3 text-[#40493d]">{z.duration_min ? `${z.duration_min} min` : '—'}</td>
-                        <td className="px-4 py-3">
-                          <StatusChip status={z.enabled !== false ? 'online' : 'paused'} label={z.enabled !== false ? 'ACTIVE' : 'PAUSED'} />
-                        </td>
-                      </tr>
-                    ))}
+                    {zoneSchedules.map((z, i) => {
+                      const isA6v3 = z.device === 'a6v3'
+                      return (
+                        <tr key={z.id} className={`hover:bg-[#f9f9f9] transition-colors ${i % 2 !== 0 ? 'bg-[#f3f3f3]/40' : ''}`}>
+                          <td className="px-5 py-3">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isA6v3 ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#e3f2fd] text-[#00639a]'}`}>
+                              {isA6v3 ? 'A6v3' : 'Irrigation'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-[#1a1c1c]">{isA6v3 ? 'Relay' : 'Zone'} {z.zone_num}</td>
+                          <td className="px-4 py-3 text-xs text-[#40493d]">{fmtDays(z.days_of_week)}</td>
+                          <td className="px-4 py-3 text-[#40493d]">{fmtTime(z.start_time)}</td>
+                          <td className="px-4 py-3 text-[#40493d]">{z.duration_min ? `${z.duration_min} min` : '—'}</td>
+                          <td className="px-4 py-3">
+                            <StatusChip status={z.enabled !== false ? 'online' : 'paused'} label={z.enabled !== false ? 'ACTIVE' : 'PAUSED'} />
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

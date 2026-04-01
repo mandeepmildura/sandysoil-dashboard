@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import StatusChip from '../components/StatusChip'
 import { usePrograms } from '../hooks/usePrograms'
+import { useZoneNames } from '../hooks/useZoneNames'
 import { supabase } from '../lib/supabase'
 import { zoneOn } from '../lib/commands'
 
@@ -35,9 +36,12 @@ function ProgramModal({ program, onClose, onSaved }) {
   const [runMode, setRunMode] = useState(isEdit ? program.run_mode : 'sequential')
   const [zones, setZones]     = useState(
     isEdit
-      ? program.zones.map(z => ({ num: z.zone_num, duration: z.duration_min }))
-      : [{ num: 1, duration: 30 }]
+      ? program.zones.map(z => ({ num: z.zone_num, duration: z.duration_min, device: z.device ?? 'irrigation1' }))
+      : [{ num: 1, duration: 30, device: 'irrigation1' }]
   )
+
+  const { names: irrNames } = useZoneNames('irrigation1')
+  const { names: a6v3Names } = useZoneNames('a6v3')
   const [hasSchedule, setHasSchedule] = useState(isEdit ? !!program.schedule : false)
   const [days, setDays]               = useState(isEdit && program.schedule ? dowToBools(program.schedule.days_of_week) : [false,false,false,false,false,false,false])
   const [startTime, setStartTime]     = useState(isEdit && program.schedule ? fmtTime(program.schedule.start_time) : '06:00')
@@ -45,7 +49,7 @@ function ProgramModal({ program, onClose, onSaved }) {
   const [error, setError]             = useState(null)
 
   function addZone() {
-    setZones(z => [...z, { num: 1, duration: 30 }])
+    setZones(z => [...z, { num: 1, duration: 30, device: 'irrigation1' }])
   }
 
   function removeZone(i) {
@@ -90,7 +94,7 @@ function ProgramModal({ program, onClose, onSaved }) {
 
       // Insert zone members
       const { error: e2 } = await supabase.from('zone_group_members').insert(
-        zones.map((z, i) => ({ group_id: groupId, zone_num: z.num, duration_min: z.duration, sort_order: i }))
+        zones.map((z, i) => ({ group_id: groupId, zone_num: z.num, duration_min: z.duration, sort_order: i, device: z.device ?? 'irrigation1' }))
       )
       if (e2) throw e2
 
@@ -173,30 +177,51 @@ function ProgramModal({ program, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Zones */}
+          {/* Zones / Relays */}
           <div>
-            <label className="text-xs font-body text-[#40493d] block mb-2">Zones</label>
+            <label className="text-xs font-body text-[#40493d] block mb-2">Zones / Relays</label>
             <div className="space-y-2">
-              {zones.map((z, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-[#40493d] w-4 shrink-0">{i + 1}.</span>
-                  <select value={z.num} onChange={e => updateZone(i, 'num', Number(e.target.value))}
-                    className="flex-1 bg-[#f3f3f3] rounded-lg px-2 py-2 text-sm font-body text-[#1a1c1c] outline-none">
-                    {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Zone {n}</option>)}
-                  </select>
-                  <input type="number" min={1} max={240} value={z.duration}
-                    onChange={e => updateZone(i, 'duration', Number(e.target.value))}
-                    className="w-16 bg-[#f3f3f3] rounded-lg px-2 py-2 text-sm font-body text-[#1a1c1c] outline-none text-center" />
-                  <span className="text-xs text-[#40493d]">min</span>
-                  {zones.length > 1 && (
-                    <button onClick={() => removeZone(i)}
-                      className="text-[#ba1a1a] text-xs font-semibold hover:opacity-70 transition-opacity">✕</button>
-                  )}
-                </div>
-              ))}
+              {zones.map((z, i) => {
+                const isA6v3   = z.device === 'a6v3'
+                const slotMax  = isA6v3 ? 6 : 8
+                const names    = isA6v3 ? a6v3Names : irrNames
+                const slotLbl  = isA6v3 ? 'Relay' : 'Zone'
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs text-[#40493d] w-4 shrink-0">{i + 1}.</span>
+                    {/* Device toggle */}
+                    <div className="flex rounded overflow-hidden border border-[#e2e2e2] shrink-0">
+                      <button type="button"
+                        onClick={() => { updateZone(i, 'device', 'irrigation1'); updateZone(i, 'num', 1) }}
+                        className={`px-1.5 py-1 text-[9px] font-semibold transition-colors ${!isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d]'}`}>
+                        Irr
+                      </button>
+                      <button type="button"
+                        onClick={() => { updateZone(i, 'device', 'a6v3'); updateZone(i, 'num', 1) }}
+                        className={`px-1.5 py-1 text-[9px] font-semibold border-l border-[#e2e2e2] transition-colors ${isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d]'}`}>
+                        A6v3
+                      </button>
+                    </div>
+                    <select value={z.num} onChange={e => updateZone(i, 'num', Number(e.target.value))}
+                      className="flex-1 bg-[#f3f3f3] rounded-lg px-2 py-2 text-sm font-body text-[#1a1c1c] outline-none">
+                      {Array.from({ length: slotMax }, (_, n) => n + 1).map(n => (
+                        <option key={n} value={n}>{names[n] ?? `${slotLbl} ${n}`}</option>
+                      ))}
+                    </select>
+                    <input type="number" min={1} max={240} value={z.duration}
+                      onChange={e => updateZone(i, 'duration', Number(e.target.value))}
+                      className="w-16 bg-[#f3f3f3] rounded-lg px-2 py-2 text-sm font-body text-[#1a1c1c] outline-none text-center" />
+                    <span className="text-xs text-[#40493d]">min</span>
+                    {zones.length > 1 && (
+                      <button onClick={() => removeZone(i)}
+                        className="text-[#ba1a1a] text-xs font-semibold hover:opacity-70 transition-opacity">✕</button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
             <button onClick={addZone}
-              className="mt-2 text-xs text-[#00639a] font-semibold hover:underline">+ Add Zone</button>
+              className="mt-2 text-xs text-[#00639a] font-semibold hover:underline">+ Add Zone / Relay</button>
           </div>
 
           {/* Schedule toggle */}
@@ -355,7 +380,7 @@ export default function Programs() {
                     <div className="flex gap-1 flex-wrap mt-3 mb-2">
                       {p.zones.map((z, i) => (
                         <span key={z.zone_num} className="px-2 py-1 bg-[#f3f3f3] rounded-lg text-xs">
-                          {i + 1}. Z{z.zone_num} — {z.duration_min}m
+                          {i + 1}. {z.device === 'a6v3' ? 'R' : 'Z'}{z.zone_num} — {z.duration_min}m
                         </span>
                       ))}
                     </div>
@@ -405,7 +430,9 @@ export default function Programs() {
                       <td className="px-4 py-3">
                         <div className="flex gap-1 flex-wrap">
                           {p.zones.map(z => (
-                            <span key={z.zone_num} className="px-1.5 py-0.5 bg-[#f3f3f3] rounded-full text-[10px] text-[#40493d]">Z{z.zone_num}</span>
+                            <span key={z.zone_num} className={`px-1.5 py-0.5 rounded-full text-[10px] ${z.device === 'a6v3' ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                              {z.device === 'a6v3' ? 'R' : 'Z'}{z.zone_num}
+                            </span>
                           ))}
                         </div>
                       </td>
@@ -425,7 +452,7 @@ export default function Programs() {
                               <div className="flex gap-2 flex-wrap">
                                 {p.zones.map((z, i) => (
                                   <span key={z.zone_num} className="px-2.5 py-1 bg-[#f3f3f3] rounded-lg text-xs">
-                                    {i + 1}. Zone {z.zone_num} — {z.duration_min} min
+                                    {i + 1}. {z.device === 'a6v3' ? 'Relay' : 'Zone'} {z.zone_num} — {z.duration_min} min
                                   </span>
                                 ))}
                               </div>
