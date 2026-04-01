@@ -7,6 +7,7 @@ import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useZoneHistory } from '../hooks/useZoneHistory'
+import { useZoneNames } from '../hooks/useZoneNames'
 import { zoneOn, zoneOff, allZonesOff, closeOpenHistoryRecord, durationToMinutes } from '../lib/commands'
 
 const DURATIONS = ['15 min', '30 min', '1 hour', 'Custom']
@@ -20,6 +21,9 @@ export default function ZoneDetail() {
   const [cmdSending, setCmdSending] = useState(false)
   const [cmdError, setCmdError]     = useState(null)
   const [now, setNow] = useState(Date.now())
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput]     = useState('')
+  const nameInputRef = useRef(null)
 
   // Live 1-second ticker for elapsed / countdown
   useEffect(() => {
@@ -52,10 +56,25 @@ export default function ZoneDetail() {
 
   const { data: live } = useLiveTelemetry(['farm/irrigation1/status'])
   const { history, loading, reload } = useZoneHistory(zoneNum, 20)
+  const { names, renameZone } = useZoneNames()
 
   const irr   = live['farm/irrigation1/status'] ?? null
   const zones = irr?.zones ?? []
   const zone  = zones.find(z => z.id === zoneNum) ?? null
+  const displayName = names[zoneNum] ?? zone?.name ?? `Zone ${zoneNum}`
+
+  function startEditing() {
+    setNameInput(displayName)
+    setEditingName(true)
+    setTimeout(() => nameInputRef.current?.select(), 0)
+  }
+
+  async function commitRename() {
+    setEditingName(false)
+    if (nameInput.trim() && nameInput.trim() !== displayName) {
+      await renameZone(zoneNum, nameInput.trim())
+    }
+  }
   const isRunning = zone?.on ?? false
 
   // Detect when zone turns off automatically (firmware timer expired).
@@ -114,11 +133,31 @@ export default function ZoneDetail() {
         <span>/</span>
         <Link to="/zones" className="hover:text-[#1a1c1c]">Zones</Link>
         <span>/</span>
-        <span className="text-[#1a1c1c] font-semibold">{zone?.name ?? `Zone ${zoneNum}`}</span>
+        <span className="text-[#1a1c1c] font-semibold">{displayName}</span>
       </nav>
 
       <div className="flex items-center gap-4 mb-6">
-        <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">{zone?.name ?? `Zone ${zoneNum}`}</h1>
+        {editingName ? (
+          <input
+            ref={nameInputRef}
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingName(false) }}
+            className="font-headline font-bold text-2xl text-[#1a1c1c] bg-transparent border-b-2 border-[#0d631b] outline-none w-64"
+            maxLength={32}
+            autoFocus
+          />
+        ) : (
+          <button
+            onClick={startEditing}
+            className="font-headline font-bold text-2xl text-[#1a1c1c] hover:text-[#0d631b] transition-colors flex items-center gap-2 group"
+            title="Click to rename"
+          >
+            {displayName}
+            <span className="text-sm text-[#40493d] opacity-0 group-hover:opacity-100 transition-opacity font-body font-normal">✏️</span>
+          </button>
+        )}
         <StatusChip status={isRunning ? 'running' : 'offline'} label={isRunning ? 'RUNNING' : 'OFF'} />
       </div>
 

@@ -2,11 +2,13 @@ import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { useZoneNames } from '../hooks/useZoneNames'
 import { allZonesOff } from '../lib/commands'
 
 export default function Zones() {
   const navigate = useNavigate()
   const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/zone/+/state'])
+  const { names } = useZoneNames()
 
   const irr  = live['farm/irrigation1/status'] ?? null
   const zoneOverrides = {}
@@ -56,7 +58,7 @@ export default function Zones() {
             <div onClick={() => navigate(`/zones/${zone.id}`)}>
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <p className="font-headline font-bold text-[#1a1c1c]">{zone.name}</p>
+                  <p className="font-headline font-bold text-[#1a1c1c]">{names[zone.id] ?? zone.name}</p>
                   <p className="text-xs text-[#40493d] capitalize">{zone.state}</p>
                 </div>
                 <span className={`w-3 h-3 rounded-full mt-0.5 ${zone.on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />

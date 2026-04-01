@@ -3,6 +3,7 @@ import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { startBackwash, allZonesOff, zoneOn, zoneOff, b16mOutputOn, b16mOutputOff, a6v3OutputOn, a6v3OutputOff } from '../lib/commands'
+import { useZoneNames } from '../hooks/useZoneNames'
 
 const IRR_TOPIC = 'farm/irrigation1/status'
 const ZONE_STATE_TOPIC = 'farm/irrigation1/zone/+/state'
@@ -15,6 +16,7 @@ const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
+  const { names } = useZoneNames()
   const [busy, setBusy] = useState({})
   const [b16mBusy, setB16mBusy] = useState({})
   const [a6v3Busy, setA6v3Busy] = useState({})
@@ -119,7 +121,7 @@ export default function Dashboard() {
               <Card key={zone.id} accent={zone.on ? 'green' : undefined}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="font-headline font-bold text-sm text-[#1a1c1c]">{zone.name}</p>
+                    <p className="font-headline font-bold text-sm text-[#1a1c1c]">{names[zone.id] ?? zone.name}</p>
                     <p className="text-xs text-[#40493d]">{zone.state}</p>
                   </div>
                   <span className={`w-2.5 h-2.5 rounded-full mt-1 ${zone.on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
