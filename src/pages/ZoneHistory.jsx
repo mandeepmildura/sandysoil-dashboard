@@ -103,7 +103,7 @@ export default function ZoneHistory() {
           <button onClick={prevDay} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e]">
             <Icon name="chevron_left" />
           </button>
-          <label className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-sm cursor-pointer">
+          <label className="relative flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-sm cursor-pointer">
             <Icon name="calendar_month" className="text-sm text-[#17362e]" />
             <span className="text-xs font-bold text-[#17362e]">{fmtDateLabel(dateStr)}</span>
             <input
@@ -111,7 +111,7 @@ export default function ZoneHistory() {
               value={dateStr}
               max={toDateStr(new Date())}
               onChange={e => e.target.value && setDateStr(e.target.value)}
-              className="absolute opacity-0 w-0 h-0"
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
             />
           </label>
           <button onClick={nextDay} disabled={isToday}
