@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const ZONES = [1, 2, 3, 4, 5, 6, 7, 8]
-
 const TIME_LABELS = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '23:59']
 const SOURCE_COLORS = {
   manual:   { bar: 'from-[#17362e] to-[#2e4d44]', badge: 'bg-[#c7eade] text-[#17362e]' },
@@ -22,8 +21,8 @@ function toDateStr(d) {
 }
 
 function fmtDateLabel(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00')
-  const today = new Date(); today.setHours(0,0,0,0)
+  const d     = new Date(dateStr + 'T00:00:00')
+  const today = new Date(); today.setHours(0, 0, 0, 0)
   const yest  = new Date(today - 86400000)
   if (d.toDateString() === today.toDateString()) return 'Today'
   if (d.toDateString() === yest.toDateString())  return 'Yesterday'
@@ -35,6 +34,12 @@ function minutesFromMidnight(isoStr) {
   return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
 }
 
+function timeStrToMinutes(timeStr) {
+  // "HH:MM:SS" or "HH:MM"
+  const [h, m] = timeStr.split(':').map(Number)
+  return h * 60 + m
+}
+
 function fmtDur(min) {
   if (!min || min < 1) return '< 1 min'
   const m = Math.round(min)
@@ -44,51 +49,91 @@ function fmtDur(min) {
 }
 
 export default function ZoneHistory() {
-  const [dateStr,  setDateStr]  = useState(toDateStr(new Date()))
-  const dateInputRef = useRef(null)
-  const [history,  setHistory]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [selected, setSelected] = useState(null) // { zone_num, started_at, duration_min, source }
+  const [dateStr,    setDateStr]    = useState(toDateStr(new Date()))
+  const dateInputRef                = useRef(null)
+  const [history,    setHistory]    = useState([])
+  const [scheduled,  setScheduled]  = useState([]) // planned bars from group_schedules
+  const [loading,    setLoading]    = useState(true)
+  const [selected,   setSelected]   = useState(null)
 
   const load = useCallback(async (ds) => {
     setLoading(true)
     const dayStart = new Date(ds + 'T00:00:00').toISOString()
     const dayEnd   = new Date(ds + 'T23:59:59').toISOString()
+    const dow      = new Date(ds + 'T00:00:00').getDay() // 0=Sun…6=Sat
+
     try {
-      const { data, error } = await supabase
+      // Actual runs
+      const { data: runs } = await supabase
         .from('zone_history')
         .select('id, zone_num, started_at, ended_at, duration_min, source')
         .gte('started_at', dayStart)
         .lte('started_at', dayEnd)
         .order('started_at', { ascending: true })
-      if (!error && data) setHistory(data)
+      if (runs) setHistory(runs)
+
+      // Scheduled programs for this day of week
+      const { data: schedules } = await supabase
+        .from('group_schedules')
+        .select('group_id, label, start_time, days_of_week, enabled, zone_groups(name, run_mode)')
+      const { data: members } = await supabase
+        .from('zone_group_members')
+        .select('group_id, zone_num, duration_min, sort_order')
+        .order('sort_order')
+
+      if (schedules && members) {
+        const planned = []
+        schedules
+          .filter(s => s.enabled !== false && s.days_of_week?.includes(dow))
+          .forEach(s => {
+            const zoneMembers = members
+              .filter(m => m.group_id === s.group_id)
+              .sort((a, b) => a.sort_order - b.sort_order)
+            const runMode     = s.zone_groups?.run_mode ?? 'sequential'
+            const startMin    = timeStrToMinutes(s.start_time)
+            let offsetMin     = 0
+            zoneMembers.forEach(zm => {
+              planned.push({
+                id:         `sched-${s.group_id}-${zm.zone_num}`,
+                zone_num:   zm.zone_num,
+                start_min:  startMin + (runMode === 'sequential' ? offsetMin : 0),
+                duration_min: zm.duration_min,
+                label:      s.zone_groups?.name ?? s.label ?? 'Program',
+                start_time: s.start_time,
+              })
+              if (runMode === 'sequential') offsetMin += zm.duration_min
+            })
+          })
+        setScheduled(planned)
+      }
     } catch (e) { console.error(e) }
     setLoading(false)
   }, [])
 
   useEffect(() => { load(dateStr) }, [dateStr, load])
 
-  // Group history by zone
+  // Group by zone
   const byZone = {}
   ZONES.forEach(z => { byZone[z] = [] })
   history.forEach(h => { if (byZone[h.zone_num]) byZone[h.zone_num].push(h) })
+
+  const scheduledByZone = {}
+  ZONES.forEach(z => { scheduledByZone[z] = [] })
+  scheduled.forEach(s => { if (scheduledByZone[s.zone_num]) scheduledByZone[s.zone_num].push(s) })
 
   // Stats
   const totalMins   = history.filter(h => h.duration_min).reduce((s, h) => s + Number(h.duration_min), 0)
   const activeZones = new Set(history.map(h => h.zone_num)).size
   const runCount    = history.length
 
-  // Recent log entries (last 5, newest first)
   const recentLog = [...history].reverse().slice(0, 5)
 
   function prevDay() {
     const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() - 1); setDateStr(toDateStr(d))
   }
   function nextDay() {
-    const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + 1)
-    if (d <= new Date()) setDateStr(toDateStr(d))
+    const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + 1); setDateStr(toDateStr(d))
   }
-  const isToday = dateStr === toDateStr(new Date())
 
   return (
     <div className="flex-1 p-8 md:p-10 bg-[#f8faf9] overflow-auto">
@@ -99,7 +144,6 @@ export default function ZoneHistory() {
           <h1 className="text-4xl font-extrabold tracking-tight text-[#17362e]">Zone Activity History</h1>
           <p className="text-sm font-medium text-[#414845] mt-1">Irrigation run history across all zones.</p>
         </div>
-        {/* Date nav */}
         <div className="flex items-center gap-2 bg-[#f2f4f3] p-2 rounded-2xl">
           <button onClick={prevDay} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e]">
             <Icon name="chevron_left" />
@@ -118,10 +162,21 @@ export default function ZoneHistory() {
             onChange={e => e.target.value && setDateStr(e.target.value)}
             className="absolute opacity-0 pointer-events-none w-0 h-0"
           />
-          <button onClick={nextDay}
-            className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e]">
+          <button onClick={nextDay} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e]">
             <Icon name="chevron_right" />
           </button>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-5 mb-4 text-xs font-semibold text-[#717975]">
+        <div className="flex items-center gap-1.5">
+          <div className="w-4 h-3 rounded-full bg-gradient-to-r from-[#17362e] to-[#2e4d44]" />
+          Actual run
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-4 h-3 rounded-full border-2 border-dashed border-[#45655b] bg-[#45655b]/10" />
+          Scheduled
         </div>
       </div>
 
@@ -132,7 +187,7 @@ export default function ZoneHistory() {
         ) : (
           <div className="flex">
             {/* Zone labels */}
-            <div className="w-20 shrink-0 flex flex-col pt-8 pr-4 gap-0">
+            <div className="w-20 shrink-0 flex flex-col pt-8 pr-4">
               {ZONES.map(z => (
                 <div key={z} className="h-8 flex items-center mb-4">
                   <span className="text-xs font-bold text-[#17362e]">Zone {z}</span>
@@ -142,17 +197,31 @@ export default function ZoneHistory() {
 
             {/* Chart area */}
             <div className="flex-1 min-w-0">
-              {/* X-axis labels */}
               <div className="flex justify-between border-b border-[#c1c8c4]/30 pb-2 mb-2">
                 {TIME_LABELS.map(t => (
                   <span key={t} className="text-[10px] font-bold text-[#717975] uppercase tracking-widest">{t}</span>
                 ))}
               </div>
 
-              {/* Zone rows */}
               <div className="space-y-4">
                 {ZONES.map(z => (
                   <div key={z} className="h-8 w-full bg-[#eceeed]/50 rounded-full relative overflow-visible group">
+
+                    {/* Scheduled (planned) bars — dashed outline style */}
+                    {scheduledByZone[z].map(s => {
+                      const left  = Math.min((s.start_min / 1440) * 100, 99)
+                      const width = Math.max((s.duration_min / 1440) * 100, 0.5)
+                      return (
+                        <div
+                          key={s.id}
+                          className="absolute h-full rounded-full border-2 border-dashed border-[#45655b] bg-[#45655b]/10"
+                          style={{ left: `${left}%`, width: `${width}%` }}
+                          title={`Scheduled: ${s.label} — Zone ${z} ${fmtDur(s.duration_min)} @ ${s.start_time.slice(0,5)}`}
+                        />
+                      )
+                    })}
+
+                    {/* Actual run bars */}
                     {byZone[z].map(run => {
                       const startMin = minutesFromMidnight(run.started_at)
                       const durMin   = run.duration_min
@@ -160,20 +229,21 @@ export default function ZoneHistory() {
                         : run.ended_at
                           ? (new Date(run.ended_at) - new Date(run.started_at)) / 60000
                           : 30
-                      const left  = Math.min((startMin / 1440) * 100, 99)
-                      const width = Math.max((durMin / 1440) * 100, 0.5)
+                      const left   = Math.min((startMin / 1440) * 100, 99)
+                      const width  = Math.max((durMin / 1440) * 100, 0.5)
                       const colors = SOURCE_COLORS[(run.source ?? 'manual').toLowerCase()] ?? SOURCE_COLORS.manual
                       return (
                         <button
                           key={run.id}
-                          onClick={() => setSelected(run)}
+                          onClick={() => setSelected({ ...run, _type: 'run' })}
                           className={`absolute h-full rounded-full bg-gradient-to-r ${colors.bar} shadow-md hover:scale-y-125 hover:z-10 transition-transform`}
                           style={{ left: `${left}%`, width: `${width}%` }}
                           title={`Zone ${z}: ${fmtDur(durMin)}`}
                         />
                       )
                     })}
-                    {byZone[z].length === 0 && (
+
+                    {byZone[z].length === 0 && scheduledByZone[z].length === 0 && (
                       <div className="absolute inset-0 flex items-center pl-3">
                         <span className="text-[10px] text-[#c1c8c4] font-semibold">No runs</span>
                       </div>
@@ -198,7 +268,7 @@ export default function ZoneHistory() {
             </div>
           </div>
           <div className="space-y-1">
-            <span className="text-5xl font-extrabold tracking-tight text-[#17362e]">{fmtDur(totalMins)}</span>
+            <span className="text-5xl font-extrabold tracking-tight text-[#17362e]">{fmtDur(totalMins) || '—'}</span>
             <span className="text-sm font-bold text-[#717975] block">Total run time</span>
           </div>
           <div className="mt-8 pt-6 border-t border-[#e1e3e2]/50 space-y-2">
@@ -207,13 +277,17 @@ export default function ZoneHistory() {
               <span className="font-bold text-[#17362e]">{activeZones} / 8</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-[#717975] font-medium">Total runs</span>
+              <span className="text-[#717975] font-medium">Actual runs</span>
               <span className="font-bold text-[#17362e]">{runCount}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-[#717975] font-medium">Scheduled</span>
+              <span className="font-bold text-[#45655b]">{scheduled.length} zone slots</span>
             </div>
           </div>
         </div>
 
-        {/* System log */}
+        {/* Run log */}
         <div className="md:col-span-2 bg-[#f2f4f3] rounded-[2rem] p-8">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-lg font-bold text-[#17362e]">Run Log</h3>
@@ -222,10 +296,27 @@ export default function ZoneHistory() {
 
           {loading ? (
             <p className="text-sm text-[#717975]">Loading…</p>
-          ) : recentLog.length === 0 ? (
-            <p className="text-sm text-[#717975] text-center py-6">No runs recorded for this day.</p>
+          ) : recentLog.length === 0 && scheduled.length === 0 ? (
+            <p className="text-sm text-[#717975] text-center py-6">No runs or schedules for this day.</p>
           ) : (
             <div className="space-y-3">
+              {/* Scheduled entries */}
+              {scheduled.length > 0 && [...new Map(scheduled.map(s => [s.id.split('-')[1], s])).values()].map(s => (
+                <div key={s.id} className="w-full flex items-center justify-between p-4 bg-white/60 border-2 border-dashed border-[#45655b]/30 rounded-2xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-9 h-9 rounded-full border-2 border-dashed border-[#45655b] bg-[#45655b]/10 flex items-center justify-center">
+                      <Icon name="schedule" className="text-[#45655b] text-sm" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-[#17362e]">{s.label}</p>
+                      <p className="text-xs text-[#717975]">{s.start_time.slice(0, 5)} · scheduled</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#cfe6f2] text-[#4c616c]">PLANNED</span>
+                </div>
+              ))}
+
+              {/* Actual runs */}
               {recentLog.map(h => {
                 const src    = (h.source ?? 'manual').toLowerCase()
                 const colors = SOURCE_COLORS[src] ?? SOURCE_COLORS.manual
@@ -233,7 +324,7 @@ export default function ZoneHistory() {
                 return (
                   <button
                     key={h.id}
-                    onClick={() => setSelected(h)}
+                    onClick={() => setSelected({ ...h, _type: 'run' })}
                     className="w-full flex items-center justify-between p-4 bg-white rounded-2xl hover:bg-[#eceeed] transition-colors text-left"
                   >
                     <div className="flex items-center gap-4">
@@ -260,7 +351,7 @@ export default function ZoneHistory() {
         </div>
       </div>
 
-      {/* Run detail modal */}
+      {/* Detail modal */}
       {selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setSelected(null)}>
           <div className="bg-white rounded-3xl shadow-2xl p-7 w-full max-w-sm" onClick={e => e.stopPropagation()}>
