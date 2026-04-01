@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const ZONES = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -45,6 +45,7 @@ function fmtDur(min) {
 
 export default function ZoneHistory() {
   const [dateStr,  setDateStr]  = useState(toDateStr(new Date()))
+  const dateInputRef = useRef(null)
   const [history,  setHistory]  = useState([])
   const [loading,  setLoading]  = useState(true)
   const [selected, setSelected] = useState(null) // { zone_num, started_at, duration_min, source }
@@ -103,17 +104,21 @@ export default function ZoneHistory() {
           <button onClick={prevDay} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e]">
             <Icon name="chevron_left" />
           </button>
-          <label className="relative flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-sm cursor-pointer">
+          <button
+            onClick={() => dateInputRef.current?.showPicker()}
+            className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-sm cursor-pointer"
+          >
             <Icon name="calendar_month" className="text-sm text-[#17362e]" />
             <span className="text-xs font-bold text-[#17362e]">{fmtDateLabel(dateStr)}</span>
-            <input
-              type="date"
-              value={dateStr}
-              max={toDateStr(new Date())}
-              onChange={e => e.target.value && setDateStr(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-            />
-          </label>
+          </button>
+          <input
+            ref={dateInputRef}
+            type="date"
+            value={dateStr}
+            max={toDateStr(new Date())}
+            onChange={e => e.target.value && setDateStr(e.target.value)}
+            className="absolute opacity-0 pointer-events-none w-0 h-0"
+          />
           <button onClick={nextDay} disabled={isToday}
             className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white transition-colors text-[#17362e] disabled:opacity-30">
             <Icon name="chevron_right" />
