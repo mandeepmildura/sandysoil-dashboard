@@ -84,6 +84,15 @@ export function b16mOutputOff(outputNum) {
 
 // ── A6v3 commands ──────────────────────────────────────────────────────────
 
+export async function logA6v3Pressure(psi) {
+  try {
+    await supabase.from('pressure_log').insert({
+      ts: new Date().toISOString(),
+      a6v3_ch1_psi: parseFloat(psi.toFixed(2)),
+    })
+  } catch (e) { console.warn('a6v3 pressure log failed:', e) }
+}
+
 export function a6v3OutputOn(outputNum) {
   return mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
 }

@@ -7,6 +7,7 @@ import { useAlerts } from '../hooks/useAlerts'
 const nav = [
   { to: '/',         label: 'Dashboard',  icon: <GridIcon /> },
   { to: '/zones',    label: 'Zones',      icon: <DropIcon /> },
+  { to: '/a6v3',     label: 'A6v3',       icon: <RelayIcon /> },
   { to: '/history',  label: 'History',    icon: <HistoryIcon /> },
   { to: '/calendar', label: 'Schedule',   icon: <CalIcon /> },
   { to: '/programs', label: 'Programs',   icon: <ListIcon /> },
@@ -165,6 +166,16 @@ function HistoryIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
       <path d="M12 7v5l4 2"/>
+    </svg>
+  )
+}
+function RelayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="10" rx="2"/>
+      <circle cx="8" cy="12" r="1.5" fill="currentColor"/>
+      <circle cx="16" cy="12" r="1.5" fill="currentColor"/>
+      <path d="M8 12h8"/>
     </svg>
   )
 }
