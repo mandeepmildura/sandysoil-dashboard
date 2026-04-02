@@ -95,6 +95,7 @@ export default function A6v3Controller() {
   const [showGraph, setShowGraph] = useState(false)
   const [historyHours, setHistoryHours] = useState(6)
   const lastLogRef = useRef(0)
+  const outputsRef = useRef([])
 
   function startRelayEdit(n, currentName) {
     setRelayNameInput(currentName)
@@ -126,11 +127,15 @@ export default function A6v3Controller() {
     logA6v3Pressure(psi)
   }, [adcRaw])
 
-  // Adaptive polling: request fresh STATE every 10s when any relay is ON, 60s when all OFF
+  // Keep a ref to current outputs so the interval callback is never stale
+  outputsRef.current = a6v3Outputs
+
+  // Adaptive polling: echo relay states to SET topic → KCS firmware replies with fresh STATE
+  // 10s when any relay is ON, 60s when all OFF
   const anyRelayOn = a6v3Outputs.some(Boolean)
   useEffect(() => {
     const ms = anyRelayOn ? 10_000 : 60_000
-    const id = setInterval(() => requestA6v3State(), ms)
+    const id = setInterval(() => requestA6v3State(outputsRef.current), ms)
     return () => clearInterval(id)
   }, [anyRelayOn])
 

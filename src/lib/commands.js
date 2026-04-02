@@ -101,7 +101,16 @@ export function a6v3OutputOff(outputNum) {
   return mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
 }
 
-export function requestA6v3State() {
+// Echo current relay outputs back to the device — KCS firmware responds to any
+// valid SET command with a fresh STATE message. Pass current outputs[] to avoid
+// accidentally changing any relay state.
+export function requestA6v3State(currentOutputs) {
+  if (currentOutputs?.length) {
+    const payload = {}
+    currentOutputs.forEach((val, i) => { payload[`output${i + 1}`] = { value: !!val } })
+    return mqttPublish(A6V3_SET_TOPIC, payload)
+  }
+  // Fallback if outputs not yet known
   return mqttPublish(A6V3_SET_TOPIC, { get: 'STATE' })
 }
 
