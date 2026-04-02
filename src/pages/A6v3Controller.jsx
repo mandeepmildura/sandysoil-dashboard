@@ -4,7 +4,7 @@ import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useA6v3PressureHistory } from '../hooks/useA6v3PressureHistory'
 import { useZoneNames } from '../hooks/useZoneNames'
-import { a6v3OutputOn, a6v3OutputOff, logA6v3Pressure } from '../lib/commands'
+import { a6v3OutputOn, a6v3OutputOff, logA6v3Pressure, requestA6v3State } from '../lib/commands'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
@@ -125,6 +125,14 @@ export default function A6v3Controller() {
     lastLogRef.current = now
     logA6v3Pressure(psi)
   }, [adcRaw])
+
+  // Adaptive polling: request fresh STATE every 10s when any relay is ON, 60s when all OFF
+  const anyRelayOn = a6v3Outputs.some(Boolean)
+  useEffect(() => {
+    const ms = anyRelayOn ? 10_000 : 60_000
+    const id = setInterval(() => requestA6v3State(), ms)
+    return () => clearInterval(id)
+  }, [anyRelayOn])
 
   // Reload history when graph opens or time range changes
   useEffect(() => {

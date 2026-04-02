@@ -101,6 +101,10 @@ export function a6v3OutputOff(outputNum) {
   return mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
 }
 
+export function requestA6v3State() {
+  return mqttPublish(A6V3_SET_TOPIC, { get: 'STATE' })
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 export function durationToMinutes(label) {
