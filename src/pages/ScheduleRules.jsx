@@ -29,7 +29,7 @@ export default function ScheduleRules() {
       await supabase
         .from('group_schedules')
         .update({ enabled: !r.enabled })
-        .eq('group_id', r.group_id)
+        .eq('id', r.id)
       setSaveMsg({ ok: true, text: `Schedule ${!r.enabled ? 'enabled' : 'paused'}.` })
       setTimeout(() => setSaveMsg(null), 2500)
     } catch (e) {
