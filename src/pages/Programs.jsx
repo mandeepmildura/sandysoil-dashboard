@@ -1,16 +1,14 @@
-import { useState } from 'react'
-import StatusChip from '../components/StatusChip'
+import { useState, useRef } from 'react'
 import { usePrograms } from '../hooks/usePrograms'
 import { useZoneNames } from '../hooks/useZoneNames'
 import { supabase } from '../lib/supabase'
-import { zoneOn } from '../lib/commands'
+import { zoneOn, a6v3ZoneOn, a6v3OutputOn, a6v3OutputOff, zoneOff } from '../lib/commands'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 function fmtDays(days) {
   if (!days?.length) return 'No days'
-  const names = days.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d] ?? d)
-  return names.join(', ')
+  return days.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d] ?? d).join(', ')
 }
 
 function fmtTime(t) {
@@ -18,102 +16,424 @@ function fmtTime(t) {
   return t.slice(0, 5)
 }
 
-// Convert days_of_week array (0=Sun…6=Sat) back to boolean[7] (index 0=Mon…6=Sun)
+function fmtDelay(min) {
+  if (!min) return '0 min'
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  if (h > 0 && m > 0) return `${h}h ${m}min`
+  if (h > 0) return `${h}h`
+  return `${m}min`
+}
+
 function dowToBools(dow) {
   const bools = [false,false,false,false,false,false,false]
   if (!dow) return bools
-  dow.forEach(d => {
-    const idx = d === 0 ? 6 : d - 1  // 0(Sun)→6, 1(Mon)→0, …
-    bools[idx] = true
-  })
+  dow.forEach(d => { bools[d === 0 ? 6 : d - 1] = true })
   return bools
 }
 
-function ProgramModal({ program, onClose, onSaved }) {
-  const isEdit = !!program
-
-  const [name, setName]       = useState(isEdit ? program.name : '')
-  const [runMode, setRunMode] = useState(isEdit ? program.run_mode : 'sequential')
-  const [zones, setZones]     = useState(
-    isEdit
-      ? program.zones.map(z => ({ num: z.zone_num, duration: z.duration_min, device: z.device ?? 'irrigation1' }))
-      : [{ num: 1, duration: 30, device: 'irrigation1' }]
+// ── Inline toggle ─────────────────────────────────────────────────────────────
+function Toggle({ on, onChange }) {
+  return (
+    <button type="button" onClick={e => { e.stopPropagation(); onChange(!on) }}
+      className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${on ? 'bg-[#0d631b]' : 'bg-[#c9c9c9]'}`}>
+      <span className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[22px]' : 'translate-x-[3px]'}`} />
+    </button>
   )
+}
+
+// ── Step icon ─────────────────────────────────────────────────────────────────
+function StepIcon({ stepType }) {
+  if (stepType === 'delay') {
+    return (
+      <div className="w-9 h-9 rounded-lg bg-[#fff3e0] flex items-center justify-center shrink-0">
+        <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#e65100]" fill="none" stroke="currentColor" strokeWidth={2}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 3" strokeLinecap="round" />
+        </svg>
+      </div>
+    )
+  }
+  return (
+    <div className="w-9 h-9 rounded-lg bg-[#f3f3f3] flex items-center justify-center shrink-0">
+      <div className="w-5 h-5 rounded bg-[#d0d0d0]" />
+    </div>
+  )
+}
+
+// ── Schedule trigger icon ─────────────────────────────────────────────────────
+function ClockIcon() {
+  return (
+    <div className="w-9 h-9 rounded-full bg-[#1976d2] flex items-center justify-center shrink-0">
+      <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2.2}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 3" strokeLinecap="round" />
+      </svg>
+    </div>
+  )
+}
+
+// ── Add Step Modal ────────────────────────────────────────────────────────────
+function AddStepModal({ groupId, nextSortOrder, onClose, onSaved }) {
+  const [stepKind, setStepKind]   = useState('device')  // 'device' | 'delay'
+  const [device, setDevice]       = useState('irrigation1')
+  const [zoneNum, setZoneNum]     = useState(1)
+  const [action, setAction]       = useState('on')
+  const [durationMin, setDurationMin] = useState(30)
+  const [delayHours, setDelayHours]   = useState(2)
+  const [delayMins, setDelayMins]     = useState(0)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState(null)
 
   const { names: irrNames } = useZoneNames('irrigation1')
   const { names: a6v3Names } = useZoneNames('a6v3')
+
+  const slotMax = device === 'a6v3' ? 6 : 8
+  const names   = device === 'a6v3' ? a6v3Names : irrNames
+  const slotLbl = device === 'a6v3' ? 'Relay' : 'Zone'
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    try {
+      let row
+      if (stepKind === 'delay') {
+        row = {
+          group_id:   groupId,
+          step_type:  'delay',
+          zone_num:   0,
+          duration_min: null,
+          delay_min:  delayHours * 60 + delayMins,
+          device:     'irrigation1',
+          sort_order: nextSortOrder,
+        }
+      } else {
+        row = {
+          group_id:    groupId,
+          step_type:   action,
+          zone_num:    zoneNum,
+          duration_min: action === 'on' ? durationMin : null,
+          delay_min:   null,
+          device,
+          sort_order:  nextSortOrder,
+        }
+      }
+      const { error: e } = await supabase.from('zone_group_members').insert(row)
+      if (e) throw e
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err.message ?? 'Save failed')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 w-full sm:max-w-sm">
+        <h3 className="font-headline font-bold text-base text-[#1a1c1c] mb-4">Add Step</h3>
+
+        {/* Step type */}
+        <div className="flex gap-2 mb-4">
+          {[{id:'device', label:'Device Action'}, {id:'delay', label:'Delay'}].map(k => (
+            <button key={k.id} type="button" onClick={() => setStepKind(k.id)}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${stepKind === k.id ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+              {k.label}
+            </button>
+          ))}
+        </div>
+
+        {stepKind === 'device' ? (
+          <div className="space-y-3">
+            {/* Device */}
+            <div>
+              <label className="text-xs text-[#40493d] block mb-1.5">Device</label>
+              <div className="flex gap-2">
+                {[{id:'irrigation1',label:'Irrigation (8-Zone)'},{id:'a6v3',label:'A6v3 Relays'}].map(d => (
+                  <button key={d.id} type="button" onClick={() => { setDevice(d.id); setZoneNum(1) }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${device === d.id ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Zone / Relay */}
+            <div>
+              <label className="text-xs text-[#40493d] block mb-1.5">{slotLbl}</label>
+              <select value={zoneNum} onChange={e => setZoneNum(Number(e.target.value))}
+                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
+                {Array.from({ length: slotMax }, (_, n) => n + 1).map(n => (
+                  <option key={n} value={n}>{names[n] ?? `${slotLbl} ${n}`}</option>
+                ))}
+              </select>
+            </div>
+            {/* Action */}
+            <div>
+              <label className="text-xs text-[#40493d] block mb-1.5">Action</label>
+              <div className="flex gap-2">
+                {['on', 'off'].map(a => (
+                  <button key={a} type="button" onClick={() => setAction(a)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${action === a ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Duration (only for 'on') */}
+            {action === 'on' && (
+              <div>
+                <label className="text-xs text-[#40493d] block mb-1.5">Duration (min)</label>
+                <input type="number" min={1} max={480} value={durationMin}
+                  onChange={e => setDurationMin(Number(e.target.value))}
+                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <label className="text-xs text-[#40493d] block mb-1.5">Delay duration</label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <input type="number" min={0} max={23} value={delayHours}
+                  onChange={e => setDelayHours(Number(e.target.value))}
+                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none text-center" />
+                <p className="text-[10px] text-[#40493d] text-center mt-1">hours</p>
+              </div>
+              <div className="flex-1">
+                <input type="number" min={0} max={59} value={delayMins}
+                  onChange={e => setDelayMins(Number(e.target.value))}
+                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none text-center" />
+                <p className="text-[10px] text-[#40493d] text-center mt-1">minutes</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && <p className="text-xs text-[#ba1a1a] mt-3">{error}</p>}
+
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d]">
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-[#0d631b] text-white text-sm font-semibold disabled:opacity-50">
+            {saving ? 'Adding…' : 'Add Step'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── IF/THEN Detail Panel ──────────────────────────────────────────────────────
+function AutomationDetail({ program, onReload, onEdit }) {
+  const [addingStep, setAddingStep] = useState(false)
+  const steps = [...(program.zones ?? [])].sort((a, b) => a.sort_order - b.sort_order)
+  const sched = program.schedule
+
+  async function removeStep(memberId) {
+    await supabase.from('zone_group_members').delete().eq('id', memberId)
+    onReload()
+  }
+
+  async function toggleSchedule(enabled) {
+    if (!sched?.id) return
+    await supabase.from('group_schedules').update({ enabled }).eq('id', sched.id)
+    onReload()
+  }
+
+  const deviceLabel = d => d === 'a6v3' ? 'A6v3 Relays' : 'Irrigation (8-Zone)'
+
+  return (
+    <div className="px-4 pb-4 space-y-4">
+      {/* IF */}
+      <div className="bg-[#f9f9f9] rounded-xl p-3">
+        <p className="font-headline font-bold text-sm text-[#1a1c1c] mb-2">If</p>
+        {sched ? (
+          <div className="flex items-center gap-3">
+            <ClockIcon />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm text-[#1a1c1c]">Schedule: {fmtTime(sched.start_time)}</p>
+              <p className="text-xs text-[#40493d] truncate">{fmtDays(sched.days_of_week)}</p>
+            </div>
+            <Toggle on={sched.enabled !== false} onChange={v => toggleSchedule(v)} />
+          </div>
+        ) : (
+          <p className="text-xs text-[#40493d]">No trigger set — edit to add a schedule.</p>
+        )}
+      </div>
+
+      {/* THEN */}
+      <div className="bg-[#f9f9f9] rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="font-headline font-bold text-sm text-[#1a1c1c]">Then</p>
+          <button onClick={() => setAddingStep(true)}
+            className="w-7 h-7 rounded-full bg-[#0d631b] text-white text-lg leading-none flex items-center justify-center hover:opacity-90">
+            +
+          </button>
+        </div>
+
+        {steps.length === 0 && (
+          <p className="text-xs text-[#40493d] py-2">No steps yet — tap + to add one.</p>
+        )}
+
+        <div className="space-y-1">
+          {steps.map((step, i) => {
+            const type = step.step_type ?? 'on'
+            return (
+              <div key={step.id ?? i} className="flex items-center gap-3 py-2 border-b border-[#efefef] last:border-0">
+                <StepIcon stepType={type} />
+                <div className="flex-1 min-w-0">
+                  {type === 'delay' ? (
+                    <>
+                      <p className="font-semibold text-sm text-[#1a1c1c]">Delay the action</p>
+                      <p className="text-xs text-[#40493d]">{fmtDelay(step.delay_min)}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold text-sm text-[#1a1c1c]">
+                        {step.device === 'a6v3' ? `Relay ${step.zone_num}` : `Zone ${step.zone_num}`} : {type}
+                      </p>
+                      <p className="text-xs text-[#40493d]">
+                        {deviceLabel(step.device)}
+                        {type === 'on' && step.duration_min ? ` · ${step.duration_min} min` : ''}
+                      </p>
+                    </>
+                  )}
+                </div>
+                <button onClick={() => removeStep(step.id)}
+                  className="text-[#ba1a1a] text-xs font-semibold hover:opacity-70 transition-opacity shrink-0 px-1">
+                  ✕
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button onClick={onEdit}
+          className="flex-1 py-2 rounded-xl bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold hover:bg-[#d5d5d5]">
+          Edit Automation
+        </button>
+        <RunNowButton program={program} />
+      </div>
+
+      {addingStep && (
+        <AddStepModal
+          groupId={program.id}
+          nextSortOrder={steps.length}
+          onClose={() => setAddingStep(false)}
+          onSaved={() => { setAddingStep(false); onReload() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Run Now Button (queues all steps for immediate execution) ─────────────────
+function RunNowButton({ program }) {
+  const [running, setRunning] = useState(false)
+
+  async function run() {
+    if (!program.zones?.length) return
+    setRunning(true)
+    try {
+      const steps = [...program.zones].sort((a, b) => a.sort_order - b.sort_order)
+      const now = Date.now()
+      let cursorMs = now
+      const queueRows = []
+
+      for (const step of steps) {
+        const type = step.step_type ?? 'on'
+        if (type === 'delay') {
+          cursorMs += (step.delay_min ?? 0) * 60_000
+          continue
+        }
+        queueRows.push({
+          group_id:    program.id,
+          step_type:   type,
+          device:      step.device ?? 'irrigation1',
+          zone_num:    step.zone_num,
+          duration_min: step.duration_min,
+          fire_at:     new Date(cursorMs).toISOString(),
+        })
+        if (type === 'on' && (step.device ?? 'irrigation1') === 'irrigation1' && program.run_mode === 'sequential') {
+          cursorMs += (step.duration_min ?? 0) * 60_000
+        }
+      }
+
+      if (queueRows.length > 0) {
+        const { error } = await supabase.from('program_queue').insert(queueRows)
+        if (error) throw error
+      }
+    } catch (e) {
+      alert(`Failed to queue program: ${e.message}`)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <button onClick={run} disabled={running}
+      className="flex-1 py-2 rounded-xl gradient-primary text-white text-xs font-semibold disabled:opacity-50 hover:opacity-90">
+      {running ? 'Queuing…' : 'Run Now'}
+    </button>
+  )
+}
+
+// ── New / Edit Automation Modal ───────────────────────────────────────────────
+function AutomationModal({ program, onClose, onSaved }) {
+  const isEdit = !!program
+
+  const [name, setName]           = useState(isEdit ? program.name : '')
+  const [runMode, setRunMode]     = useState(isEdit ? program.run_mode : 'sequential')
   const [hasSchedule, setHasSchedule] = useState(isEdit ? !!program.schedule : false)
-  const [days, setDays]               = useState(isEdit && program.schedule ? dowToBools(program.schedule.days_of_week) : [false,false,false,false,false,false,false])
-  const [startTime, setStartTime]     = useState(isEdit && program.schedule ? fmtTime(program.schedule.start_time) : '06:00')
-  const [saving, setSaving]           = useState(false)
-  const [error, setError]             = useState(null)
-
-  function addZone() {
-    setZones(z => [...z, { num: 1, duration: 30, device: 'irrigation1' }])
-  }
-
-  function removeZone(i) {
-    setZones(z => z.filter((_, j) => j !== i))
-  }
-
-  function updateZone(i, field, value) {
-    setZones(z => z.map((zone, j) => j === i ? { ...zone, [field]: value } : zone))
-  }
+  const [days, setDays]           = useState(isEdit && program.schedule ? dowToBools(program.schedule.days_of_week) : [false,false,false,false,false,false,false])
+  const [startTime, setStartTime] = useState(isEdit && program.schedule ? fmtTime(program.schedule.start_time) : '06:00')
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState(null)
 
   function toggleDay(i) {
     setDays(prev => prev.map((v, j) => j === i ? !v : v))
   }
 
   async function save() {
-    if (!name.trim())           { setError('Enter a program name'); return }
-    if (zones.length === 0)     { setError('Add at least one zone'); return }
-    if (hasSchedule && !days.some(Boolean)) { setError('Select at least one day for the schedule'); return }
+    if (!name.trim()) { setError('Enter an automation name'); return }
+    if (hasSchedule && !days.some(Boolean)) { setError('Select at least one day'); return }
     setSaving(true)
     setError(null)
-
     try {
-      let groupId
       const { data: { user } } = await supabase.auth.getUser()
+      let groupId
 
       if (isEdit) {
-        // Update zone_group
         const { error: e1 } = await supabase.from('zone_groups')
           .update({ name: name.trim(), run_mode: runMode }).eq('id', program.id)
         if (e1) throw e1
         groupId = program.id
-
-        // Replace zone members
-        await supabase.from('zone_group_members').delete().eq('group_id', groupId)
       } else {
-        // Create zone_group — device_id is optional after migration
         const { data: group, error: e1 } = await supabase.from('zone_groups')
-          .insert({ name: name.trim(), run_mode: runMode, owner_id: user?.id, customer_id: user?.id }).select('id').single()
+          .insert({ name: name.trim(), run_mode: runMode, owner_id: user?.id, customer_id: user?.id })
+          .select('id').single()
         if (e1) throw e1
         groupId = group.id
       }
 
-      // Insert zone members
-      const { error: e2 } = await supabase.from('zone_group_members').insert(
-        zones.map((z, i) => ({ group_id: groupId, zone_num: z.num, duration_min: z.duration, sort_order: i, device: z.device ?? 'irrigation1' }))
-      )
-      if (e2) throw e2
-
-      // Handle schedule
       if (hasSchedule) {
         const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
         const schedData = { group_id: groupId, label: name.trim(), days_of_week: dow, start_time: startTime, enabled: true, customer_id: user?.id }
-
-        if (isEdit && program.schedule) {
-          const { error: e3 } = await supabase.from('group_schedules').update(schedData).eq('group_id', groupId)
+        if (isEdit && program.schedule?.id) {
+          const { error: e3 } = await supabase.from('group_schedules').update(schedData).eq('id', program.schedule.id)
           if (e3) throw e3
         } else {
-          // Remove any existing schedule first (avoid duplicate)
           await supabase.from('group_schedules').delete().eq('group_id', groupId)
           const { error: e3 } = await supabase.from('group_schedules').insert(schedData)
           if (e3) throw e3
         }
       } else if (isEdit && program.schedule) {
-        // Remove schedule if user cleared it
         await supabase.from('group_schedules').delete().eq('group_id', groupId)
       }
 
@@ -126,14 +446,13 @@ function ProgramModal({ program, onClose, onSaved }) {
     }
   }
 
-  async function deleteProgram() {
+  async function deleteAutomation() {
     if (!window.confirm(`Delete "${program.name}"?`)) return
     setSaving(true)
     try {
       await supabase.from('group_schedules').delete().eq('group_id', program.id)
       await supabase.from('zone_group_members').delete().eq('group_id', program.id)
-      const { error } = await supabase.from('zone_groups').delete().eq('id', program.id)
-      if (error) throw error
+      await supabase.from('zone_groups').delete().eq('id', program.id)
       onSaved()
       onClose()
     } catch (err) {
@@ -143,126 +462,70 @@ function ProgramModal({ program, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md my-4">
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 w-full sm:max-w-md">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-headline font-bold text-lg text-[#1a1c1c]">{isEdit ? 'Edit Program' : 'New Program'}</h2>
+          <h2 className="font-headline font-bold text-lg text-[#1a1c1c]">{isEdit ? 'Edit Automation' : 'New Automation'}</h2>
           {isEdit && (
-            <button onClick={deleteProgram} disabled={saving}
-              className="text-xs text-[#ba1a1a] font-semibold hover:underline disabled:opacity-50">
-              Delete
-            </button>
+            <button onClick={deleteAutomation} disabled={saving}
+              className="text-xs text-[#ba1a1a] font-semibold hover:underline disabled:opacity-50">Delete</button>
           )}
         </div>
 
         <div className="space-y-4">
-          {/* Name */}
           <div>
-            <label className="text-xs font-body text-[#40493d] block mb-1">Program Name</label>
+            <label className="text-xs font-body text-[#40493d] block mb-1">Name</label>
             <input value={name} onChange={e => setName(e.target.value)}
-              placeholder="e.g. Morning Block"
-              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
+              placeholder="e.g. Avocado 2 Hours"
+              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
           </div>
 
-          {/* Run mode */}
           <div>
             <label className="text-xs font-body text-[#40493d] block mb-2">Run Mode</label>
             <div className="flex gap-2">
               {['sequential', 'parallel'].map(m => (
                 <button key={m} type="button" onClick={() => setRunMode(m)}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${
-                    runMode === m ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'
-                  }`}>{m}</button>
+                  className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize ${runMode === m ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>{m}</button>
               ))}
             </div>
           </div>
 
-          {/* Zones / Relays */}
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-2">Zones / Relays</label>
-            <div className="space-y-2">
-              {zones.map((z, i) => {
-                const isA6v3   = z.device === 'a6v3'
-                const slotMax  = isA6v3 ? 6 : 8
-                const names    = isA6v3 ? a6v3Names : irrNames
-                const slotLbl  = isA6v3 ? 'Relay' : 'Zone'
-                return (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-xs text-[#40493d] w-4 shrink-0">{i + 1}.</span>
-                    {/* Device toggle */}
-                    <div className="flex rounded overflow-hidden border border-[#e2e2e2] shrink-0">
-                      <button type="button"
-                        onClick={() => { updateZone(i, 'device', 'irrigation1'); updateZone(i, 'num', 1) }}
-                        className={`px-1.5 py-1 text-[9px] font-semibold transition-colors ${!isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d]'}`}>
-                        Irr
-                      </button>
-                      <button type="button"
-                        onClick={() => { updateZone(i, 'device', 'a6v3'); updateZone(i, 'num', 1) }}
-                        className={`px-1.5 py-1 text-[9px] font-semibold border-l border-[#e2e2e2] transition-colors ${isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d]'}`}>
-                        A6v3
-                      </button>
-                    </div>
-                    <select value={z.num} onChange={e => updateZone(i, 'num', Number(e.target.value))}
-                      className="flex-1 bg-[#f3f3f3] rounded-lg px-2 py-2 text-sm font-body text-[#1a1c1c] outline-none">
-                      {Array.from({ length: slotMax }, (_, n) => n + 1).map(n => (
-                        <option key={n} value={n}>{names[n] ?? `${slotLbl} ${n}`}</option>
-                      ))}
-                    </select>
-                    <input type="number" min={1} max={240} value={z.duration}
-                      onChange={e => updateZone(i, 'duration', Number(e.target.value))}
-                      className="w-16 bg-[#f3f3f3] rounded-lg px-2 py-2 text-sm font-body text-[#1a1c1c] outline-none text-center" />
-                    <span className="text-xs text-[#40493d]">min</span>
-                    {zones.length > 1 && (
-                      <button onClick={() => removeZone(i)}
-                        className="text-[#ba1a1a] text-xs font-semibold hover:opacity-70 transition-opacity">✕</button>
-                    )}
-                  </div>
-                )
-              })}
+          {/* Schedule trigger (IF) */}
+          <div className="border-t border-[#f3f3f3] pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-[#1a1c1c]">Schedule Trigger</span>
+              <Toggle on={hasSchedule} onChange={setHasSchedule} />
             </div>
-            <button onClick={addZone}
-              className="mt-2 text-xs text-[#00639a] font-semibold hover:underline">+ Add Zone / Relay</button>
-          </div>
 
-          {/* Schedule toggle */}
-          <div className="flex items-center justify-between py-2 border-t border-[#f3f3f3]">
-            <span className="text-sm font-body font-semibold text-[#1a1c1c]">Set Schedule</span>
-            <button type="button" onClick={() => setHasSchedule(v => !v)}
-              className={`relative w-9 h-5 rounded-full transition-colors ${hasSchedule ? 'bg-[#0d631b]' : 'bg-[#e2e2e2]'}`}>
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${hasSchedule ? 'translate-x-4' : 'translate-x-0.5'}`} />
-            </button>
-          </div>
-
-          {hasSchedule && (
-            <>
-              <div>
-                <label className="text-xs font-body text-[#40493d] block mb-2">Days</label>
-                <div className="flex gap-1.5">
-                  {DAY_LABELS.map((d, i) => (
-                    <button key={i} type="button" onClick={() => toggleDay(i)}
-                      className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${
-                        days[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'
-                      }`}>{d[0]}</button>
-                  ))}
+            {hasSchedule && (
+              <div className="space-y-3 mt-3">
+                <div>
+                  <label className="text-xs text-[#40493d] block mb-2">Days</label>
+                  <div className="flex gap-1.5">
+                    {DAY_LABELS.map((d, i) => (
+                      <button key={i} type="button" onClick={() => toggleDay(i)}
+                        className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${days[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                        {d[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-[#40493d] block mb-1">Start Time</label>
+                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
+                    className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
                 </div>
               </div>
-              <div>
-                <label className="text-xs font-body text-[#40493d] block mb-1">Start Time</label>
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
-              </div>
-            </>
-          )}
+            )}
+          </div>
 
           {error && <p className="text-xs text-[#ba1a1a]">{error}</p>}
 
           <div className="flex gap-3 pt-1">
             <button onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d] hover:bg-[#e8e8e8] transition-colors">
-              Cancel
-            </button>
+              className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d]">Cancel</button>
             <button onClick={save} disabled={saving}
-              className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity">
+              className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-50">
               {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create')}
             </button>
           </div>
@@ -272,228 +535,104 @@ function ProgramModal({ program, onClose, onSaved }) {
   )
 }
 
-async function runProgramNow(program) {
-  if (!program.zones?.length) return
-  const zones   = program.zones
-  const runMode = program.run_mode ?? 'sequential'
-  const now     = new Date()
+// ── Automation card (Tuya-style) ──────────────────────────────────────────────
+function AutomationCard({ program, expanded, onToggleExpand, onReload, onEdit }) {
+  const steps   = program.zones ?? []
+  const sched   = program.schedule
+  const enabled = sched?.enabled !== false
 
-  try {
-    if (runMode === 'parallel') {
-      await Promise.all(zones.map(z => zoneOn(z.zone_num, z.duration_min, 'program')))
-    } else {
-      // Fire zone 1 immediately
-      await zoneOn(zones[0].zone_num, zones[0].duration_min, 'program')
-      // Queue the rest via program_queue so schedule-runner fires them in order
-      if (zones.length > 1) {
-        let offsetMs = zones[0].duration_min * 60 * 1000
-        const { data: device } = await supabase
-          .from('devices')
-          .select('id')
-          .eq('mqtt_topic_base', 'farm/irrigation1')
-          .single()
-        const rows = zones.slice(1).map(z => {
-          const fireAt = new Date(now.getTime() + offsetMs)
-          offsetMs += z.duration_min * 60 * 1000
-          return { group_id: program.id, device_id: device?.id, zone_num: z.zone_num, duration_min: z.duration_min, fire_at: fireAt.toISOString() }
-        })
-        await supabase.from('program_queue').insert(rows)
-      }
-    }
-  } catch (e) {
-    alert(`Failed to start program: ${e.message}`)
+  const devices = [...new Set(steps.filter(s => s.step_type !== 'delay').map(s => s.device ?? 'irrigation1'))]
+
+  async function handleToggle(val) {
+    if (!sched?.id) return
+    await supabase.from('group_schedules').update({ enabled: val }).eq('id', sched.id)
+    onReload()
   }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-card overflow-hidden">
+      {/* Card header */}
+      <button className="w-full text-left px-4 pt-4 pb-3" onClick={onToggleExpand}>
+        <div className="flex items-center gap-2 mb-2">
+          <ClockIcon />
+          <span className="text-[#40493d] text-sm">→</span>
+          {devices.map(d => (
+            <div key={d} className="w-8 h-8 rounded-lg bg-[#f3f3f3] flex items-center justify-center">
+              <div className="w-4 h-4 rounded bg-[#c0c0c0]" />
+            </div>
+          ))}
+          <div className="flex-1" />
+          <svg viewBox="0 0 20 20" className={`w-4 h-4 text-[#9a9a9a] transition-transform ${expanded ? 'rotate-90' : ''}`} fill="currentColor">
+            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" />
+          </svg>
+        </div>
+        <p className="font-headline font-bold text-[15px] text-[#1a1c1c] leading-tight">{program.name}</p>
+        <div className="flex items-center justify-between mt-1.5">
+          <p className="text-xs text-[#40493d]">
+            {steps.length} task{steps.length !== 1 ? 's' : ''}
+            {sched ? ` · ${fmtTime(sched.start_time)} ${fmtDays(sched.days_of_week).slice(0,30)}` : ''}
+          </p>
+          <Toggle on={enabled} onChange={handleToggle} />
+        </div>
+      </button>
+
+      {/* Expanded IF/THEN */}
+      {expanded && (
+        <div className="border-t border-[#f3f3f3]">
+          <AutomationDetail program={program} onReload={onReload} onEdit={onEdit} />
+        </div>
+      )}
+    </div>
+  )
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function Programs() {
   const { programs, loading, reload } = usePrograms()
   const [expanded, setExpanded] = useState(null)
-  const [filter, setFilter]     = useState('All')
-  const [modal, setModal]       = useState(null) // null | 'new' | program object
-  const [runningId, setRunningId] = useState(null)
-  const filters = ['All', 'Active', 'Paused']
-
-  const filtered = programs.filter(p => {
-    if (filter === 'All')    return true
-    if (filter === 'Active') return p.schedule?.enabled !== false
-    if (filter === 'Paused') return p.schedule?.enabled === false
-    return true
-  })
+  const [modal, setModal]       = useState(null)  // null | 'new' | program object
 
   return (
     <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Programs</h1>
-        <button
-          onClick={() => setModal('new')}
-          className="gradient-primary text-white font-body font-semibold text-sm px-5 py-2.5 rounded-xl shadow-fab hover:opacity-90 transition-opacity"
-        >
-          + New Program
+        <div>
+          <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Automations</h1>
+          <p className="text-xs text-[#40493d] mt-0.5">
+            {programs.length} automation{programs.length !== 1 ? 's' : ''} · {programs.filter(p => p.schedule?.enabled !== false && p.schedule).length} active
+          </p>
+        </div>
+        <button onClick={() => setModal('new')}
+          className="gradient-primary text-white font-body font-semibold text-sm px-4 py-2.5 rounded-xl shadow-fab hover:opacity-90 transition-opacity">
+          + New
         </button>
       </div>
 
-      {/* Filter */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <input placeholder="Search programs…" className="bg-[#ffffff] rounded-xl px-4 py-2 text-sm font-body text-[#1a1c1c] shadow-card outline-none flex-1 min-w-0" />
-        <div className="flex gap-1.5">
-          {filters.map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-body font-medium transition-colors ${
-                filter === f ? 'bg-[#0d631b] text-white' : 'bg-[#ffffff] text-[#40493d] shadow-card hover:bg-[#f3f3f3]'
-              }`}
-            >{f}</button>
-          ))}
+      {loading && <p className="text-sm text-[#40493d]">Loading automations…</p>}
+
+      {!loading && programs.length === 0 && (
+        <div className="text-center py-16">
+          <p className="text-[#40493d] text-sm mb-2">No automations yet.</p>
+          <button onClick={() => setModal('new')} className="text-[#0d631b] text-sm font-semibold hover:underline">
+            Create your first automation
+          </button>
         </div>
+      )}
+
+      <div className="space-y-3 max-w-lg">
+        {programs.map(p => (
+          <AutomationCard
+            key={p.id}
+            program={p}
+            expanded={expanded === p.id}
+            onToggleExpand={() => setExpanded(expanded === p.id ? null : p.id)}
+            onReload={reload}
+            onEdit={() => setModal(p)}
+          />
+        ))}
       </div>
 
-      {loading && <p className="text-sm text-[#40493d]">Loading programs…</p>}
-
-      {/* Mobile card list */}
-      {!loading && (
-        <div className="md:hidden space-y-3 mb-4">
-          {filtered.length === 0 && (
-            <p className="text-center text-sm text-[#40493d] py-8">No programs found.</p>
-          )}
-          {filtered.map(p => {
-            const active = p.schedule?.enabled !== false
-            const sched  = p.schedule
-            const isOpen = expanded === p.id
-            return (
-              <div key={p.id} className="bg-[#ffffff] rounded-xl shadow-card overflow-hidden">
-                <button
-                  className="w-full text-left px-4 py-3 flex items-center justify-between"
-                  onClick={() => setExpanded(isOpen ? null : p.id)}
-                >
-                  <div>
-                    <p className="font-semibold text-sm text-[#1a1c1c]">{p.name}</p>
-                    <p className="text-xs text-[#40493d] mt-0.5">
-                      {sched ? `${fmtTime(sched.start_time)} · ${fmtDays(sched.days_of_week)}` : 'No schedule'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StatusChip status={active ? 'online' : 'paused'} label={active ? 'ACTIVE' : 'PAUSED'} />
-                    <span className="text-[#40493d] text-xs">{isOpen ? '▲' : '▼'}</span>
-                  </div>
-                </button>
-                {isOpen && (
-                  <div className="px-4 pb-4 border-t border-[#f3f3f3]">
-                    <div className="flex gap-1 flex-wrap mt-3 mb-2">
-                      {p.zones.map((z, i) => (
-                        <span key={z.zone_num} className="px-2 py-1 bg-[#f3f3f3] rounded-lg text-xs">
-                          {i + 1}. {z.device === 'a6v3' ? 'R' : 'Z'}{z.zone_num} — {z.duration_min}m
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-[#40493d] mb-3 capitalize">Mode: {p.run_mode}</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => { setRunningId(p.id); await runProgramNow(p); setRunningId(null) }}
-                        disabled={runningId === p.id}
-                        className="flex-1 py-2 rounded-lg gradient-primary text-white text-xs font-semibold disabled:opacity-50"
-                      >{runningId === p.id ? 'Starting…' : 'Run Now'}</button>
-                      <button
-                        onClick={() => setModal(p)}
-                        className="flex-1 py-2 rounded-lg bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold"
-                      >Edit</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Desktop table */}
-      {!loading && (
-        <div className="hidden md:block bg-[#ffffff] rounded-xl shadow-card overflow-hidden mb-4">
-          <table className="w-full text-sm font-body">
-            <thead>
-              <tr className="bg-[#f3f3f3]">
-                {['Program', 'Zones', 'Schedule', 'Start', 'Mode', 'Status', ''].map(h => (
-                  <th key={h} className="text-left text-xs font-semibold text-[#40493d] px-4 py-3 first:pl-5">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p, idx) => {
-                const active = p.schedule?.enabled !== false
-                const sched  = p.schedule
-                return (
-                  <>
-                    <tr
-                      key={p.id}
-                      onClick={() => setExpanded(expanded === p.id ? null : p.id)}
-                      className={`cursor-pointer transition-colors hover:bg-[#f9f9f9] ${idx % 2 !== 0 ? 'bg-[#f3f3f3]/40' : ''}`}
-                    >
-                      <td className="px-5 py-3 font-semibold text-[#1a1c1c]">{p.name}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1 flex-wrap">
-                          {p.zones.map(z => (
-                            <span key={z.zone_num} className={`px-1.5 py-0.5 rounded-full text-[10px] ${z.device === 'a6v3' ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-                              {z.device === 'a6v3' ? 'R' : 'Z'}{z.zone_num}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-[#40493d] text-xs">{sched ? fmtDays(sched.days_of_week) : '—'}</td>
-                      <td className="px-4 py-3 text-[#40493d]">{sched ? fmtTime(sched.start_time) : '—'}</td>
-                      <td className="px-4 py-3 text-[#40493d] capitalize">{p.run_mode}</td>
-                      <td className="px-4 py-3"><StatusChip status={active ? 'online' : 'paused'} label={active ? 'ACTIVE' : 'PAUSED'} /></td>
-                      <td className="px-4 py-3 text-[#40493d] text-xs">{expanded === p.id ? '▲' : '▼'}</td>
-                    </tr>
-
-                    {expanded === p.id && (
-                      <tr key={`${p.id}-exp`} className="bg-[#f9f9f9]">
-                        <td colSpan={7} className="px-5 py-4">
-                          <div className="flex items-center gap-6">
-                            <div className="flex-1">
-                              <p className="text-xs font-semibold text-[#1a1c1c] mb-2">Zone Sequence ({p.run_mode})</p>
-                              <div className="flex gap-2 flex-wrap">
-                                {p.zones.map((z, i) => (
-                                  <span key={z.zone_num} className="px-2.5 py-1 bg-[#f3f3f3] rounded-lg text-xs">
-                                    {i + 1}. {z.device === 'a6v3' ? 'Relay' : 'Zone'} {z.zone_num} — {z.duration_min} min
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="flex gap-3 shrink-0">
-                              <button
-                                onClick={async e => {
-                                  e.stopPropagation()
-                                  setRunningId(p.id)
-                                  await runProgramNow(p)
-                                  setRunningId(null)
-                                }}
-                                disabled={runningId === p.id}
-                                className="gradient-primary text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-fab hover:opacity-90 disabled:opacity-50"
-                              >{runningId === p.id ? 'Starting…' : 'Run Now'}</button>
-                              <button
-                                onClick={e => { e.stopPropagation(); setModal(p) }}
-                                className="bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#e8e8e8]"
-                              >Edit</button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                )
-              })}
-            </tbody>
-          </table>
-          {filtered.length === 0 && (
-            <p className="text-center text-sm text-[#40493d] py-8">No programs found.</p>
-          )}
-        </div>
-      )}
-
-      <p className="text-xs text-[#40493d] font-body">
-        {programs.length} programs — {programs.filter(p => p.schedule?.enabled !== false).length} active — {programs.filter(p => p.schedule?.enabled === false).length} paused
-      </p>
-
       {modal !== null && (
-        <ProgramModal
+        <AutomationModal
           program={modal === 'new' ? null : modal}
           onClose={() => setModal(null)}
           onSaved={() => { reload(); setExpanded(null) }}
