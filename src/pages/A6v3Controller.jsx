@@ -4,7 +4,7 @@ import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useA6v3PressureHistory } from '../hooks/useA6v3PressureHistory'
 import { useZoneNames } from '../hooks/useZoneNames'
-import { a6v3OutputOn, a6v3OutputOff, logA6v3Pressure, requestA6v3State } from '../lib/commands'
+import { a6v3ZoneOn, a6v3ZoneOff, logA6v3Pressure, requestA6v3State } from '../lib/commands'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
@@ -118,11 +118,11 @@ export default function A6v3Controller() {
   const adcRaw = a6v3?.adc1?.value ?? 0
   const psi    = adcToPsi(adcRaw)
 
-  // Log to Supabase at most once per 60s when adc reading changes
+  // Log pressure to Supabase at most once per 5 min when device is online
   useEffect(() => {
-    if (!a6v3 || adcRaw === 0) return
+    if (!a6v3) return
     const now = Date.now()
-    if (now - lastLogRef.current < 60000) return
+    if (now - lastLogRef.current < 300_000) return
     lastLogRef.current = now
     logA6v3Pressure(psi)
   }, [adcRaw])
@@ -130,14 +130,12 @@ export default function A6v3Controller() {
   // Keep a ref to current outputs so the interval callback is never stale
   outputsRef.current = a6v3Outputs
 
-  // Adaptive polling: echo relay states to SET topic → KCS firmware replies with fresh STATE
-  // 10s when any relay is ON, 60s when all OFF
-  const anyRelayOn = a6v3Outputs.some(Boolean)
+  // Poll relay state every 60s — A6v3 firmware sends STATE on any SET, so
+  // this is only needed to detect external changes or confirm state after reconnect.
   useEffect(() => {
-    const ms = anyRelayOn ? 10_000 : 60_000
-    const id = setInterval(() => requestA6v3State(outputsRef.current), ms)
+    const id = setInterval(() => requestA6v3State(outputsRef.current), 60_000)
     return () => clearInterval(id)
-  }, [anyRelayOn])
+  }, [])
 
   // Reload history when graph opens or time range changes
   useEffect(() => {
@@ -147,7 +145,11 @@ export default function A6v3Controller() {
   async function handleToggle(n, currentlyOn) {
     setA6v3Busy(b => ({ ...b, [n]: true }))
     try {
-      currentlyOn ? await a6v3OutputOff(n) : await a6v3OutputOn(n)
+      if (currentlyOn) {
+        await a6v3ZoneOff(n)   // publishes MQTT OFF + closes zone_history record
+      } else {
+        await a6v3ZoneOn(n, null, 'manual')  // publishes MQTT ON + logs zone_history with PSI snapshot
+      }
     } catch (e) { console.error(e) }
     setA6v3Busy(b => ({ ...b, [n]: false }))
   }
