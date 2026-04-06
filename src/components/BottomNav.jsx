@@ -1,44 +1,105 @@
-import { NavLink } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAlerts } from '../hooks/useAlerts'
 
-const nav = [
+const primary = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
   { to: '/zones',    label: 'Zones',    icon: <DropIcon /> },
   { to: '/a6v3',     label: 'A6v3',     icon: <RelayIcon /> },
-  { to: '/calendar', label: 'Schedule', icon: <CalIcon /> },
   { to: '/programs', label: 'Programs', icon: <ListIcon /> },
-  { to: '/alerts',   label: 'Alerts',   icon: <BellIcon />, badge: true },
+]
+
+const overflow = [
+  { to: '/history',  label: 'History',    icon: <HistoryIcon /> },
+  { to: '/calendar', label: 'Schedule',   icon: <CalIcon /> },
+  { to: '/rules',    label: 'Rules',      icon: <RulesIcon /> },
+  { to: '/pressure', label: 'Pressure',   icon: <GaugeIcon /> },
+  { to: '/alerts',   label: 'Alerts',     icon: <BellIcon />, badge: true },
+  { to: '/admin',    label: 'Admin',      icon: <AdminIcon /> },
 ]
 
 export default function BottomNav() {
   const { alerts } = useAlerts()
   const unreadCount = alerts.filter(a => !a.acknowledged).length
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+
+  function goTo(to) {
+    setOpen(false)
+    navigate(to)
+  }
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#304047] border-t border-white/10 flex">
-      {nav.map(({ to, label, icon, badge }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={to === '/'}
-          className={({ isActive }) =>
-            `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors relative ${
-              isActive ? 'text-white' : 'text-white/50'
-            }`
-          }
+    <>
+      {/* Backdrop */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* Slide-up "More" sheet */}
+      <div className={`md:hidden fixed bottom-14 inset-x-0 z-50 bg-[#304047] rounded-t-2xl transition-transform duration-200 ${open ? 'translate-y-0' : 'translate-y-full'}`}>
+        <div className="px-2 pt-3 pb-4">
+          <div className="w-8 h-1 bg-white/20 rounded-full mx-auto mb-4" />
+          <div className="grid grid-cols-3 gap-1">
+            {overflow.map(({ to, label, icon, badge }) => (
+              <button
+                key={to}
+                onClick={() => goTo(to)}
+                className="flex flex-col items-center justify-center py-3 gap-1 text-[11px] font-body font-medium text-white/70 active:bg-white/10 rounded-xl transition-colors relative"
+              >
+                <span className="w-6 h-6 relative">
+                  {icon}
+                  {badge && unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom bar */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#304047] border-t border-white/10 flex">
+        {primary.map(({ to, label, icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === '/'}
+            className={({ isActive }) =>
+              `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors ${
+                isActive ? 'text-white' : 'text-white/50'
+              }`
+            }
+          >
+            <span className="w-5 h-5">{icon}</span>
+            {label}
+          </NavLink>
+        ))}
+
+        {/* More button */}
+        <button
+          onClick={() => setOpen(o => !o)}
+          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors relative ${open ? 'text-white' : 'text-white/50'}`}
         >
           <span className="w-5 h-5 relative">
-            {icon}
-            {badge && unreadCount > 0 && (
+            <MoreIcon />
+            {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </span>
-          {label}
-        </NavLink>
-      ))}
-    </nav>
+          More
+        </button>
+      </nav>
+    </>
   )
 }
 
@@ -85,6 +146,44 @@ function BellIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+    </svg>
+  )
+}
+function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+      <path d="M12 7v5l4 2"/>
+    </svg>
+  )
+}
+function GaugeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a10 10 0 100 20A10 10 0 0012 2z"/><path d="M12 12l4-4"/>
+      <circle cx="12" cy="12" r="1" fill="currentColor"/>
+    </svg>
+  )
+}
+function RulesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v1m0 16v1M4.22 4.22l.7.7m14.16 14.16.7.7M3 12h1m16 0h1M4.22 19.78l.7-.7M18.36 5.64l.7-.7"/>
+      <circle cx="12" cy="12" r="4"/>
+    </svg>
+  )
+}
+function AdminIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+    </svg>
+  )
+}
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/>
     </svg>
   )
 }
