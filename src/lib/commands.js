@@ -145,6 +145,12 @@ export async function a6v3ZoneOn(relayNum, durationMin, source = 'manual') {
   }
 }
 
+/** Turn off an A6v3 relay and close its open zone_history record. */
+export async function a6v3ZoneOff(relayNum) {
+  await mqttPublish(A6V3_SET_TOPIC, { [`output${relayNum}`]: { value: false } })
+  await closeOpenHistoryRecord(relayNum)
+}
+
 // Echo current relay outputs back to the device — KCS firmware responds to any
 // valid SET command with a fresh STATE message. Pass current outputs[] to avoid
 // accidentally changing any relay state.
