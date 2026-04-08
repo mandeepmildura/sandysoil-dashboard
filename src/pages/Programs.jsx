@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { usePrograms } from '../hooks/usePrograms'
 import { useZoneNames } from '../hooks/useZoneNames'
 import { supabase } from '../lib/supabase'
@@ -128,101 +129,104 @@ function AddStepModal({ groupId, nextSortOrder, onClose, onSaved }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 w-full sm:max-w-sm">
-        <h3 className="font-headline font-bold text-base text-[#1a1c1c] mb-4">Add Step</h3>
+  return createPortal(
+    <>
+      <div className="fixed inset-0 bg-black/40 z-[9999]" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-[9999] bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '75vh' }} onClick={e => e.stopPropagation()}>
+        <div className="overflow-y-auto px-5 pt-5 flex-1">
+          <h3 className="font-headline font-bold text-base text-[#1a1c1c] mb-4">Add Step</h3>
 
-        {/* Step type */}
-        <div className="flex gap-2 mb-4">
-          {[{id:'device', label:'Device Action'}, {id:'delay', label:'Delay'}].map(k => (
-            <button key={k.id} type="button" onClick={() => setStepKind(k.id)}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${stepKind === k.id ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-              {k.label}
-            </button>
-          ))}
+          <div className="flex gap-2 mb-4">
+            {[{id:'device', label:'Device Action'}, {id:'delay', label:'Delay'}].map(k => (
+              <button key={k.id} type="button" onClick={() => setStepKind(k.id)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${stepKind === k.id ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                {k.label}
+              </button>
+            ))}
+          </div>
+
+          {stepKind === 'device' ? (
+            <div className="space-y-3 pb-2">
+              <div>
+                <label className="text-xs text-[#40493d] block mb-1.5">Device</label>
+                <div className="flex gap-2">
+                  {[{id:'irrigation1',label:'Irrigation (8-Zone)'},{id:'a6v3',label:'A6v3 Relays'}].map(d => (
+                    <button key={d.id} type="button" onClick={() => { setDevice(d.id); setZoneNum(1) }}
+                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${device === d.id ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-[#40493d] block mb-1.5">{slotLbl}</label>
+                <select value={zoneNum} onChange={e => setZoneNum(Number(e.target.value))}
+                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
+                  {Array.from({ length: slotMax }, (_, n) => n + 1).map(n => (
+                    <option key={n} value={n}>{names[n] ?? `${slotLbl} ${n}`}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-[#40493d] block mb-1.5">Action</label>
+                <div className="flex gap-2">
+                  {['on', 'off'].map(a => (
+                    <button key={a} type="button" onClick={() => setAction(a)}
+                      className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${action === a ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                      {a}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {action === 'on' && (
+                <div>
+                  <label className="text-xs text-[#40493d] block mb-1.5">Duration (min)</label>
+                  <input type="number" min={1} max={480} value={durationMin}
+                    onChange={e => setDurationMin(Number(e.target.value))}
+                    className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="pb-2">
+              <label className="text-xs text-[#40493d] block mb-1.5">Delay duration</label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <input type="number" min={0} max={23} value={delayHours}
+                    onChange={e => setDelayHours(Number(e.target.value))}
+                    className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none text-center" />
+                  <p className="text-[10px] text-[#40493d] text-center mt-1">hours</p>
+                </div>
+                <div className="flex-1">
+                  <input type="number" min={0} max={59} value={delayMins}
+                    onChange={e => setDelayMins(Number(e.target.value))}
+                    className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none text-center" />
+                  <p className="text-[10px] text-[#40493d] text-center mt-1">minutes</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && <p className="text-xs text-[#ba1a1a] mt-3">{error}</p>}
         </div>
 
-        {stepKind === 'device' ? (
-          <div className="space-y-3">
-            {/* Device */}
-            <div>
-              <label className="text-xs text-[#40493d] block mb-1.5">Device</label>
-              <div className="flex gap-2">
-                {[{id:'irrigation1',label:'Irrigation (8-Zone)'},{id:'a6v3',label:'A6v3 Relays'}].map(d => (
-                  <button key={d.id} type="button" onClick={() => { setDevice(d.id); setZoneNum(1) }}
-                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${device === d.id ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Zone / Relay */}
-            <div>
-              <label className="text-xs text-[#40493d] block mb-1.5">{slotLbl}</label>
-              <select value={zoneNum} onChange={e => setZoneNum(Number(e.target.value))}
-                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
-                {Array.from({ length: slotMax }, (_, n) => n + 1).map(n => (
-                  <option key={n} value={n}>{names[n] ?? `${slotLbl} ${n}`}</option>
-                ))}
-              </select>
-            </div>
-            {/* Action */}
-            <div>
-              <label className="text-xs text-[#40493d] block mb-1.5">Action</label>
-              <div className="flex gap-2">
-                {['on', 'off'].map(a => (
-                  <button key={a} type="button" onClick={() => setAction(a)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${action === a ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Duration (only for 'on') */}
-            {action === 'on' && (
-              <div>
-                <label className="text-xs text-[#40493d] block mb-1.5">Duration (min)</label>
-                <input type="number" min={1} max={480} value={durationMin}
-                  onChange={e => setDurationMin(Number(e.target.value))}
-                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
-              </div>
-            )}
+        {/* Sticky footer — button above iOS browser toolbar */}
+        <div className="px-5 pt-3 bg-white border-t border-[#f3f3f3] flex-shrink-0">
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d]">
+              Cancel
+            </button>
+            <button onClick={save} disabled={saving}
+              className="flex-1 py-2.5 rounded-xl bg-[#0d631b] text-white text-sm font-semibold disabled:opacity-50">
+              {saving ? 'Adding…' : 'Add Step'}
+            </button>
           </div>
-        ) : (
-          <div>
-            <label className="text-xs text-[#40493d] block mb-1.5">Delay duration</label>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <input type="number" min={0} max={23} value={delayHours}
-                  onChange={e => setDelayHours(Number(e.target.value))}
-                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none text-center" />
-                <p className="text-[10px] text-[#40493d] text-center mt-1">hours</p>
-              </div>
-              <div className="flex-1">
-                <input type="number" min={0} max={59} value={delayMins}
-                  onChange={e => setDelayMins(Number(e.target.value))}
-                  className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none text-center" />
-                <p className="text-[10px] text-[#40493d] text-center mt-1">minutes</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {error && <p className="text-xs text-[#ba1a1a] mt-3">{error}</p>}
-
-        <div className="flex gap-2 mt-5">
-          <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d]">
-            Cancel
-          </button>
-          <button onClick={save} disabled={saving}
-            className="flex-1 py-2.5 rounded-xl bg-[#0d631b] text-white text-sm font-semibold disabled:opacity-50">
-            {saving ? 'Adding…' : 'Add Step'}
-          </button>
+          <div className="h-24" />
         </div>
       </div>
-    </div>
+    </>,
+    document.body
   )
 }
 
@@ -461,67 +465,72 @@ function AutomationModal({ program, onClose, onSaved }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 w-full sm:max-w-md">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-headline font-bold text-lg text-[#1a1c1c]">{isEdit ? 'Edit Automation' : 'New Automation'}</h2>
-          {isEdit && (
-            <button onClick={deleteAutomation} disabled={saving}
-              className="text-xs text-[#ba1a1a] font-semibold hover:underline disabled:opacity-50">Delete</button>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-1">Name</label>
-            <input value={name} onChange={e => setName(e.target.value)}
-              placeholder="e.g. Avocado 2 Hours"
-              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
-          </div>
-
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-2">Run Mode</label>
-            <div className="flex gap-2">
-              {['sequential', 'parallel'].map(m => (
-                <button key={m} type="button" onClick={() => setRunMode(m)}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize ${runMode === m ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>{m}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Schedule trigger (IF) */}
-          <div className="border-t border-[#f3f3f3] pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold text-[#1a1c1c]">Schedule Trigger</span>
-              <Toggle on={hasSchedule} onChange={setHasSchedule} />
-            </div>
-
-            {hasSchedule && (
-              <div className="space-y-3 mt-3">
-                <div>
-                  <label className="text-xs text-[#40493d] block mb-2">Days</label>
-                  <div className="flex gap-1.5">
-                    {DAY_LABELS.map((d, i) => (
-                      <button key={i} type="button" onClick={() => toggleDay(i)}
-                        className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${days[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-                        {d[0]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-[#40493d] block mb-1">Start Time</label>
-                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-                    className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
-                </div>
-              </div>
+  return createPortal(
+    <>
+      <div className="fixed inset-0 bg-black/40 z-[9999]" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-[9999] bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '75vh' }} onClick={e => e.stopPropagation()}>
+        <div className="overflow-y-auto px-5 pt-5 flex-1">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="font-headline font-bold text-lg text-[#1a1c1c]">{isEdit ? 'Edit Automation' : 'New Automation'}</h2>
+            {isEdit && (
+              <button onClick={deleteAutomation} disabled={saving}
+                className="text-xs text-[#ba1a1a] font-semibold hover:underline disabled:opacity-50">Delete</button>
             )}
           </div>
 
-          {error && <p className="text-xs text-[#ba1a1a]">{error}</p>}
+          <div className="space-y-4 pb-2">
+            <div>
+              <label className="text-xs font-body text-[#40493d] block mb-1">Name</label>
+              <input value={name} onChange={e => setName(e.target.value)}
+                placeholder="e.g. Avocado 2 Hours"
+                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
+            </div>
 
-          <div className="flex gap-3 pt-1">
+            <div>
+              <label className="text-xs font-body text-[#40493d] block mb-2">Run Mode</label>
+              <div className="flex gap-2">
+                {['sequential', 'parallel'].map(m => (
+                  <button key={m} type="button" onClick={() => setRunMode(m)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize ${runMode === m ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>{m}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-[#f3f3f3] pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-[#1a1c1c]">Schedule Trigger</span>
+                <Toggle on={hasSchedule} onChange={setHasSchedule} />
+              </div>
+
+              {hasSchedule && (
+                <div className="space-y-3 mt-3">
+                  <div>
+                    <label className="text-xs text-[#40493d] block mb-2">Days</label>
+                    <div className="flex gap-1.5">
+                      {DAY_LABELS.map((d, i) => (
+                        <button key={i} type="button" onClick={() => toggleDay(i)}
+                          className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${days[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                          {d[0]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#40493d] block mb-1">Start Time</label>
+                    <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
+                      className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {error && <p className="text-xs text-[#ba1a1a]">{error}</p>}
+          </div>
+        </div>
+
+        {/* Sticky footer — button above iOS browser toolbar */}
+        <div className="px-5 pt-3 bg-white border-t border-[#f3f3f3] flex-shrink-0">
+          <div className="flex gap-3">
             <button onClick={onClose}
               className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d]">Cancel</button>
             <button onClick={save} disabled={saving}
@@ -529,9 +538,11 @@ function AutomationModal({ program, onClose, onSaved }) {
               {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create')}
             </button>
           </div>
+          <div className="h-24" />
         </div>
       </div>
-    </div>
+    </>,
+    document.body
   )
 }
 
