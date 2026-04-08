@@ -78,11 +78,34 @@
 ## Supabase Tables
 - `zone_history` — zone run records (started_at, ended_at, zone_num, source)
 - `zone_groups` — irrigation programs/groups
-- `zone_group_members` — zones within a program (zone_num, duration_min, sort_order)
+- `zone_group_members` — zones within a program (zone_num, duration_min, sort_order, step_type, device, delay_min)
 - `group_schedules` — program schedules (days_of_week, start_time, enabled)
 - `zone_schedules` — per-zone schedules
 - `pressure_log` — historical pressure readings
 - `device_alerts` — alerts with acknowledge/dismiss
+- `program_queue` — queued steps for Run Now execution (group_id, step_type, device, zone_num, duration_min, fire_at, fired_at)
+
+## Pending DB Migrations (run via Supabase MCP at session start)
+```sql
+-- Create program_queue table
+CREATE TABLE IF NOT EXISTS program_queue (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id      uuid REFERENCES zone_groups(id) ON DELETE CASCADE,
+  step_type     text NOT NULL,
+  device        text NOT NULL DEFAULT 'irrigation1',
+  zone_num      integer NOT NULL,
+  duration_min  integer,
+  fire_at       timestamptz NOT NULL,
+  fired_at      timestamptz,
+  created_at    timestamptz DEFAULT now()
+);
+ALTER TABLE program_queue ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow all" ON program_queue FOR ALL USING (true) WITH CHECK (true);
+
+-- Drop unique constraint that blocks multi-step programs
+ALTER TABLE zone_group_members
+DROP CONSTRAINT IF EXISTS zone_group_members_group_id_zone_num_key;
+```
 
 ## Key Source Files
 | File | Purpose |
