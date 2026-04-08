@@ -132,7 +132,8 @@ function AddStepModal({ groupId, nextSortOrder, onClose, onSaved }) {
   return createPortal(
     <>
       <div className="fixed inset-0 bg-black/40 z-[9999]" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 z-[9999] bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '75vh' }} onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center sm:p-6 pointer-events-none">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md flex flex-col pointer-events-auto" style={{ maxHeight: '75vh' }} onClick={e => e.stopPropagation()}>
         <div className="overflow-y-auto px-5 pt-5 flex-1">
           <h3 className="font-headline font-bold text-base text-[#1a1c1c] mb-4">Add Step</h3>
 
@@ -222,8 +223,9 @@ function AddStepModal({ groupId, nextSortOrder, onClose, onSaved }) {
               {saving ? 'Adding…' : 'Add Step'}
             </button>
           </div>
-          <div className="h-24" />
+          <div className="h-24 sm:h-0" />
         </div>
+      </div>
       </div>
     </>,
     document.body
@@ -468,7 +470,8 @@ function AutomationModal({ program, onClose, onSaved }) {
   return createPortal(
     <>
       <div className="fixed inset-0 bg-black/40 z-[9999]" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 z-[9999] bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '75vh' }} onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[9999] flex flex-col justify-end sm:justify-center sm:items-center sm:p-6 pointer-events-none">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md flex flex-col pointer-events-auto" style={{ maxHeight: '75vh' }} onClick={e => e.stopPropagation()}>
         <div className="overflow-y-auto px-5 pt-5 flex-1">
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-headline font-bold text-lg text-[#1a1c1c]">{isEdit ? 'Edit Automation' : 'New Automation'}</h2>
@@ -538,8 +541,9 @@ function AutomationModal({ program, onClose, onSaved }) {
               {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create')}
             </button>
           </div>
-          <div className="h-24" />
+          <div className="h-24 sm:h-0" />
         </div>
+      </div>
       </div>
     </>,
     document.body
