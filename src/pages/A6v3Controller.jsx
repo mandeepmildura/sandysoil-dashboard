@@ -138,14 +138,15 @@ export default function A6v3Controller() {
   // Keep a ref to current outputs so the interval callback is never stale
   outputsRef.current = a6v3Outputs
 
-  // Poll for fresh STATE every 60s using {get:'STATE'} so we never
-  // accidentally toggle relays by echoing a stale cached output state.
-  // Also fire immediately on mount so the gauge is fresh before the first tick.
+  // Poll every 5 s when any relay is on (live pressure monitoring during a run),
+  // every 60 s otherwise. Restart the interval whenever that state changes.
+  const anyRelayOn = a6v3Outputs.some(Boolean)
   useEffect(() => {
     requestA6v3State()
-    const id = setInterval(() => requestA6v3State(), 60_000)
+    const interval = anyRelayOn ? 5_000 : 60_000
+    const id = setInterval(() => requestA6v3State(), interval)
     return () => clearInterval(id)
-  }, [])
+  }, [anyRelayOn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload history when graph opens, on time range change,
   // and every 5 min while open (matches the logging interval).
