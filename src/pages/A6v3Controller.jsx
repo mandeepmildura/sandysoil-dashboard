@@ -94,8 +94,9 @@ export default function A6v3Controller() {
   const relayNameRef = useRef(null)
   const [showGraph, setShowGraph] = useState(false)
   const [historyHours, setHistoryHours] = useState(6)
-  const lastLogRef = useRef(0)
   const outputsRef = useRef([])
+  const psiRef = useRef(0)
+  const a6v3LiveRef = useRef(null)
 
   function startRelayEdit(n, currentName) {
     setRelayNameInput(currentName)
@@ -118,22 +119,31 @@ export default function A6v3Controller() {
   const adcRaw = a6v3?.adc1?.value ?? 0
   const psi    = adcToPsi(adcRaw)
 
-  // Log pressure to Supabase at most once per 5 min when device is online
+  // Keep refs current so interval callbacks never close over stale values
+  psiRef.current = psi
+  a6v3LiveRef.current = a6v3
+
+  // Log pressure immediately when device comes online, then every 5 min.
+  // Using !!a6v3 (not adcRaw) as the trigger so a stable ADC value still
+  // gets logged on schedule even when the reading doesn't change.
   useEffect(() => {
     if (!a6v3) return
-    const now = Date.now()
-    if (now - lastLogRef.current < 300_000) return
-    lastLogRef.current = now
-    logA6v3Pressure(psi)
-  }, [adcRaw])
+    logA6v3Pressure(psiRef.current)
+    const id = setInterval(() => {
+      if (a6v3LiveRef.current) logA6v3Pressure(psiRef.current)
+    }, 300_000)
+    return () => clearInterval(id)
+  }, [!!a6v3]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep a ref to current outputs so the interval callback is never stale
   outputsRef.current = a6v3Outputs
 
-  // Poll relay state every 60s — A6v3 firmware sends STATE on any SET, so
-  // this is only needed to detect external changes or confirm state after reconnect.
+  // Poll for fresh STATE every 60s using {get:'STATE'} so we never
+  // accidentally toggle relays by echoing a stale cached output state.
+  // Also fire immediately on mount so the gauge is fresh before the first tick.
   useEffect(() => {
-    const id = setInterval(() => requestA6v3State(outputsRef.current), 60_000)
+    requestA6v3State()
+    const id = setInterval(() => requestA6v3State(), 60_000)
     return () => clearInterval(id)
   }, [])
 

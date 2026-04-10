@@ -117,13 +117,10 @@ export async function a6v3ZoneOff(relayNum) {
   await closeOpenHistoryRecord(relayNum)
 }
 
-// Echo current relay outputs back to the device so KCS firmware responds with fresh STATE
-export function requestA6v3State(currentOutputs) {
-  if (currentOutputs?.length) {
-    const payload = {}
-    currentOutputs.forEach((val, i) => { payload[`output${i + 1}`] = { value: !!val } })
-    return mqttPublish(A6V3_SET_TOPIC, payload)
-  }
+// Request a fresh STATE from the A6v3 without modifying any outputs.
+// KCS v3 firmware responds to {get:'STATE'} with a full STATE dump (including ADC values)
+// regardless of whether any output values have changed.
+export function requestA6v3State() {
   return mqttPublish(A6V3_SET_TOPIC, { get: 'STATE' })
 }
 
