@@ -105,6 +105,10 @@ CREATE POLICY "allow all" ON program_queue FOR ALL USING (true) WITH CHECK (true
 -- Drop unique constraint that blocks multi-step programs
 ALTER TABLE zone_group_members
 DROP CONSTRAINT IF EXISTS zone_group_members_group_id_zone_num_key;
+
+-- Allow anon role to write pressure_log (migration 008 not yet applied to prod)
+CREATE POLICY IF NOT EXISTS "pressure_log_anon_all" ON public.pressure_log
+  FOR ALL TO anon USING (true) WITH CHECK (true);
 ```
 
 ## Key Source Files
