@@ -106,9 +106,17 @@ CREATE POLICY "allow all" ON program_queue FOR ALL USING (true) WITH CHECK (true
 ALTER TABLE zone_group_members
 DROP CONSTRAINT IF EXISTS zone_group_members_group_id_zone_num_key;
 
--- Allow anon role to write pressure_log (migration 008 not yet applied to prod)
-CREATE POLICY IF NOT EXISTS "pressure_log_anon_all" ON public.pressure_log
-  FOR ALL TO anon USING (true) WITH CHECK (true);
+-- Allow anon role to write pressure_log (run only if policy does not already exist)
+-- Check first: SELECT policyname FROM pg_policies WHERE tablename='pressure_log';
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'pressure_log' AND policyname = 'pressure_log_anon_all'
+  ) THEN
+    EXECUTE 'CREATE POLICY "pressure_log_anon_all" ON public.pressure_log
+      FOR ALL TO anon USING (true) WITH CHECK (true)';
+  END IF;
+END $$;
 ```
 
 ## Key Source Files
