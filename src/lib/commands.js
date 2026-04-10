@@ -96,6 +96,7 @@ export async function logA6v3Pressure(psi) {
     a6v3_ch1_psi: parseFloat(psi.toFixed(2)),
   })
   if (error) console.error('pressure_log insert failed:', error.message, error.code)
+  return error ?? null
 }
 
 export function a6v3OutputOn(outputNum) {
