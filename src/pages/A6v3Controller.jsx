@@ -147,9 +147,13 @@ export default function A6v3Controller() {
     return () => clearInterval(id)
   }, [])
 
-  // Reload history when graph opens or time range changes
+  // Reload history when graph opens, on time range change,
+  // and every 5 min while open (matches the logging interval).
   useEffect(() => {
-    if (showGraph) reload()
+    if (!showGraph) return
+    reload()
+    const id = setInterval(reload, 300_000)
+    return () => clearInterval(id)
   }, [showGraph, historyHours])
 
   async function handleToggle(n, currentlyOn) {
