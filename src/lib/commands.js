@@ -117,11 +117,15 @@ export async function a6v3ZoneOff(relayNum) {
   await closeOpenHistoryRecord(relayNum)
 }
 
-// Request a fresh STATE from the A6v3 without modifying any outputs.
-// KCS v3 firmware responds to {get:'STATE'} with a full STATE dump (including ADC values)
-// regardless of whether any output values have changed.
+// KCS v3 firmware only publishes a fresh STATE when it processes a SET that actually
+// changes a value. Toggle dac1 between 0 and 1 on each poll so there is always a
+// real change — this guarantees a STATE response (including fresh ADC readings) every
+// 60 s without touching the relay outputs. dac1 value 0↔1 on an unconnected DAC
+// output is negligible (< 0.03 % of full range on a 12-bit DAC).
+let _a6v3PollToggle = false
 export function requestA6v3State() {
-  return mqttPublish(A6V3_SET_TOPIC, { get: 'STATE' })
+  _a6v3PollToggle = !_a6v3PollToggle
+  return mqttPublish(A6V3_SET_TOPIC, { dac1: { value: _a6v3PollToggle ? 1 : 0 } })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
