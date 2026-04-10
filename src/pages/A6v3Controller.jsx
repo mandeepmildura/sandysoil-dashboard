@@ -94,6 +94,7 @@ export default function A6v3Controller() {
   const relayNameRef = useRef(null)
   const [showGraph, setShowGraph] = useState(false)
   const [historyHours, setHistoryHours] = useState(6)
+  const [logStatus, setLogStatus] = useState(null) // null | 'ok' | string (error message)
   const outputsRef = useRef([])
   const psiRef = useRef(0)
   const a6v3LiveRef = useRef(null)
@@ -128,9 +129,13 @@ export default function A6v3Controller() {
   // gets logged on schedule even when the reading doesn't change.
   useEffect(() => {
     if (!a6v3) return
-    logA6v3Pressure(psiRef.current)
+    async function doLog() {
+      const err = await logA6v3Pressure(psiRef.current)
+      setLogStatus(err ? err.message : 'ok')
+    }
+    doLog()
     const id = setInterval(() => {
-      if (a6v3LiveRef.current) logA6v3Pressure(psiRef.current)
+      if (a6v3LiveRef.current) doLog()
     }, 300_000)
     return () => clearInterval(id)
   }, [!!a6v3]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -199,6 +204,11 @@ export default function A6v3Controller() {
               <div className="mt-2 text-center">
                 <span className="text-xs font-body text-[#40493d]">ADC {adcRaw} / {ADC_MAX} · 0–{MAX_PSI} PSI range</span>
               </div>
+              {logStatus && logStatus !== 'ok' && (
+                <div className="mt-1 text-center">
+                  <span className="text-[10px] text-[#ba1a1a] font-semibold">Log error: {logStatus}</span>
+                </div>
+              )}
             </div>
 
             {/* Inline history graph */}
