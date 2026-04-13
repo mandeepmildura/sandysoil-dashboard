@@ -55,7 +55,7 @@ export default function ZoneDetail() {
   }
 
   const { data: live } = useLiveTelemetry(['farm/irrigation1/status'])
-  const { history, loading, reload } = useZoneHistory(zoneNum, 20)
+  const { history, loading, reload } = useZoneHistory(zoneNum, 'irrigation1', 20)
   const { names, renameZone } = useZoneNames()
 
   const irr   = live['farm/irrigation1/status'] ?? null

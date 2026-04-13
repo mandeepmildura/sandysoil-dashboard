@@ -11,8 +11,8 @@
 
 ### 1. Old 8-Zone Irrigation Controller (`sandysoil-8z`)
 - **Repo**: `mandeepmildura/sandysoil-8z` (private, C++/ESP32 firmware)
-- **Firmware version**: 2.3.1
-- **Local IP**: 192.168.1.201
+- **Firmware version**: 2.3.3
+- **Local IP**: 192.168.1.100
 - **MQTT publish topic**: `farm/irrigation1/status`
 - **MQTT subscribe topic**: `farm/irrigation1/zone/+/cmd`
 - **Command payload**: `{"cmd": "on", "duration": 30}` or `{"cmd": "off"}`
@@ -21,7 +21,7 @@
 - **Status payload example**:
   ```json
   {"device":"irrigation1","fw":"2.3.1","online":true,"supply_psi":35,
-   "uptime":83595,"rssi":-45,"ip":"192.168.1.201",
+   "uptime":83595,"rssi":-45,"ip":"192.168.1.100",
    "zones":[{"id":1,"name":"Zone 1","on":false,"state":"off"}, ...]}
   ```
 - **Zones**: 8 zones (Zone 1–8)
@@ -47,7 +47,7 @@
 - **Model**: KinCony B16M (16-channel MOSFET outputs)
 - **Firmware**: KCSv3 v3.24.2 (built Mar 24 2026), TLS support added in v3.23.2
 - **Serial**: CCBA97071FD8
-- **Local IP**: 192.168.1.29 (web UI at `http://192.168.1.29`)
+- **Local IP**: 192.168.1.104 (web UI at `http://192.168.1.104`)
 - **MQTT publish topic**: `B16M/CCBA97071FD8/STATE`
 - **MQTT subscribe topic**: `B16M/CCBA97071FD8/SET`
 - **State payload**:

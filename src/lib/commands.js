@@ -44,12 +44,13 @@ export async function zoneOff(zoneNum) {
   await closeOpenHistoryRecord(zoneNum)
 }
 
-/** Close the most recent open zone_history row for this zone. */
-export async function closeOpenHistoryRecord(zoneNum) {
+/** Close the most recent open zone_history row for this zone/device. */
+export async function closeOpenHistoryRecord(zoneNum, device = 'irrigation1') {
   const { data, error: selErr } = await supabase
     .from('zone_history')
     .select('id')
     .eq('zone_num', zoneNum)
+    .eq('device', device)
     .is('ended_at', null)
     .order('started_at', { ascending: false })
     .limit(1)
@@ -81,11 +82,20 @@ export function resetBackwash() { return mqttPublish('farm/filter1/backwash/rese
 
 // ── B16M commands ──────────────────────────────────────────────────────────
 
-export function b16mOutputOn(outputNum) {
-  return mqttPublish(B16M_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
+export async function b16mOutputOn(outputNum) {
+  await mqttPublish(B16M_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
+  try {
+    await supabase.from('zone_history').insert({
+      device: 'b16m',
+      zone_num: outputNum,
+      started_at: new Date().toISOString(),
+      source: 'manual',
+    })
+  } catch (e) { console.warn('b16m relay history insert failed:', e) }
 }
-export function b16mOutputOff(outputNum) {
-  return mqttPublish(B16M_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
+export async function b16mOutputOff(outputNum) {
+  await mqttPublish(B16M_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
+  await closeOpenHistoryRecord(outputNum, 'b16m')
 }
 
 // ── A6v3 commands ──────────────────────────────────────────────────────────
@@ -99,11 +109,20 @@ export async function logA6v3Pressure(psi) {
   return error ?? null
 }
 
-export function a6v3OutputOn(outputNum) {
-  return mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
+export async function a6v3OutputOn(outputNum) {
+  await mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
+  try {
+    await supabase.from('zone_history').insert({
+      device: 'a6v3',
+      zone_num: outputNum,
+      started_at: new Date().toISOString(),
+      source: 'manual',
+    })
+  } catch (e) { console.warn('a6v3 relay history insert failed:', e) }
 }
-export function a6v3OutputOff(outputNum) {
-  return mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
+export async function a6v3OutputOff(outputNum) {
+  await mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
+  await closeOpenHistoryRecord(outputNum, 'a6v3')
 }
 
 /** Turn on an A6v3 relay and log to zone_history with PSI snapshot. */
@@ -115,18 +134,14 @@ export async function a6v3ZoneOn(relayNum, durationMin, source = 'manual') {
 /** Turn off an A6v3 relay and close its open zone_history record. */
 export async function a6v3ZoneOff(relayNum) {
   await mqttPublish(A6V3_SET_TOPIC, { [`output${relayNum}`]: { value: false } })
-  await closeOpenHistoryRecord(relayNum)
+  await closeOpenHistoryRecord(relayNum, 'a6v3')
 }
 
-// KCS v3 firmware only publishes a fresh STATE when it processes a SET that actually
-// changes a value. Toggle dac1 between 0 and 1 on each poll so there is always a
-// real change — this guarantees a STATE response (including fresh ADC readings) every
-// 60 s without touching the relay outputs. dac1 value 0↔1 on an unconnected DAC
-// output is negligible (< 0.03 % of full range on a 12-bit DAC).
+// Toggle dac1 on each poll to guarantee a STATE response (includes fresh ADC).
 let _a6v3PollToggle = false
 export function requestA6v3State() {
   _a6v3PollToggle = !_a6v3PollToggle
-  return mqttPublish(A6V3_SET_TOPIC, { dac1: { value: _a6v3PollToggle ? 1 : 0 } })
+  return mqttPublish(A6V3_SET_TOPIC, { dac1: { value: _a6v3PollToggle ? 1 : 0 } }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

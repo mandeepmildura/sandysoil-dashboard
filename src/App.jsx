@@ -7,12 +7,11 @@ import Zones          from './pages/Zones'
 import ZoneDetail     from './pages/ZoneDetail'
 import ZoneHistory    from './pages/ZoneHistory'
 import Calendar       from './pages/Calendar'
-import ScheduleRules  from './pages/ScheduleRules'
-import Programs       from './pages/Programs'
 import PressureAnalysis from './pages/PressureAnalysis'
 import Alerts         from './pages/Alerts'
 import AdminConsole   from './pages/AdminConsole'
 import A6v3Controller from './pages/A6v3Controller'
+import B16MController from './pages/B16MController'
 
 import PressureBar    from './components/PressureBar'
 import { useAuth }    from './hooks/useAuth'
@@ -46,11 +45,10 @@ export default function App() {
           <Route path="/history"    element={<ZoneHistory />} />
           <Route path="/zones/:id"  element={<ZoneDetail />} />
           <Route path="/calendar"   element={<Calendar />} />
-          <Route path="/rules"      element={<ScheduleRules />} />
-          <Route path="/programs"   element={<Programs />} />
           <Route path="/pressure"   element={<PressureAnalysis />} />
           <Route path="/alerts"     element={<Alerts />} />
           <Route path="/a6v3"       element={<A6v3Controller />} />
+          <Route path="/b16m"       element={<B16MController />} />
           <Route path="/admin"      element={<AdminConsole />} />
           <Route path="*"           element={<Navigate to="/" replace />} />
         </Routes>
