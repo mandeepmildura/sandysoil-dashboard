@@ -294,6 +294,12 @@ export default function A6v3Controller() {
     setSavingSched(false)
   }
 
+  async function toggleScheduleEnabled(sched) {
+    if (!sched?.id) return
+    await supabase.from('group_schedules').update({ enabled: !sched.enabled }).eq('id', sched.id)
+    await loadGroups()
+  }
+
   function fmtScheduleSummary(sched) {
     if (!sched) return null
     const time = sched.start_time?.slice(0, 5) ?? ''
@@ -638,10 +644,20 @@ export default function A6v3Controller() {
                       <p className="text-xs text-[#40493d] mt-0.5">
                         {group.members.map(m => names[m.zone_num] ?? `Relay ${m.zone_num}`).join(', ')} · {group.members[0]?.duration_min ?? 30}m each
                       </p>
-                      {schedSummary
-                        ? <p className="text-xs text-[#00639a] mt-1">{schedSummary}</p>
-                        : <p className="text-xs text-[#40493d]/50 mt-1">No schedule</p>
-                      }
+                      {schedSummary ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className={`text-xs ${group.group_schedules[0].enabled ? 'text-[#00639a]' : 'text-[#40493d]/50 line-through'}`}>{schedSummary}</p>
+                          <button
+                            onClick={() => toggleScheduleEnabled(group.group_schedules[0])}
+                            title={group.group_schedules[0].enabled ? 'Pause schedule' : 'Enable schedule'}
+                            className={`relative inline-flex w-7 h-4 rounded-full transition-colors shrink-0 ${group.group_schedules[0].enabled ? 'bg-[#0d631b]' : 'bg-[#e2e2e2]'}`}
+                          >
+                            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${group.group_schedules[0].enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#40493d]/50 mt-1">No schedule</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                       <button onClick={() => openEdit(group)} className="px-2 py-1 rounded text-xs text-[#40493d] hover:bg-[#f3f3f3] transition-colors">Edit</button>
