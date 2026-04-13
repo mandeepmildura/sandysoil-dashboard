@@ -57,16 +57,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'UTC'
+const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'Australia/Melbourne'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-// Get local time parts using the IANA timezone (handles DST automatically)
-function localTimeParts() {
+// Get local time parts using the IANA timezone (handles DST automatically)function localTimeParts() {
   const now = new Date()
   const fmt = new Intl.DateTimeFormat('en-AU', {
-    timeZone: TIMEZONE,
-    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
+    timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
   })
   const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
   const hhmm = `${parts.hour.padStart(2, '0')}:${parts.minute.padStart(2, '0')}`
@@ -118,16 +116,17 @@ Deno.serve(async (_req) => {
       .eq('enabled', true)
       .filter('start_time', 'gte', `${now}:00`)
       .filter('start_time', 'lt',  `${now}:59`)
-
     if (schedErr) throw schedErr
 
     const due = (schedules ?? []).filter(s =>
       Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
     )
 
-    console.log(`[run-schedules] ${due.length} schedule(s) due`)
-
     const results: string[] = []
+    const onMessages:  Array<{ topic: string; payload: string }> = []
+    const offMessages: Array<{ topic: string; payload: string }> = []
+    const historyRows: Array<{ device: string; zone_num: number }> = []
+    const offHistory:  Array<{ device: string; zone_num: number }> = []
 
     for (const sched of due) {
       const group = sched.zone_groups as {
@@ -173,8 +172,7 @@ Deno.serve(async (_req) => {
 
         if (stepType === 'delay') {
           cursorMs += (step.delay_min ?? 0) * 60_000
-          continue
-        }
+          continue        }
 
         // Actionable step: 'on' or 'off'
         queueRows.push({
@@ -207,12 +205,22 @@ Deno.serve(async (_req) => {
     return new Response(
       JSON.stringify({ ok: true, time: now, dow, queued: results }),
       { headers: { 'Content-Type': 'application/json' } }
-    )
-  } catch (err) {
+    )  } catch (err) {
     console.error('[run-schedules] error:', err)
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })
+
+function toHHMM(totalMin: number): string {
+  return `${String(Math.floor(totalMin / 60) % 24).padStart(2,'0')}:${String(totalMin % 60).padStart(2,'0')}`
+}
+
+function mqttMsg(device: string, zoneNum: number, on: boolean, durationMin: number): { topic: string; payload: string } {
+  if (device === 'a6v3') {
+    return { topic: `A6v3/${A6V3_SERIAL}/SET`, payload: JSON.stringify({ [`output${zoneNum}`]: { value: on } }) }
+  } else if (device === 'b16m') {
+    return { topic: `B16M/${B16M_SERIAL}/SET`, payload: JSON.stringify({ [`output${zoneNum}`]: { value: on } }) }
+  } else {
+    return { topic: `farm/irrigation1/zone/${zoneNum}/cmd`, payload: JSON.stringify(on ? { cmd: 'on', duration: durationMin, source: 'schedule' } : { cmd: 'off' }) }
+  }
+}

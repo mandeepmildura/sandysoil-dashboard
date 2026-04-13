@@ -4,15 +4,13 @@ import { useAlerts } from '../hooks/useAlerts'
 
 const primary = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
-  { to: '/zones',    label: 'Zones',    icon: <DropIcon /> },
+  { to: '/zones',    label: 'Irrigation', icon: <DropIcon /> },
   { to: '/a6v3',     label: 'A6v3',     icon: <RelayIcon /> },
-  { to: '/programs', label: 'Programs', icon: <ListIcon /> },
+  { to: '/calendar', label: 'Schedule',  icon: <CalIcon /> },
 ]
 
 const overflow = [
   { to: '/history',  label: 'History',    icon: <HistoryIcon /> },
-  { to: '/calendar', label: 'Schedule',   icon: <CalIcon /> },
-  { to: '/rules',    label: 'Rules',      icon: <RulesIcon /> },
   { to: '/pressure', label: 'Pressure',   icon: <GaugeIcon /> },
   { to: '/alerts',   label: 'Alerts',     icon: <BellIcon />, badge: true },
   { to: '/admin',    label: 'Admin',      icon: <AdminIcon /> },

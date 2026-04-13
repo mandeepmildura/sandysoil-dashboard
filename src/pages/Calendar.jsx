@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import StatusChip from '../components/StatusChip'
 import { supabase } from '../lib/supabase'
-import { zoneOn } from '../lib/commands'
-import { useZoneNames } from '../hooks/useZoneNames'
+import { zoneOn, a6v3OutputOn } from '../lib/commands'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
@@ -46,7 +45,15 @@ function EventModal({ event, onClose }) {
   async function runNow() {
     if (!p.zones?.length) return
     setRunning(true)
-    try { await zoneOn(p.zones[0].zone_num, p.zones[0].duration_min) } catch (e) { console.error(e) }
+    try {
+      for (const z of p.zones) {
+        if (z.device === 'a6v3') {
+          await a6v3OutputOn(z.zone_num)
+        } else {
+          await zoneOn(z.zone_num, z.duration_min ?? 30)
+        }
+      }
+    } catch (e) { console.error(e) }
     setRunning(false)
     onClose()
   }
@@ -110,52 +117,49 @@ function EventModal({ event, onClose }) {
 
 // ── Add schedule modal ──────────────────────────────────────────────────────
 function AddScheduleModal({ onClose, onSaved }) {
-  const [label, setLabel]         = useState('')
-  const [device, setDevice]       = useState('irrigation1')
-  const [zoneNum, setZoneNum]     = useState(1)
-  const [days, setDays]           = useState([false,false,false,false,false,false,false])
-  const [startTime, setStartTime] = useState('06:00')
-  const [duration, setDuration]   = useState(30)
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState(null)
+  const [groups, setGroups]               = useState([])
+  const [selectedGroupId, setSelectedGroupId] = useState('')
+  const [days, setDays]                   = useState([false,false,false,false,false,false,false])
+  const [startTime, setStartTime]         = useState('06:00')
+  const [saving, setSaving]               = useState(false)
+  const [error, setError]                 = useState(null)
 
-  const { names: irrNames } = useZoneNames('irrigation1')
-  const { names: a6v3Names } = useZoneNames('a6v3')
-
-  const isA6v3    = device === 'a6v3'
-  const slotCount = isA6v3 ? 6 : 8
-  const names     = isA6v3 ? a6v3Names : irrNames
-  const slotLabel = isA6v3 ? 'Relay' : 'Zone'
-
-  function switchDevice(d) {
-    setDevice(d)
-    setZoneNum(1)
-  }
+  useEffect(() => {
+    supabase
+      .from('zone_groups')
+      .select('id, name, zone_group_members(device, zone_num, duration_min)')
+      .order('name')
+      .then(({ data }) => {
+        const list = data ?? []
+        setGroups(list)
+        if (list.length) setSelectedGroupId(list[0].id)
+      })
+  }, [])
 
   function toggleDay(i) { setDays(prev => prev.map((v, j) => j === i ? !v : v)) }
 
+  function deviceHint(group) {
+    const devices = [...new Set((group.zone_group_members ?? []).map(m => m.device ?? 'irrigation1'))]
+    return devices.join(', ')
+  }
+
   async function save() {
-    if (!label.trim())       { setError('Enter a schedule name'); return }
+    if (!selectedGroupId)    { setError('Select a group'); return }
     if (!days.some(Boolean)) { setError('Select at least one day'); return }
     setSaving(true); setError(null)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: group, error: e1 } = await supabase.from('zone_groups')
-        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id, customer_id: user?.id })
-        .select('id').single()
-      if (e1) throw e1
-
-      const { error: e2 } = await supabase.from('zone_group_members').insert({
-        group_id: group.id, zone_num: zoneNum, duration_min: duration, sort_order: 0, device,
-      })
-      if (e2) throw e2
-
+      const selectedGroup = groups.find(g => g.id === selectedGroupId)
       const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
-      const { error: e3 } = await supabase.from('group_schedules').insert({
-        group_id: group.id, label: label.trim(),
-        days_of_week: dow, start_time: startTime, enabled: true, customer_id: user?.id,
+      const { data: { session } } = await supabase.auth.getSession()
+      const { error: e } = await supabase.from('group_schedules').insert({
+        group_id: selectedGroupId,
+        label: selectedGroup.name,
+        days_of_week: dow,
+        start_time: startTime,
+        enabled: true,
+        customer_id: session?.user?.id,
       })
-      if (e3) throw e3
+      if (e) throw e
       onSaved(); onClose()
     } catch (err) {
       setError(err.message ?? 'Save failed')
@@ -168,39 +172,17 @@ function AddScheduleModal({ onClose, onSaved }) {
         <h2 className="font-headline font-bold text-lg text-[#1a1c1c] mb-4">Add Schedule</h2>
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-body text-[#40493d] block mb-1">Schedule Name</label>
-            <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Morning Zone 1"
-              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
-          </div>
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-2">Device</label>
-            <div className="flex rounded-lg overflow-hidden border border-[#e2e2e2]">
-              <button type="button" onClick={() => switchDevice('irrigation1')}
-                className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${!isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d] hover:bg-[#f3f3f3]'}`}>
-                Irrigation Zone
-              </button>
-              <button type="button" onClick={() => switchDevice('a6v3')}
-                className={`flex-1 py-1.5 text-xs font-semibold transition-colors border-l border-[#e2e2e2] ${isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d] hover:bg-[#f3f3f3]'}`}>
-                A6v3 Relay
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-body text-[#40493d] block mb-1">{slotLabel}</label>
-              <select value={zoneNum} onChange={e => setZoneNum(Number(e.target.value))}
+            <label className="text-xs font-body text-[#40493d] block mb-1">Group</label>
+            {groups.length === 0 ? (
+              <p className="text-xs text-[#40493d] italic">No groups found. Create a group in the Irrigation or A6v3 page first.</p>
+            ) : (
+              <select value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}
                 className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
-                {Array.from({ length: slotCount }, (_, i) => i + 1).map(n => (
-                  <option key={n} value={n}>{names[n] ?? `${slotLabel} ${n}`}</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name} ({deviceHint(g)})</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="text-xs font-body text-[#40493d] block mb-1">Duration (min)</label>
-              <input type="number" min={5} max={120} value={duration}
-                onChange={e => setDuration(Number(e.target.value))}
-                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
-            </div>
+            )}
           </div>
           <div>
             <label className="text-xs font-body text-[#40493d] block mb-2">Days</label>
@@ -224,7 +206,7 @@ function AddScheduleModal({ onClose, onSaved }) {
               className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d] hover:bg-[#e8e8e8] transition-colors">
               Cancel
             </button>
-            <button onClick={save} disabled={saving}
+            <button onClick={save} disabled={saving || groups.length === 0}
               className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity">
               {saving ? 'Saving…' : 'Save'}
             </button>
