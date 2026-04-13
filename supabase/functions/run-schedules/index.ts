@@ -1,84 +1,68 @@
-/**
- * Sandy Soil Automations — Scheduled Program Runner
- * Supabase Edge Function — invoked every minute via pg_cron
- *
- * What it does:
- *  1. Finds group_schedules that are enabled and due to run right now
- *  2. Fetches the zone sequence for each matching program
- *  3. Publishes MQTT commands to HiveMQ via HTTP API
- *
- * Setup:
- *  supabase functions deploy run-schedules
- *
- *  Then in Supabase SQL Editor, enable pg_cron and schedule this function:
- *
- *  SELECT cron.schedule(
- *    'run-irrigation-schedules',
- *    '* * * * *',
- *    $$
- *      SELECT net.http_post(
- *        url     := 'https://YOUR_PROJECT.supabase.co/functions/v1/run-schedules',
- *        headers := jsonb_build_object(
- *          'Content-Type',  'application/json',
- *          'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY'
- *        ),
- *        body    := '{}'::jsonb
- *      );
- *    $$
- *  );
- *
- * Required Edge Function secrets (set in Supabase Dashboard → Edge Functions → Secrets):
- *   SUPABASE_URL        — your project URL (auto-set)
- *   SUPABASE_SERVICE_ROLE_KEY — service role key (auto-set)
- *   MQTT_HOST           — e.g. eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud
- *   MQTT_USER           — e.g. farmcontrol-web
- *   MQTT_PASS           — your MQTT password
- */
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const SUPABASE_URL            = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY    = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const MQTT_HOST               = Deno.env.get('MQTT_HOST')!
-const MQTT_USER               = Deno.env.get('MQTT_USER')!
-const MQTT_PASS               = Deno.env.get('MQTT_PASS')!
-
-// IANA timezone name — handles daylight saving automatically
-// Set this in Supabase Dashboard → Edge Functions → Secrets as TIMEZONE
-// e.g. "Australia/Melbourne" for VIC/Mildura (auto-switches AEST↔AEDT)
-const TIMEZONE = Deno.env.get('TIMEZONE') ?? 'UTC'
+const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const MQTT_HOST            = Deno.env.get('MQTT_HOST') ?? 'eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud'
+const MQTT_USER            = Deno.env.get('MQTT_USER') ?? 'farmcontrol-web'
+const MQTT_PASS            = Deno.env.get('MQTT_PASS') ?? 'Zayan@09022022'
+const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'Australia/Melbourne'
+const A6V3_SERIAL          = '8CBFEA03002C'
+const B16M_SERIAL          = 'CCBA97071FD8'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-// HiveMQ Cloud HTTP API — publish an MQTT message
-async function mqttPublish(topic: string, payload: unknown): Promise<void> {
-  const url = `https://${MQTT_HOST}/api/v1/mqtt/publish`
-  const body = JSON.stringify({
-    topic,
-    payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
-    qos: 1,
+// ── MQTT over WebSocket (same approach as schedule-runner) ──────────────────
+function encode(s: string): Uint8Array { return new TextEncoder().encode(s) }
+function mqttStr(s: string): Uint8Array {
+  const b = encode(s)
+  return new Uint8Array([b.length >> 8, b.length & 0xff, ...b])
+}
+function buildConnect(clientId: string, user: string, pass: string): Uint8Array {
+  const protocol = mqttStr('MQTT'), cid = mqttStr(clientId)
+  const uBytes = mqttStr(user), pBytes = mqttStr(pass)
+  const payload = new Uint8Array([...protocol, 0x04, 0b11000010, 0x00, 0x3c, ...cid, ...uBytes, ...pBytes])
+  return new Uint8Array([0x10, payload.length, ...payload])
+}
+function buildPublish(topic: string, payload: string): Uint8Array {
+  const t = mqttStr(topic), p = encode(payload)
+  const rem = t.length + p.length
+  const remLen = rem < 128 ? [rem] : [0x80 | (rem & 0x7f), rem >> 7]
+  return new Uint8Array([0x30, ...remLen, ...t, ...p])
+}
+function mqttPublishBatch(messages: Array<{ topic: string; payload: string }>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`wss://${MQTT_HOST}:8884/mqtt`, ['mqtt'])
+    ws.binaryType = 'arraybuffer'
+    let connected = false
+    const timer = setTimeout(() => { ws.close(); reject(new Error('MQTT timeout')) }, 12000)
+    ws.onopen = () => ws.send(buildConnect(`sandysoil-run-${Date.now()}`, MQTT_USER, MQTT_PASS))
+    ws.onmessage = (evt) => {
+      const data = new Uint8Array(evt.data as ArrayBuffer)
+      if (!connected && data[0] === 0x20) {
+        if (data[3] !== 0) { clearTimeout(timer); ws.close(); reject(new Error(`MQTT auth failed: ${data[3]}`)); return }
+        connected = true
+        for (const { topic, payload } of messages) ws.send(buildPublish(topic, payload))
+        setTimeout(() => { clearTimeout(timer); ws.close(); resolve() }, 800)
+      }
+    }
+    ws.onerror = (e) => { clearTimeout(timer); reject(e) }
   })
-  const creds = btoa(`${MQTT_USER}:${MQTT_PASS}`)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Basic ${creds}`,
-    },
-    body,
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`MQTT publish failed (${res.status}): ${text}`)
+}
+
+async function closeHistoryRecord(zoneNum: number, device: string): Promise<void> {
+  const { data } = await supabase
+    .from('zone_history').select('id')
+    .eq('zone_num', zoneNum).eq('device', device).is('ended_at', null)
+    .order('started_at', { ascending: false }).limit(1)
+  if (data?.[0]) {
+    await supabase.from('zone_history').update({ ended_at: new Date().toISOString() }).eq('id', data[0].id)
   }
 }
 
-// Get local time parts using the IANA timezone (handles DST automatically)
 function localTimeParts() {
   const now = new Date()
   const fmt = new Intl.DateTimeFormat('en-AU', {
-    timeZone: TIMEZONE,
-    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
+    timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
   })
   const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
   const hhmm = `${parts.hour.padStart(2, '0')}:${parts.minute.padStart(2, '0')}`
@@ -86,109 +70,109 @@ function localTimeParts() {
   return { hhmm, dow }
 }
 
-function currentHHMM(): string { return localTimeParts().hhmm }
-function currentDOW():  number { return localTimeParts().dow }
-
 Deno.serve(async (_req) => {
   try {
-    const now    = currentHHMM()
-    const dow    = currentDOW()
+    const { hhmm: now, dow } = localTimeParts()
+    console.log(`[run-schedules] ${now} DOW=${dow}`)
 
-    console.log(`[run-schedules] checking at ${now} DOW=${dow} (tz=${TIMEZONE})`)
-
-    // Find enabled schedules whose start_time matches this minute
-    // and today's DOW is in days_of_week
     const { data: schedules, error: schedErr } = await supabase
       .from('group_schedules')
-      .select(`
-        id,
-        group_id,
-        label,
-        days_of_week,
-        start_time,
-        zone_groups (
-          id,
-          name,
-          run_mode,
-          zone_group_members (
-            zone_num,
-            duration_min,
-            sort_order
-          )
-        )
-      `)
+      .select('id, group_id, label, days_of_week, start_time')
       .eq('enabled', true)
-      // Match start_time at the minute level (e.g. "06:00:00" → "06:00")
-      .filter('start_time', 'gte', `${now}:00`)
-      .filter('start_time', 'lt',  `${now}:59`)
-
     if (schedErr) throw schedErr
 
     const due = (schedules ?? []).filter(s =>
       Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
     )
 
-    console.log(`[run-schedules] ${due.length} schedule(s) due`)
-
     const results: string[] = []
+    const onMessages:  Array<{ topic: string; payload: string }> = []
+    const offMessages: Array<{ topic: string; payload: string }> = []
+    const historyRows: Array<{ device: string; zone_num: number }> = []
+    const offHistory:  Array<{ device: string; zone_num: number }> = []
 
     for (const sched of due) {
-      const group = sched.zone_groups as {
-        id: string
-        name: string
-        run_mode: string
-        zone_group_members: { zone_num: number; duration_min: number; sort_order: number }[]
-      } | null
-
+      const { data: group } = await supabase
+        .from('zone_groups').select('id, name, run_mode').eq('id', sched.group_id).single()
       if (!group) continue
 
-      const zones = [...(group.zone_group_members ?? [])]
-        .sort((a, b) => a.sort_order - b.sort_order)
+      const { data: members } = await supabase
+        .from('zone_group_members')
+        .select('zone_num, duration_min, device, sort_order')
+        .eq('group_id', sched.group_id).order('sort_order')
+      const zones = members ?? []
 
-      console.log(`[run-schedules] running "${group.name}" (${zones.length} zones, ${group.run_mode})`)
+      const startHHMM = String(sched.start_time).slice(0, 5)
+      const [sh, sm]  = String(sched.start_time).split(':').map(Number)
+
+      console.log(`[run-schedules] "${group.name}" start=${startHHMM} now=${now} zones=${zones.length}`)
 
       if (group.run_mode === 'sequential') {
-        // Each zone has a calculated start time = schedule start + cumulative offset.
-        // The cron runs every minute so this naturally handles sequencing without a queue.
-        const [sh, sm] = sched.start_time.split(':').map(Number)
         let offsetMin = 0
         for (const z of zones) {
-          const totalMin  = sh * 60 + sm + offsetMin
-          const zoneHHMM  = `${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`
+          const device = z.device ?? 'irrigation1'
+          const totalMin = sh * 60 + sm + offsetMin
+          const zoneHHMM = `${String(Math.floor(totalMin / 60) % 24).padStart(2,'0')}:${String(totalMin % 60).padStart(2,'0')}`
+
           if (zoneHHMM === now) {
-            await mqttPublish(`farm/irrigation1/zone/${z.zone_num}/cmd`, {
-              cmd: 'on', duration: z.duration_min, source: 'schedule',
-            })
-            await supabase.from('zone_history').insert({
-              zone_num: z.zone_num, started_at: new Date().toISOString(), source: 'schedule',
-            })
-            results.push(`${group.name} → Zone ${z.zone_num} started (sequential offset ${offsetMin}min)`)
+            onMessages.push(mqttMsg(device, z.zone_num, true, z.duration_min))
+            historyRows.push({ device, zone_num: z.zone_num })
+            results.push(`${group.name} → ${device} out${z.zone_num} ON`)
+          }
+          const endHHMM = toHHMM(totalMin + z.duration_min)
+          if (endHHMM === now) {
+            offMessages.push(mqttMsg(device, z.zone_num, false, 0))
+            offHistory.push({ device, zone_num: z.zone_num })
+            results.push(`${group.name} → ${device} out${z.zone_num} OFF`)
           }
           offsetMin += z.duration_min
         }
       } else {
-        // Parallel: start all zones simultaneously
+        // simultaneous
         for (const z of zones) {
-          await mqttPublish(`farm/irrigation1/zone/${z.zone_num}/cmd`, {
-            cmd: 'on', duration: z.duration_min, source: 'schedule',
-          })
-          await supabase.from('zone_history').insert({
-            zone_num: z.zone_num, started_at: new Date().toISOString(), source: 'schedule',
-          })
+          const device = z.device ?? 'irrigation1'
+          if (startHHMM === now) {
+            onMessages.push(mqttMsg(device, z.zone_num, true, z.duration_min))
+            historyRows.push({ device, zone_num: z.zone_num })
+          }
+          const endHHMM = toHHMM(sh * 60 + sm + z.duration_min)
+          if (endHHMM === now) {
+            offMessages.push(mqttMsg(device, z.zone_num, false, 0))
+            offHistory.push({ device, zone_num: z.zone_num })
+          }
         }
-        results.push(`${group.name} → ${zones.length} zone(s) started (parallel)`)
+        if (startHHMM === now) results.push(`${group.name} → ${zones.length} output(s) ON`)
       }
     }
 
-    return new Response(
-      JSON.stringify({ ok: true, time: now, dow, ran: results }),
-      { headers: { 'Content-Type': 'application/json' } }
-    )
+    const allMessages = [...onMessages, ...offMessages]
+    if (allMessages.length) {
+      await mqttPublishBatch(allMessages)
+      if (historyRows.length) {
+        await supabase.from('zone_history').insert(
+          historyRows.map(r => ({ device: r.device, zone_num: r.zone_num, started_at: new Date().toISOString(), source: 'schedule' }))
+        )
+      }
+      for (const r of offHistory) await closeHistoryRecord(r.zone_num, r.device)
+    }
+
+    return new Response(JSON.stringify({ ok: true, time: now, dow, ran: results }), { headers: { 'Content-Type': 'application/json' } })
   } catch (err) {
     console.error('[run-schedules] error:', err)
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })
+
+function toHHMM(totalMin: number): string {
+  return `${String(Math.floor(totalMin / 60) % 24).padStart(2,'0')}:${String(totalMin % 60).padStart(2,'0')}`
+}
+
+function mqttMsg(device: string, zoneNum: number, on: boolean, durationMin: number): { topic: string; payload: string } {
+  if (device === 'a6v3') {
+    return { topic: `A6v3/${A6V3_SERIAL}/SET`, payload: JSON.stringify({ [`output${zoneNum}`]: { value: on } }) }
+  } else if (device === 'b16m') {
+    return { topic: `B16M/${B16M_SERIAL}/SET`, payload: JSON.stringify({ [`output${zoneNum}`]: { value: on } }) }
+  } else {
+    return { topic: `farm/irrigation1/zone/${zoneNum}/cmd`, payload: JSON.stringify(on ? { cmd: 'on', duration: durationMin, source: 'schedule' } : { cmd: 'off' }) }
+  }
+}

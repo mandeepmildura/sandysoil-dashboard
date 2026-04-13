@@ -3,10 +3,9 @@ import { useAlerts } from '../hooks/useAlerts'
 
 const nav = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
-  { to: '/zones',    label: 'Zones',    icon: <DropIcon /> },
+  { to: '/zones',    label: 'Irrigation', icon: <DropIcon /> },
   { to: '/a6v3',     label: 'A6v3',     icon: <RelayIcon /> },
   { to: '/calendar', label: 'Schedule', icon: <CalIcon /> },
-  { to: '/programs', label: 'Programs', icon: <ListIcon /> },
   { to: '/alerts',   label: 'Alerts',   icon: <BellIcon />, badge: true },
 ]
 
