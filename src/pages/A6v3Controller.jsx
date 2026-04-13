@@ -102,8 +102,6 @@ export default function A6v3Controller() {
   const a6v3LiveRef = useRef(null)
   const smoothedAdcRef = useRef(null)
 
-  const smoothedAdcRef = useRef(null)
-
   // Relay history
   const { history: relayHistory, loading: histLoading } = useZoneHistory(null, 'a6v3', 50)
 

@@ -141,7 +141,7 @@ export async function a6v3ZoneOff(relayNum) {
 let _a6v3PollToggle = false
 export function requestA6v3State() {
   _a6v3PollToggle = !_a6v3PollToggle
-  return mqttPublish(A6V3_SET_TOPIC, { dac1: { value: _a6v3PollToggle ? 1 : 0 } }
+  return mqttPublish(A6V3_SET_TOPIC, { dac1: { value: _a6v3PollToggle ? 1 : 0 } })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
