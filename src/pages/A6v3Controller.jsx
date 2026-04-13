@@ -7,6 +7,8 @@ import { useZoneNames } from '../hooks/useZoneNames'
 import { useZoneHistory } from '../hooks/useZoneHistory'
 import { a6v3ZoneOn, a6v3ZoneOff, logA6v3Pressure, requestA6v3State } from '../lib/commands'
 import { supabase } from '../lib/supabase'
+import { raiseAlert, resolveAlerts } from '../lib/alerts'
+import { useDeviceOffline } from '../hooks/useDeviceOffline'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
@@ -358,6 +360,34 @@ export default function A6v3Controller() {
     const id = setInterval(() => requestA6v3State(), interval)
     return () => clearInterval(id)
   }, [anyRelayOn]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Device offline alert — fires if no STATE message for 5 min
+  useDeviceOffline('A6v3', '8CBFEA03002C', a6v3)
+
+  // Pressure alerts — check whenever PSI changes
+  useEffect(() => {
+    if (!a6v3) return
+    if (psi >= 100) {
+      raiseAlert({
+        severity:    'fault',
+        title:       'A6v3 high pressure',
+        description: `CH1 pressure is ${psi.toFixed(1)} PSI — exceeds 100 PSI threshold.`,
+        device:      'A6v3',
+        device_id:   '8CBFEA03002C',
+      })
+    } else {
+      resolveAlerts('A6v3', 'A6v3 high pressure')
+    }
+    if (anyRelayOn && psi < 5) {
+      raiseAlert({
+        severity:    'warning',
+        title:       'A6v3 low pressure during run',
+        description: `CH1 pressure is only ${psi.toFixed(1)} PSI while a relay is active — possible flow issue.`,
+        device:      'A6v3',
+        device_id:   '8CBFEA03002C',
+      }, 15) // dedup: 15 min
+    }
+  }, [psi, anyRelayOn, !!a6v3]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!showGraph) return
