@@ -122,8 +122,10 @@ export default function A6v3Controller() {
   const [editDuration, setEditDuration] = useState(30)
   const [savingEdit, setSavingEdit] = useState(false)
   const [schedulingGroup, setSchedulingGroup] = useState(null)
+  const [schedMode, setSchedMode] = useState('repeat') // 'repeat' | 'once'
   const [schedDays, setSchedDays] = useState([false,false,false,false,false,false,false])
   const [schedStartTime, setSchedStartTime] = useState('06:00')
+  const [schedOnceDate, setSchedOnceDate] = useState('')
   const [savingSched, setSavingSched] = useState(false)
   const [schedError, setSchedError] = useState(null)
 
@@ -237,35 +239,50 @@ export default function A6v3Controller() {
   function openSchedule(group) {
     const sched = group.group_schedules?.[0]
     if (sched) {
-      const d = [false,false,false,false,false,false,false]
-      sched.days_of_week.forEach(dow => { d[dow === 0 ? 6 : dow - 1] = true })
-      setSchedDays(d)
+      if (sched.run_once_date) {
+        setSchedMode('once')
+        setSchedOnceDate(sched.run_once_date)
+      } else {
+        setSchedMode('repeat')
+        const d = [false,false,false,false,false,false,false]
+        sched.days_of_week.forEach(dow => { d[dow === 0 ? 6 : dow - 1] = true })
+        setSchedDays(d)
+      }
       setSchedStartTime(sched.start_time.slice(0, 5))
     } else {
+      setSchedMode('repeat')
       setSchedDays([false,false,false,false,false,false,false])
       setSchedStartTime('06:00')
+      setSchedOnceDate('')
     }
     setSchedError(null)
     setSchedulingGroup(group)
   }
 
   async function saveSchedule() {
-    if (!schedDays.some(Boolean)) { setSchedError('Select at least one day'); return }
+    if (schedMode === 'repeat' && !schedDays.some(Boolean)) { setSchedError('Select at least one day'); return }
+    if (schedMode === 'once' && !schedOnceDate) { setSchedError('Pick a date'); return }
     setSavingSched(true); setSchedError(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const dow = schedDays.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
+      const dow = schedMode === 'repeat'
+        ? schedDays.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
+        : []
+      const fields = {
+        days_of_week: dow,
+        start_time: schedStartTime,
+        enabled: true,
+        run_once_date: schedMode === 'once' ? schedOnceDate : null,
+      }
       const existingId = schedulingGroup.group_schedules?.[0]?.id
       if (existingId) {
-        const { error } = await supabase.from('group_schedules')
-          .update({ days_of_week: dow, start_time: schedStartTime, enabled: true })
-          .eq('id', existingId)
+        const { error } = await supabase.from('group_schedules').update(fields).eq('id', existingId)
         if (error) throw error
       } else {
         const { error } = await supabase.from('group_schedules').insert({
           group_id: schedulingGroup.id, label: schedulingGroup.name,
-          days_of_week: dow, start_time: schedStartTime, enabled: true,
           customer_id: session?.user?.id,
+          ...fields,
         })
         if (error) throw error
       }
@@ -277,9 +294,12 @@ export default function A6v3Controller() {
 
   function fmtScheduleSummary(sched) {
     if (!sched) return null
+    const time = sched.start_time?.slice(0, 5) ?? ''
+    const paused = sched.enabled ? '' : ' (paused)'
+    if (sched.run_once_date) return `Once on ${sched.run_once_date} at ${time}${paused}`
     const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
     const days = (sched.days_of_week ?? []).map(d => DAY_ABBR[d]).join(', ')
-    return `${days} at ${sched.start_time?.slice(0, 5) ?? ''}${sched.enabled ? '' : ' (paused)'}`
+    return `${days} at ${time}${paused}`
   }
 
   function startRelayEdit(n, currentName) {
@@ -693,17 +713,32 @@ export default function A6v3Controller() {
             <h2 className="font-headline font-bold text-base text-[#1a1c1c] mb-1">Schedule</h2>
             <p className="text-xs text-[#40493d] mb-4">{schedulingGroup.name}</p>
             <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-[#40493d] block mb-2">Days</label>
-                <div className="flex gap-1.5">
-                  {['M','T','W','T','F','S','S'].map((d, i) => (
-                    <button key={i} onClick={() => setSchedDays(prev => prev.map((v, j) => j === i ? !v : v))}
-                      className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${schedDays[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex gap-1 bg-[#f3f3f3] rounded-lg p-1">
+                {[['repeat','Repeat'],['once','Once']].map(([m, label]) => (
+                  <button key={m} onClick={() => setSchedMode(m)}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors ${schedMode === m ? 'bg-white text-[#1a1c1c] shadow-sm' : 'text-[#40493d]'}`}>
+                    {label}
+                  </button>
+                ))}
               </div>
+              {schedMode === 'repeat' ? (
+                <div>
+                  <label className="text-xs font-semibold text-[#40493d] block mb-2">Days</label>
+                  <div className="flex gap-1.5">
+                    {['M','T','W','T','F','S','S'].map((d, i) => (
+                      <button key={i} onClick={() => setSchedDays(prev => prev.map((v, j) => j === i ? !v : v))}
+                        className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${schedDays[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-semibold text-[#40493d] block mb-1">Date</label>
+                  <input type="date" value={schedOnceDate} onChange={e => setSchedOnceDate(e.target.value)} className={`w-full ${inputCls}`} />
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold text-[#40493d] block mb-1">Start Time</label>
                 <input type="time" value={schedStartTime} onChange={e => setSchedStartTime(e.target.value)} className={`w-full ${inputCls}`} />
