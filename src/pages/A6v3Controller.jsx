@@ -135,7 +135,7 @@ export default function A6v3Controller() {
     setGroupsLoading(true)
     const { data, error } = await supabase
       .from('zone_groups')
-      .select('id, name, zone_group_members(zone_num, device, sort_order, duration_min), group_schedules(id, days_of_week, start_time, enabled)')
+      .select('id, name, zone_group_members(zone_num, device, sort_order, duration_min), group_schedules(id, days_of_week, start_time, enabled, run_once_date)')
       .order('created_at', { ascending: false })
     if (!error && data) {
       setGroups(
