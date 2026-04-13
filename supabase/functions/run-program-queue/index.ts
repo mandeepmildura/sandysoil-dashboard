@@ -35,6 +35,29 @@ const A6V3_SET_TOPIC = 'A6v3/8CBFEA03002C/SET'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
+async function raiseScheduleAlert(description: string): Promise<void> {
+  try {
+    const since = new Date(Date.now() - 10 * 60_000).toISOString()
+    const { data: existing } = await supabase
+      .from('device_alerts')
+      .select('id')
+      .eq('device', 'scheduler')
+      .eq('title', 'Schedule fired')
+      .eq('acknowledged', false)
+      .gte('created_at', since)
+      .limit(1)
+    if (existing?.length) return
+    await supabase.from('device_alerts').insert({
+      severity: 'info',
+      title: 'Schedule fired',
+      description,
+      device: 'scheduler',
+      device_id: '',
+      acknowledged: false,
+    })
+  } catch (_) { /* non-critical */ }
+}
+
 // HiveMQ Cloud HTTP API — publish an MQTT message
 async function mqttPublish(topic: string, payload: unknown): Promise<void> {
   const url = `https://${MQTT_HOST}/api/v1/mqtt/publish`
@@ -124,6 +147,10 @@ Deno.serve(async (_req) => {
         console.error(`[run-program-queue] step ${step.id} failed:`, stepErr)
         errors.push(String(stepErr))
       }
+    }
+
+    if (fired.length > 0) {
+      await raiseScheduleAlert(`Fired: ${fired.join(', ')}`)
     }
 
     return new Response(

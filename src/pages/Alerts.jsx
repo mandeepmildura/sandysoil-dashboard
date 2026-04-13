@@ -4,12 +4,6 @@ import StatusChip from '../components/StatusChip'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 
-const DEMO_ALERTS = [
-  { id: 1, severity: 'fault',   title: 'High Pressure Alert',     device: 'Irrigation Controller', created_at: new Date().toISOString(), description: 'Supply PSI exceeded 65 PSI. Zone 3 was active.',           acknowledged: false },
-  { id: 2, severity: 'fault',   title: 'Filter Fault',            device: 'Filter Station',        created_at: new Date().toISOString(), description: 'Backwash cycle failed to complete. Manual reset required.', acknowledged: false },
-  { id: 3, severity: 'warning', title: 'Zone 3 Runtime Exceeded', device: 'Irrigation Controller', created_at: new Date().toISOString(), description: 'Zone ran 45 min over scheduled time.',                      acknowledged: false },
-]
-
 function fmtTime(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -24,38 +18,43 @@ function fmtTime(iso) {
 
 export default function Alerts() {
   const { alerts: dbAlerts, loading, acknowledge, dismiss } = useAlerts()
-  const { data: live } = useLiveTelemetry(['farm/irrigation1/status', 'farm/filter1/pressure'])
+  const { data: live } = useLiveTelemetry([
+    'farm/irrigation1/status',
+    'A6v3/8CBFEA03002C/STATE',
+    'B16M/CCBA97071FD8/STATE',
+  ])
 
-  const [localAlerts, setLocalAlerts] = useState(DEMO_ALERTS)
+  const [localAlerts, setLocalAlerts] = useState([])
   const [usingDB, setUsingDB]         = useState(false)
   const [tab, setTab]                 = useState('All')
 
-  // Once DB load completes, switch to DB data if available
+  // Once DB load completes, switch to DB data
   useEffect(() => {
     if (!loading) {
-      if (dbAlerts.length > 0) {
-        setLocalAlerts(dbAlerts)
-        setUsingDB(true)
-      }
+      setLocalAlerts(dbAlerts)
+      setUsingDB(true)
     }
   }, [loading, dbAlerts])
 
-  const tabs = ['All', 'Critical', 'Warnings', 'Resolved']
+  const tabs = ['All', 'Critical', 'Warnings', 'Info', 'Resolved']
 
   const filtered = localAlerts.filter(a => {
-    if (tab === 'All')      return true
+    if (tab === 'All')      return !a.acknowledged
     if (tab === 'Critical') return a.severity === 'fault'   && !a.acknowledged
     if (tab === 'Warnings') return a.severity === 'warning' && !a.acknowledged
+    if (tab === 'Info')     return a.severity === 'info'    && !a.acknowledged
     if (tab === 'Resolved') return !!a.acknowledged
     return true
   })
 
-  const irr   = live['farm/irrigation1/status'] ?? null
-  const press = live['farm/filter1/pressure']   ?? null
+  const irr  = live['farm/irrigation1/status']  ?? null
+  const a6v3 = live['A6v3/8CBFEA03002C/STATE']  ?? null
+  const b16m = live['B16M/CCBA97071FD8/STATE']   ?? null
 
   const DEVICES = [
-    { name: 'Irrigation Controller', model: 'KC868-A8v3', fw: irr?.fw ?? '—',  status: irr?.online ? 'online' : 'offline' },
-    { name: 'Filter Station',        model: 'ALR-V13',    fw: '—',              status: press ? 'online' : 'offline' },
+    { name: 'Irrigation Controller', model: '8-zone ESP32',   fw: irr?.fw  ?? '—', status: irr  ? 'online' : 'offline' },
+    { name: 'A6v3 Relay / Pressure', model: 'KC868-A6v3',     fw: '—',             status: a6v3 ? 'online' : 'offline' },
+    { name: 'B16M MOSFET Board',     model: 'KinCony B16M',   fw: '—',             status: b16m ? 'online' : 'offline' },
   ]
 
   async function handleAcknowledge(alert) {
@@ -99,6 +98,7 @@ export default function Alerts() {
               <div className={`w-1 shrink-0 ${
                 a.severity === 'fault'   ? 'bg-[#ba1a1a]' :
                 a.severity === 'warning' ? 'bg-[#e65100]' :
+                a.severity === 'info'    ? 'bg-[#1565c0]' :
                 'bg-[#0d631b]'
               }`} />
               <div className="flex-1 p-4">
