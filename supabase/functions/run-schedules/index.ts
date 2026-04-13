@@ -61,7 +61,8 @@ const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'Australia/Melbourne'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-// Get local time parts using the IANA timezone (handles DST automatically)function localTimeParts() {
+// Get local time parts using the IANA timezone (handles DST automatically)
+function localTimeParts() {
   const now = new Date()
   const fmt = new Intl.DateTimeFormat('en-AU', {
     timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
@@ -91,6 +92,11 @@ Deno.serve(async (_req) => {
 
     console.log(`[run-schedules] checking at ${now} DOW=${dow} (tz=${TIMEZONE})`)
 
+    // Today's date in local timezone (YYYY-MM-DD)
+    const todayLocal = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date())
+
     const { data: schedules, error: schedErr } = await supabase
       .from('group_schedules')
       .select(`
@@ -99,6 +105,7 @@ Deno.serve(async (_req) => {
         label,
         days_of_week,
         start_time,
+        run_once_date,
         zone_groups (
           id,
           name,
@@ -119,7 +126,9 @@ Deno.serve(async (_req) => {
     if (schedErr) throw schedErr
 
     const due = (schedules ?? []).filter(s =>
-      Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
+      s.run_once_date
+        ? s.run_once_date === todayLocal
+        : Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
     )
 
     const results: string[] = []
@@ -199,6 +208,13 @@ Deno.serve(async (_req) => {
         results.push(`${group.name} → ${queueRows.length} step(s) queued`)
       } else {
         results.push(`${group.name} → no actionable steps`)
+      }
+
+      // Disable once-only schedules after firing
+      if (sched.run_once_date) {
+        await supabase.from('group_schedules')
+          .update({ enabled: false, run_once_date: null })
+          .eq('id', sched.id)
       }
     }
 
