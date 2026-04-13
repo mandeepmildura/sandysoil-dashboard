@@ -132,10 +132,6 @@ Deno.serve(async (_req) => {
     )
 
     const results: string[] = []
-    const onMessages:  Array<{ topic: string; payload: string }> = []
-    const offMessages: Array<{ topic: string; payload: string }> = []
-    const historyRows: Array<{ device: string; zone_num: number }> = []
-    const offHistory:  Array<{ device: string; zone_num: number }> = []
 
     for (const sched of due) {
       const group = sched.zone_groups as {
@@ -152,28 +148,26 @@ Deno.serve(async (_req) => {
 
       console.log(`[run-schedules] queuing "${group.name}" (${steps.length} steps)`)
 
-      // Parse schedule start time as a Date (today in local time → UTC)
-      const [sh, sm] = sched.start_time.split(':').map(Number)
-      const now_date = new Date()
-      // Build a Date for today at the schedule's local time
-      const localStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: TIMEZONE,
-        year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(now_date)
-      // localStr is "YYYY-MM-DD"; combine with schedule time in local TZ
-      const scheduleTime = new Date(
-        new Date(`${localStr}T${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}:00`)
-          .toLocaleString('en-US', { timeZone: TIMEZONE })
-          .replace(/(\d+)\/(\d+)\/(\d+),\s(\d+):(\d+):(\d+)\s(AM|PM)/, (_, mo, da, yr, h, mi, s, ap) => {
-            const hr = ap === 'PM' && +h < 12 ? +h + 12 : ap === 'AM' && +h === 12 ? 0 : +h
-            return `${yr}-${mo.padStart(2,'0')}-${da.padStart(2,'0')}T${String(hr).padStart(2,'0')}:${mi}:${s}`
-          })
-      )
-      // Fallback: just use UTC-based offset approximation if parsing fails
-      const baseMs = isNaN(scheduleTime.getTime()) ? Date.now() : scheduleTime.getTime()
+      // Dedup: skip if this group already has unfired steps queued in the last 2 minutes
+      // (guards against pg_cron calling us twice in the same minute)
+      const dedupSince = new Date(Date.now() - 2 * 60_000).toISOString()
+      const { data: existing } = await supabase
+        .from('program_queue')
+        .select('id')
+        .eq('group_id', group.id)
+        .is('fired_at', null)
+        .gte('created_at', dedupSince)
+        .limit(1)
+      if (existing?.length) {
+        console.log(`[run-schedules] "${group.name}" already queued — skipping duplicate`)
+        results.push(`${group.name} → skipped (duplicate)`)
+        continue
+      }
 
-      // Walk steps, accumulating delay offset as a cursor
-      let cursorMs = baseMs
+      // Base time is now — the function runs at the correct minute,
+      // so Date.now() is the right fire_at for immediate steps.
+      // Delay steps advance the cursor forward in time.
+      let cursorMs = Date.now()
       const queueRows: object[] = []
 
       for (const step of steps) {
@@ -227,16 +221,3 @@ Deno.serve(async (_req) => {
   }
 })
 
-function toHHMM(totalMin: number): string {
-  return `${String(Math.floor(totalMin / 60) % 24).padStart(2,'0')}:${String(totalMin % 60).padStart(2,'0')}`
-}
-
-function mqttMsg(device: string, zoneNum: number, on: boolean, durationMin: number): { topic: string; payload: string } {
-  if (device === 'a6v3') {
-    return { topic: `A6v3/${A6V3_SERIAL}/SET`, payload: JSON.stringify({ [`output${zoneNum}`]: { value: on } }) }
-  } else if (device === 'b16m') {
-    return { topic: `B16M/${B16M_SERIAL}/SET`, payload: JSON.stringify({ [`output${zoneNum}`]: { value: on } }) }
-  } else {
-    return { topic: `farm/irrigation1/zone/${zoneNum}/cmd`, payload: JSON.stringify(on ? { cmd: 'on', duration: durationMin, source: 'schedule' } : { cmd: 'off' }) }
-  }
-}
