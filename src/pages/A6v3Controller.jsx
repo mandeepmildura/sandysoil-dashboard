@@ -130,8 +130,9 @@ export default function A6v3Controller() {
   const smoothedAdcRef = useRef(null)
 
   // Relay history (filtered by selected date)
-  const histDateFrom = `${histDate}T00:00:00.000Z`
-  const histDateTo   = `${histDate}T23:59:59.999Z`
+  // Use local-time midnight so the date picker matches what the user sees on their clock
+  const histDateFrom = new Date(`${histDate}T00:00:00`).toISOString()
+  const histDateTo   = new Date(`${histDate}T23:59:59.999`).toISOString()
   const { history: relayHistory, loading: histLoading } = useZoneHistory(null, 'a6v3', 200, histDateFrom, histDateTo)
 
   // Pressure history
