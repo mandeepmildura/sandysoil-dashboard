@@ -5,10 +5,11 @@ import { supabase } from '../lib/supabase'
  * Fetches zone_history for a specific zone/relay.
  * - zoneNum: filter by output number (null = all)
  * - device: 'irrigation1' | 'a6v3' (null = all devices)
- * - limit: max rows to fetch
+ * - limit: max rows to fetch (ignored when from/to are provided)
+ * - from/to: optional ISO strings to filter by date range
  * Subscribes to realtime changes so history auto-refreshes.
  */
-export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 50) {
+export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 50, from = null, to = null) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -19,10 +20,15 @@ export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 5
         .from('zone_history')
         .select('id, zone_num, device, started_at, ended_at, duration_min, source')
         .order('started_at', { ascending: false })
-        .limit(limit)
 
       if (zoneNum !== null) query = query.eq('zone_num', zoneNum)
       if (device !== null)  query = query.eq('device', device)
+
+      if (from && to) {
+        query = query.gte('started_at', from).lte('started_at', to)
+      } else {
+        query = query.limit(limit)
+      }
 
       const { data, error } = await query
       if (!error && data) setHistory(data)
@@ -31,7 +37,7 @@ export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 5
     } finally {
       setLoading(false)
     }
-  }, [zoneNum, device, limit])
+  }, [zoneNum, device, limit, from, to])
 
   useEffect(() => {
     load()
