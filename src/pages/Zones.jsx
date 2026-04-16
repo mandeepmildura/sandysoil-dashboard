@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { useDeviceData } from '../context/DeviceContext'
 import { useZoneNames } from '../hooks/useZoneNames'
 import { useZoneHistory } from '../hooks/useZoneHistory'
 import { zoneOn, zoneOff, allZonesOff } from '../lib/commands'
@@ -31,6 +32,7 @@ function fmtUptime(sec) {
 export default function Zones() {
   const navigate = useNavigate()
   const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/zone/+/state'])
+  const { patchOptimistic } = useDeviceData()
   const { names, renameZone } = useZoneNames('irrigation1')
   const [activeTab, setActiveTab] = useState('zones')
   const [busy, setBusy] = useState({})
@@ -61,13 +63,17 @@ export default function Zones() {
   const [schedError, setSchedError] = useState(null)
 
   const irr = live['farm/irrigation1/status'] ?? null
+  // Per-zone state responses override the full status zones array.
+  // No irr?.online guard here — per-zone state is a direct command response
+  // and should be trusted immediately. The DeviceContext clears these when
+  // the next real MQTT message arrives.
   const zoneOverrides = {}
   Object.entries(live).forEach(([topic, payload]) => {
     const m = topic.match(/^farm\/irrigation1\/zone\/(\d+)\/state$/)
     if (m) zoneOverrides[Number(m[1])] = payload
   })
   const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
-  const zones = baseZones.map(z => (irr?.online && zoneOverrides[z.id]) ? { ...z, ...zoneOverrides[z.id] } : z)
+  const zones = baseZones.map(z => zoneOverrides[z.id] ? { ...z, ...zoneOverrides[z.id] } : z)
 
   const loadGroups = useCallback(async () => {
     setGroupsLoading(true)
@@ -228,12 +234,16 @@ export default function Zones() {
 
   async function handleOn(id) {
     setBusy(b => ({ ...b, [id]: true }))
+    // Optimistically show zone as ON immediately — no waiting for device response
+    patchOptimistic(`farm/irrigation1/zone/${id}/state`, { on: true, state: 'manual', zone: id })
     try { await zoneOn(id, 30) } catch (e) { console.error(e) }
     setBusy(b => ({ ...b, [id]: false }))
   }
 
   async function handleOff(id) {
     setBusy(b => ({ ...b, [id]: true }))
+    // Optimistically show zone as OFF immediately
+    patchOptimistic(`farm/irrigation1/zone/${id}/state`, { on: false, state: 'off', zone: id })
     try { await zoneOff(id) } catch (e) { console.error(e) }
     setBusy(b => ({ ...b, [id]: false }))
   }

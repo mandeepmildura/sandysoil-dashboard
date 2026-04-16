@@ -1,19 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAlerts } from '../hooks/useAlerts'
+import { KCS_DEVICES } from '../config/devices'
 
 const primary = [
-  { to: '/',         label: 'Home',     icon: <GridIcon /> },
-  { to: '/zones',    label: 'Irrigation', icon: <DropIcon /> },
-  { to: '/a6v3',     label: 'A6v3',     icon: <RelayIcon /> },
-  { to: '/calendar', label: 'Schedule',  icon: <CalIcon /> },
+  { to: '/', label: 'Home', icon: <GridIcon /> },
+  ...KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> })),
+  { to: '/alerts', label: 'Alerts', icon: <BellIcon />, badge: true },
 ]
 
 const overflow = [
-  { to: '/history',  label: 'History',    icon: <HistoryIcon /> },
-  { to: '/pressure', label: 'Pressure',   icon: <GaugeIcon /> },
-  { to: '/alerts',   label: 'Alerts',     icon: <BellIcon />, badge: true },
-  { to: '/admin',    label: 'Admin',      icon: <AdminIcon /> },
+  { to: '/admin', label: 'Admin', icon: <AdminIcon /> },
 ]
 
 export default function BottomNav() {
@@ -21,6 +18,19 @@ export default function BottomNav() {
   const unreadCount = alerts.filter(a => !a.acknowledged).length
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
+
+  const [clock, setClock] = useState('')
+  useEffect(() => {
+    function tick() {
+      setClock(new Date().toLocaleTimeString('en-AU', {
+        timeZone: 'Australia/Melbourne',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      }))
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   function goTo(to) {
     setOpen(false)
@@ -40,7 +50,10 @@ export default function BottomNav() {
       {/* Slide-up "More" sheet */}
       <div className={`md:hidden fixed bottom-14 inset-x-0 z-50 bg-[#304047] rounded-t-2xl transition-transform duration-200 ${open ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="px-2 pt-3 pb-4">
-          <div className="w-8 h-1 bg-white/20 rounded-full mx-auto mb-4" />
+          <div className="w-8 h-1 bg-white/20 rounded-full mx-auto mb-3" />
+          {clock && (
+            <p className="text-center text-white/50 text-xs font-mono mb-3">{clock}</p>
+          )}
           <div className="grid grid-cols-3 gap-1">
             {overflow.map(({ to, label, icon, badge }) => (
               <button
@@ -65,7 +78,7 @@ export default function BottomNav() {
 
       {/* Bottom bar */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#304047] border-t border-white/10 flex">
-        {primary.map(({ to, label, icon }) => (
+        {primary.map(({ to, label, icon, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -76,7 +89,14 @@ export default function BottomNav() {
               }`
             }
           >
-            <span className="w-5 h-5">{icon}</span>
+            <span className="w-5 h-5 relative">
+              {icon}
+              {badge && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </span>
             {label}
           </NavLink>
         ))}
@@ -84,15 +104,10 @@ export default function BottomNav() {
         {/* More button */}
         <button
           onClick={() => setOpen(o => !o)}
-          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors relative ${open ? 'text-white' : 'text-white/50'}`}
+          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors ${open ? 'text-white' : 'text-white/50'}`}
         >
-          <span className="w-5 h-5 relative">
+          <span className="w-5 h-5">
             <MoreIcon />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
           </span>
           More
         </button>

@@ -1,62 +1,40 @@
-import { useEffect, useState, useCallback } from 'react'
-import { mqttSubscribe, getMqttCache } from '../lib/mqttClient'
+import { useMemo } from 'react'
+import { useDeviceData } from '../context/DeviceContext'
 
 /**
- * Subscribes to MQTT topics directly over WSS.
- * Returns { data: { [topic]: latestPayload }, connected }.
- * Seeds initial state from the module-level cache so navigating
- * back to a page shows the last known values immediately.
+ * Selects the subset of device data for the given topics.
+ * Supports single-level MQTT wildcards ('+').
+ *
+ * All actual MQTT subscriptions live in DeviceProvider (app-level).
+ * This hook is a pure selector — no subscriptions, no side-effects.
+ * Existing callers are unchanged.
  */
 export function useLiveTelemetry(topics = []) {
-  const [data, setData] = useState(() => {
-    // Populate from cache so values don't flash to "—" on navigation
-    const cache = getMqttCache()
-    const initial = {}
-    for (const topic of topics) {
-      if (topic.includes('+')) {
-        // Wildcard: find all cached topics that match
-        const p = topic.split('/')
-        for (const [ct, payload] of Object.entries(cache)) {
-          const t = ct.split('/')
-          if (p.length === t.length && p.every((seg, i) => seg === '+' || seg === t[i])) {
-            initial[ct] = payload
-          }
-        }
-      } else if (cache[topic] != null) {
-        initial[topic] = cache[topic]
-      }
-    }
-    return initial
-  })
-  const [connected, setConnected] = useState(false)
+  const { data: allData, connected } = useDeviceData()
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const topicsKey = topics.join(',')
 
-  const handleMessage = useCallback((payload, topic) => {
-    setConnected(true)
-    setData(prev => ({ ...prev, [topic]: payload }))
-  }, [])
-
-  useEffect(() => {
-    if (!topics.length) return
-
-    const unsubs = []
-
-    async function subscribe() {
-      for (const topic of topics) {
-        const unsub = await mqttSubscribe(topic, handleMessage)
-        unsubs.push(unsub)
+  const data = useMemo(() => {
+    const result = {}
+    for (const topic of topics) {
+      if (topic.includes('+')) {
+        const pattern = topic.split('/')
+        for (const [t, payload] of Object.entries(allData)) {
+          const parts = t.split('/')
+          if (
+            pattern.length === parts.length &&
+            pattern.every((seg, i) => seg === '+' || seg === parts[i])
+          ) {
+            result[t] = payload
+          }
+        }
+      } else if (allData[topic] != null) {
+        result[topic] = allData[topic]
       }
-      setConnected(true)
     }
-
-    subscribe().catch(err => {
-      console.error('MQTT subscribe error:', err)
-      setConnected(false)
-    })
-
-    return () => unsubs.forEach(fn => fn())
-  }, [topicsKey]) // eslint-disable-line react-hooks/exhaustive-deps
+    return result
+  }, [allData, topicsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { data, connected }
 }

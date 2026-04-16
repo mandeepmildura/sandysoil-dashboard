@@ -1,21 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useAlerts } from '../hooks/useAlerts'
+import { KCS_DEVICES } from '../config/devices'
 
-const nav = [
-  { to: '/',         label: 'Dashboard',  icon: <GridIcon /> },
-  { to: '/zones',    label: 'Irrigation', icon: <DropIcon /> },
-  { to: '/a6v3',     label: 'A6v3',       icon: <RelayIcon /> },
-  { to: '/b16m',     label: 'B16M',       icon: <RelayIcon /> },
-  { to: '/history',  label: 'History',    icon: <HistoryIcon /> },
-  { to: '/calendar', label: 'Schedule',   icon: <CalIcon /> },
-  { to: '/pressure', label: 'Pressure',   icon: <GaugeIcon /> },
-
-  { to: '/alerts',   label: 'Alerts',     icon: <BellIcon />, badge: true },
-  { to: '/admin',    label: 'Admin',      icon: <AdminIcon /> },
+const staticNav = [
+  { to: '/', label: 'Dashboard', icon: <GridIcon /> },
 ]
+const kcsNav = KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> }))
+const tailNav = [
+  { to: '/alerts', label: 'Alerts', icon: <BellIcon />, badge: true },
+  { to: '/admin',  label: 'Admin',  icon: <AdminIcon /> },
+]
+const nav = [...staticNav, ...kcsNav, ...tailNav]
 
 export default function Sidebar({ session }) {
   const { data } = useLiveTelemetry(['farm/irrigation1/status'])
@@ -24,6 +22,20 @@ export default function Sidebar({ session }) {
 
   const { alerts } = useAlerts()
   const unreadCount = alerts.filter(a => !a.acknowledged).length
+
+  // Live clock (Melbourne time)
+  const [clock, setClock] = useState('')
+  useEffect(() => {
+    function tick() {
+      setClock(new Date().toLocaleTimeString('en-AU', {
+        timeZone: 'Australia/Melbourne',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      }))
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   // Poll latest supply PSI from pressure_log every 10s — works for both
   // real device data and simulated data, persists across page navigation
@@ -105,6 +117,7 @@ export default function Sidebar({ session }) {
           <p className="text-white/40 text-[10px] truncate">{session.user.email}</p>
         )}
         <p className="text-white/30 text-xs">Mildura, VIC</p>
+        {clock && <p className="text-white/50 text-xs font-mono">{clock}</p>}
         <button
           onClick={() => supabase.auth.signOut()}
           className="text-white/40 hover:text-white/70 text-xs font-body transition-colors"

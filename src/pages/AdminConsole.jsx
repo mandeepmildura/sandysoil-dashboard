@@ -18,11 +18,12 @@ function fmtLastSeen(iso) {
 }
 
 function fmtEvent(row) {
-  const device = row.device === 'a6v3' ? 'A6v3' : 'Irrigation'
-  const label = row.device === 'a6v3' ? `Relay ${row.zone_num}` : `Zone ${row.zone_num}`
+  const deviceLabels = { a6v3: 'A6v3', b16m: 'B16M', irrigation1: 'Irrigation' }
+  const deviceLabel = deviceLabels[row.device] ?? row.device
+  const unitLabel = row.device === 'irrigation1' ? `Zone ${row.zone_num}` : `Relay ${row.zone_num}`
   const diff = Math.floor((Date.now() - new Date(row.started_at)) / 60000)
   const ago = diff < 2 ? 'just now' : diff < 60 ? `${diff}m ago` : `${Math.floor(diff/60)}h ago`
-  return { text: `${device} · ${label} started`, time: ago }
+  return { text: `${deviceLabel} · ${unitLabel} started`, time: ago }
 }
 
 export default function AdminConsole() {

@@ -10,11 +10,12 @@ import Calendar       from './pages/Calendar'
 import PressureAnalysis from './pages/PressureAnalysis'
 import Alerts         from './pages/Alerts'
 import AdminConsole   from './pages/AdminConsole'
-import A6v3Controller from './pages/A6v3Controller'
-import B16MController from './pages/B16MController'
+import RelayDevice    from './pages/RelayDevice'
 
 import PressureBar    from './components/PressureBar'
 import { useAuth }    from './hooks/useAuth'
+import { DeviceProvider } from './context/DeviceContext'
+import { KCS_DEVICES } from './config/devices'
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -35,6 +36,7 @@ export default function App() {
   }
 
   return (
+    <DeviceProvider>
     <div className="flex min-h-screen">
       <Sidebar session={session} />
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden pb-16 md:pb-0">
@@ -47,13 +49,15 @@ export default function App() {
           <Route path="/calendar"   element={<Calendar />} />
           <Route path="/pressure"   element={<PressureAnalysis />} />
           <Route path="/alerts"     element={<Alerts />} />
-          <Route path="/a6v3"       element={<A6v3Controller />} />
-          <Route path="/b16m"       element={<B16MController />} />
+          {KCS_DEVICES.map(cfg => (
+            <Route key={cfg.id} path={cfg.path} element={<RelayDevice deviceCfg={cfg} />} />
+          ))}
           <Route path="/admin"      element={<AdminConsole />} />
           <Route path="*"           element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       <BottomNav />
     </div>
+    </DeviceProvider>
   )
 }

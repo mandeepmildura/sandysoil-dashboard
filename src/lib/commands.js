@@ -20,12 +20,13 @@ function psiSnapshot() {
 
 // ── DB helpers ─────────────────────────────────────────────────────────────
 
-async function insertZoneStart(zoneNum, source) {
+async function insertZoneStart(zoneNum, source, device = 'irrigation1') {
   const { supplyPsi, a6v3Psi } = psiSnapshot()
   const { error } = await supabase.from('zone_history').insert({
     zone_num:         zoneNum,
     started_at:       new Date().toISOString(),
     source,
+    device,
     supply_psi_start: supplyPsi,
     a6v3_psi_start:   a6v3Psi,
   })
@@ -128,7 +129,7 @@ export async function a6v3OutputOff(outputNum) {
 /** Turn on an A6v3 relay and log to zone_history with PSI snapshot. */
 export async function a6v3ZoneOn(relayNum, durationMin, source = 'manual') {
   await mqttPublish(A6V3_SET_TOPIC, { [`output${relayNum}`]: { value: true } })
-  await insertZoneStart(relayNum, source)
+  await insertZoneStart(relayNum, source, 'a6v3')
 }
 
 /** Turn off an A6v3 relay and close its open zone_history record. */
@@ -142,6 +143,52 @@ let _a6v3PollToggle = false
 export function requestA6v3State() {
   _a6v3PollToggle = !_a6v3PollToggle
   return mqttPublish(A6V3_SET_TOPIC, { dac1: { value: _a6v3PollToggle ? 1 : 0 } })
+}
+
+// ── Generic KCS relay commands ─────────────────────────────────────────────
+// These work for any device in src/config/devices.js.
+// The bespoke functions above are kept for backward compatibility while
+// A6v3Controller + B16MController are still in use.
+
+const _pollToggles = {}
+
+/** Turn on relay N on any KCS device and log to zone_history. */
+export async function relayOn(deviceCfg, outputNum, source = 'manual') {
+  await mqttPublish(deviceCfg.cmdTopic, { [`output${outputNum}`]: { value: true } })
+  await insertZoneStart(outputNum, source, deviceCfg.id)
+}
+
+/** Turn off relay N on any KCS device and close its zone_history record. */
+export async function relayOff(deviceCfg, outputNum) {
+  await mqttPublish(deviceCfg.cmdTopic, { [`output${outputNum}`]: { value: false } })
+  await closeOpenHistoryRecord(outputNum, deviceCfg.id)
+}
+
+/**
+ * Request a fresh STATE from a KCS device.
+ * Uses the DAC toggle trick if pollConfig is defined (A6v3-style).
+ * No-op for devices without pollConfig (B16M).
+ */
+export function requestDeviceState(deviceCfg) {
+  if (!deviceCfg?.pollConfig) return Promise.resolve()
+  const { dacKey } = deviceCfg.pollConfig
+  _pollToggles[deviceCfg.id] = !_pollToggles[deviceCfg.id]
+  return mqttPublish(deviceCfg.cmdTopic, { [dacKey]: { value: _pollToggles[deviceCfg.id] ? 1 : 0 } })
+}
+
+/**
+ * Log a pressure reading to pressure_log for a KCS device.
+ * No-op for devices without pressureConfig.
+ */
+export async function logDevicePressure(deviceCfg, psi) {
+  if (!deviceCfg?.pressureConfig) return null
+  const { logColumn } = deviceCfg.pressureConfig
+  const { error } = await supabase.from('pressure_log').insert({
+    ts: new Date().toISOString(),
+    [logColumn]: parseFloat(psi.toFixed(2)),
+  })
+  if (error) console.error(`pressure_log insert failed (${deviceCfg.id}):`, error.message)
+  return error ?? null
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

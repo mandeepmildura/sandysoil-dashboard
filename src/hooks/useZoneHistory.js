@@ -42,8 +42,9 @@ export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 5
   useEffect(() => {
     load()
 
+    // Realtime subscription for instant updates
     const channel = supabase
-      .channel(`zone_history_${device ?? 'all'}_${zoneNum ?? 'all'}`)
+      .channel(`zone_history_${device ?? 'all'}_${zoneNum ?? 'all'}_${Date.now()}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'zone_history' },
@@ -51,7 +52,13 @@ export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 5
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    // Polling fallback — catches any realtime misses
+    const poll = setInterval(load, 15_000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(poll)
+    }
   }, [load])
 
   return { history, loading, reload: load }
