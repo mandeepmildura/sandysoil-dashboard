@@ -75,6 +75,11 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
+/** Returns today's date as YYYY-MM-DD in local (Melbourne) time, not UTC. */
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 function fmtTime(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -101,7 +106,7 @@ export default function A6v3Controller() {
 
   // Pressure history range
   const [histPreset, setHistPreset] = useState('6h') // '1h'|'6h'|'24h'|'7d'|'custom'
-  const [customDate, setCustomDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [customDate, setCustomDate] = useState(() => localDateStr())
   const [customFrom, setCustomFrom] = useState('05:00')
   const [customTo, setCustomTo]   = useState('07:00')
 
@@ -123,7 +128,7 @@ export default function A6v3Controller() {
   const histRange = computeHistRange(histPreset, customDate, customFrom, customTo)
 
   // History tab date filter
-  const [histDate, setHistDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [histDate, setHistDate] = useState(() => localDateStr())
   const outputsRef = useRef([])
   const psiRef = useRef(0)
   const a6v3LiveRef = useRef(null)
