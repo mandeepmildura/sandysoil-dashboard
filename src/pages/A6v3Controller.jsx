@@ -97,18 +97,45 @@ export default function A6v3Controller() {
   const [relayNameInput, setRelayNameInput] = useState('')
   const relayNameRef = useRef(null)
   const [showGraph, setShowGraph] = useState(false)
-  const [historyHours, setHistoryHours] = useState(6)
   const [logStatus, setLogStatus] = useState(null) // null | 'ok' | string (error message)
+
+  // Pressure history range
+  const [histPreset, setHistPreset] = useState('6h') // '1h'|'6h'|'24h'|'7d'|'custom'
+  const [customDate, setCustomDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [customFrom, setCustomFrom] = useState('05:00')
+  const [customTo, setCustomTo]   = useState('07:00')
+
+  function computeHistRange(preset, date, fromTime, toTime) {
+    if (preset === 'custom') {
+      return {
+        from: new Date(`${date}T${fromTime}:00`).toISOString(),
+        to:   new Date(`${date}T${toTime}:00`).toISOString(),
+      }
+    }
+    const hours = { '1h': 1, '6h': 6, '24h': 24, '7d': 168 }[preset] ?? 6
+    const now = Date.now()
+    return {
+      from: new Date(now - hours * 60 * 60 * 1000).toISOString(),
+      to:   new Date(now).toISOString(),
+    }
+  }
+
+  const histRange = computeHistRange(histPreset, customDate, customFrom, customTo)
+
+  // History tab date filter
+  const [histDate, setHistDate] = useState(() => new Date().toISOString().slice(0, 10))
   const outputsRef = useRef([])
   const psiRef = useRef(0)
   const a6v3LiveRef = useRef(null)
   const smoothedAdcRef = useRef(null)
 
-  // Relay history
-  const { history: relayHistory, loading: histLoading } = useZoneHistory(null, 'a6v3', 50)
+  // Relay history (filtered by selected date)
+  const histDateFrom = `${histDate}T00:00:00.000Z`
+  const histDateTo   = `${histDate}T23:59:59.999Z`
+  const { history: relayHistory, loading: histLoading } = useZoneHistory(null, 'a6v3', 200, histDateFrom, histDateTo)
 
   // Pressure history
-  const { data: pressureHistory, loading: pressHistLoading, reload: reloadPressure } = useA6v3PressureHistory(historyHours)
+  const { data: pressureHistory, loading: pressHistLoading, reload: reloadPressure } = useA6v3PressureHistory(histRange.from, histRange.to)
 
   // Relay groups
   const [groups, setGroups] = useState([])
@@ -400,7 +427,7 @@ export default function A6v3Controller() {
     reloadPressure()
     const id = setInterval(reloadPressure, 300_000)
     return () => clearInterval(id)
-  }, [showGraph, historyHours])
+  }, [showGraph, histRange.from, histRange.to])
 
   async function handleToggle(n, currentlyOn) {
     setA6v3Busy(b => ({ ...b, [n]: true }))
@@ -466,19 +493,56 @@ export default function A6v3Controller() {
 
               {showGraph && (
                 <div className="mt-4 border-t border-[#e2e2e2] pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold text-[#40493d]">History</span>
-                    <div className="flex gap-1">
-                      {[1, 6, 24].map(h => (
-                        <button
-                          key={h}
-                          onClick={e => { e.stopPropagation(); setHistoryHours(h) }}
-                          className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
-                            historyHours === h ? 'bg-[#0d631b] text-white' : 'bg-[#e2e2e2] text-[#40493d] hover:bg-[#d5d5d5]'
-                          }`}
-                        >{h}h</button>
-                      ))}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-[#40493d]">History</span>
+                      <div className="flex gap-1">
+                        {[['1h','1h'],['6h','6h'],['24h','24h'],['7d','7d'],['custom','Custom']].map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={e => { e.stopPropagation(); setHistPreset(val) }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                              histPreset === val ? 'bg-[#0d631b] text-white' : 'bg-[#e2e2e2] text-[#40493d] hover:bg-[#d5d5d5]'
+                            }`}
+                          >{label}</button>
+                        ))}
+                      </div>
                     </div>
+                    {histPreset === 'custom' && (
+                      <div className="flex flex-wrap gap-2 items-end mt-2" onClick={e => e.stopPropagation()}>
+                        <div className="flex-1 min-w-[110px]">
+                          <label className="text-[10px] text-[#40493d] block mb-0.5">Date</label>
+                          <input
+                            type="date"
+                            value={customDate}
+                            onChange={e => setCustomDate(e.target.value)}
+                            className="w-full bg-[#f3f3f3] rounded px-2 py-1 text-[11px] outline-none border border-[#e2e2e2] focus:border-[#0d631b]/40"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-[#40493d] block mb-0.5">From</label>
+                          <input
+                            type="time"
+                            value={customFrom}
+                            onChange={e => setCustomFrom(e.target.value)}
+                            className="bg-[#f3f3f3] rounded px-2 py-1 text-[11px] w-24 outline-none border border-[#e2e2e2] focus:border-[#0d631b]/40"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-[#40493d] block mb-0.5">To</label>
+                          <input
+                            type="time"
+                            value={customTo}
+                            onChange={e => setCustomTo(e.target.value)}
+                            className="bg-[#f3f3f3] rounded px-2 py-1 text-[11px] w-24 outline-none border border-[#e2e2e2] focus:border-[#0d631b]/40"
+                          />
+                        </div>
+                        <button
+                          onClick={e => { e.stopPropagation(); reloadPressure() }}
+                          className="px-3 py-1 rounded bg-[#0d631b] text-white text-[10px] font-semibold hover:opacity-90"
+                        >Go</button>
+                      </div>
+                    )}
                   </div>
                   {pressHistLoading ? (
                     <div className="h-[160px] flex items-center justify-center text-xs text-[#40493d]">Loading…</div>
@@ -571,9 +635,20 @@ export default function A6v3Controller() {
       {/* ── HISTORY TAB ───────────────────────────────────────────── */}
       {activeTab === 'history' && (
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#f3f3f3]">
-            <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Relay On/Off Log</h2>
-            <p className="text-xs text-[#40493d] mt-0.5">Last 50 relay events — newest first</p>
+          <div className="px-5 py-4 border-b border-[#f3f3f3] flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Relay On/Off Log</h2>
+              <p className="text-xs text-[#40493d] mt-0.5">All relay events for the selected day</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <label className="text-xs font-semibold text-[#40493d]">Date</label>
+              <input
+                type="date"
+                value={histDate}
+                onChange={e => setHistDate(e.target.value)}
+                className="bg-[#f3f3f3] rounded-lg px-3 py-1.5 text-sm outline-none border border-[#e2e2e2] focus:border-[#0d631b]/40"
+              />
+            </div>
           </div>
           {histLoading ? (
             <div className="px-5 py-8 text-sm text-[#40493d]">Loading…</div>
