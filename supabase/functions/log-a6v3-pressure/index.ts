@@ -175,6 +175,39 @@ async function pollAndLogPressure(): Promise<{ psi: number }> {
 
 Deno.serve(async (_req) => {
   try {
+    // Check if any A6v3 relay is currently running (open zone_history record)
+    const { data: openRuns } = await supabase
+      .from('zone_history')
+      .select('id')
+      .eq('device', 'a6v3')
+      .is('ended_at', null)
+      .limit(1)
+
+    const pumpIsOn = (openRuns?.length ?? 0) > 0
+
+    if (!pumpIsOn) {
+      // Pump off — only log every 5 min. Check when we last logged.
+      const { data: lastLog } = await supabase
+        .from('pressure_log')
+        .select('ts')
+        .not('a6v3_ch1_psi', 'is', null)
+        .order('ts', { ascending: false })
+        .limit(1)
+        .single()
+
+      const lastTs = lastLog?.ts ? new Date(lastLog.ts).getTime() : 0
+      const ageMin = (Date.now() - lastTs) / 60_000
+
+      if (ageMin < 4.5) {
+        console.log(`[log-a6v3-pressure] pump off, last log ${ageMin.toFixed(1)} min ago — skipping`)
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: 'pump off, logged recently' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    console.log(`[log-a6v3-pressure] pump ${pumpIsOn ? 'ON — logging every minute' : 'off — logging every 5 min'}`)
+
     const { psi } = await pollAndLogPressure()
 
     const { error } = await supabase.from('pressure_log').insert({
@@ -185,7 +218,7 @@ Deno.serve(async (_req) => {
     if (error) throw error
 
     console.log(`[log-a6v3-pressure] logged ${psi} PSI`)
-    return new Response(JSON.stringify({ ok: true, psi }), {
+    return new Response(JSON.stringify({ ok: true, psi, pumpIsOn }), {
       headers: { 'Content-Type': 'application/json' },
     })
   } catch (err) {
