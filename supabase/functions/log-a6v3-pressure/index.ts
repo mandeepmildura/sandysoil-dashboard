@@ -143,9 +143,12 @@ async function pollAndLogPressure(): Promise<{ psi: number }> {
       } else if (type === 9 && !subscribed) {
         // SUBACK
         subscribed = true
-        console.log('[log-a6v3-pressure] subscribed, polling device…')
-        // Publish a dummy SET to trigger a fresh STATE response from the device
-        ws.send(buildPublish(A6V3_SET_TOPIC, JSON.stringify({ dac1: { value: 0 } }), pid++))
+        // Alternate DAC value each invocation so the value actually changes —
+        // A6v3 (KCS firmware) only publishes STATE when an output value changes.
+        // Using minute % 2 gives 0 at :00/:10/:20... and 1 at :05/:15/:25...
+        const dacValue = new Date().getMinutes() % 2
+        console.log(`[log-a6v3-pressure] subscribed, polling device (dac1=${dacValue})…`)
+        ws.send(buildPublish(A6V3_SET_TOPIC, JSON.stringify({ dac1: { value: dacValue } }), pid++))
       } else if (type === 3) {
         // PUBLISH — incoming STATE message
         const msg = parseMqttPublish(data)
