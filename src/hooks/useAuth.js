@@ -11,12 +11,32 @@ export function useAuth() {
   useEffect(() => {
     if (DEV_SESSION) return // skip Supabase in dev bypass mode
 
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    let settled = false
+    const finish = (s) => { settled = true; setSession(s) }
+
+    supabase.auth.getSession()
+      .then(({ data }) => finish(data.session ?? null))
+      .catch(err => {
+        console.error('[useAuth] getSession failed:', err)
+        finish(null)
+      })
+
+    // Fallback: if Supabase never responds, fall through to Login
+    // instead of hanging on the loading splash forever.
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        console.warn('[useAuth] getSession timeout — showing Login')
+        finish(null)
+      }
+    }, 5000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
+      setSession(session ?? null)
     })
-    return () => subscription.unsubscribe()
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   return { session, loading: session === undefined }
