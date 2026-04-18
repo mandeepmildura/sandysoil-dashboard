@@ -33,14 +33,21 @@ export default {
         md: '0.75rem',
       },
       boxShadow: {
-        card: '0px 4px 12px rgba(26,28,28,0.04), 0px 8px 24px rgba(26,28,28,0.08)',
-        fab:  '0 10px 30px -5px rgba(26,28,28,0.05), 0 5px 15px -8px rgba(26,28,28,0.08)',
+        card:    '0px 4px 12px rgba(26,28,28,0.04), 0px 8px 24px rgba(26,28,28,0.08)',
+        ambient: '0px 4px 12px rgba(26,28,28,0.04), 0px 8px 24px rgba(26,28,28,0.08)',
+        fab:     '0 10px 30px -5px rgba(26,28,28,0.05), 0 5px 15px -8px rgba(26,28,28,0.08)',
+        'glow-primary': '0 0 8px rgba(13, 99, 27, 0.3)',
+        'glow-error':   '0 0 8px rgba(186, 26, 26, 0.3)',
+        'glow-warning': '0 0 8px rgba(230, 126, 0, 0.4)',
         glow: {
           green:  '0 0 0 4px rgba(13,99,27,0.25)',
           blue:   '0 0 0 4px rgba(0,99,154,0.25)',
           red:    '0 0 0 4px rgba(186,26,26,0.25)',
           amber:  '0 0 0 4px rgba(230,81,0,0.25)',
         },
+      },
+      backgroundImage: {
+        'growth-gradient': 'linear-gradient(145deg, #0d631b 0%, #2e7d32 100%)',
       },
       letterSpacing: {
         data: '0.02em',

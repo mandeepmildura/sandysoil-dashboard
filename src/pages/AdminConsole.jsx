@@ -230,15 +230,16 @@ export default function AdminConsole() {
   const inputClass = 'bg-[#f3f3f3] rounded-lg px-3 py-2.5 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
-      <div className="mb-6">
-        <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Farm Management Console</h1>
-        <p className="text-sm text-[#40493d] font-body mt-1">Sandy Soil Automations — Service Dashboard</p>
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <div className="mb-8">
+        <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#717975] mb-2">Service Dashboard</p>
+        <h1 className="text-4xl font-extrabold text-[#17362e] tracking-tight">Farm Management Console</h1>
+        <p className="text-sm text-[#717975] mt-1">Sandy Soil Automations — all farms and devices</p>
       </div>
 
       <VitalsStrip vitals={VITALS} />
 
-      <div className="flex gap-1 mb-6">
+      <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
         {[
           { id: 'farms',   label: 'Farms' },
           { id: 'devices', label: 'Customer Devices' },
@@ -246,8 +247,8 @@ export default function AdminConsole() {
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
-              activeTab === t.id ? 'bg-[#1a1c1c] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
+            className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+              activeTab === t.id ? 'bg-white shadow-sm text-[#17362e]' : 'text-[#717975] hover:text-[#17362e]'
             }`}
           >
             {t.label}

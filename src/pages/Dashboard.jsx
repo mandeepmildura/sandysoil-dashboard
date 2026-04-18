@@ -1,45 +1,111 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import Card from '../components/Card'
-import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-import { startBackwash, zoneOn, zoneOff, a6v3OutputOn, a6v3OutputOff } from '../lib/commands'
 import { useZoneNames } from '../hooks/useZoneNames'
+import { useScheduleRules } from '../hooks/useScheduleRules'
+import { useAlerts } from '../hooks/useAlerts'
+import { zoneOn, zoneOff, allZonesOff, startBackwash } from '../lib/commands'
+import { KCS_DEVICES } from '../config/devices'
+import { supabase } from '../lib/supabase'
 
-const IRR_TOPIC = 'farm/irrigation1/status'
+const IRR_TOPIC        = 'farm/irrigation1/status'
 const ZONE_STATE_TOPIC = 'farm/irrigation1/zone/+/state'
-const PRESSURE_TOPIC = 'farm/filter1/pressure'
-const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
-const B16M_TOPIC = 'B16M/CCBA97071FD8/STATE'
-const A6V3_TOPIC = 'A6v3/8CBFEA03002C/STATE'
-const SIM_TOPIC = 'farm/irrigation1/sim/pressure'
+const PRESSURE_TOPIC   = 'farm/filter1/pressure'
+const BACKWASH_TOPIC   = 'farm/filter1/backwash/state'
+const B16M_TOPIC       = 'B16M/CCBA97071FD8/STATE'
+const A6V3_TOPIC       = 'A6v3/8CBFEA03002C/STATE'
+const SIM_TOPIC        = 'farm/irrigation1/sim/pressure'
 const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC, A6V3_TOPIC, SIM_TOPIC]
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+// Shared palette (matches Pressure page)
+const C_DARK     = '#17362e'
+const C_MUTED    = '#717975'
+const C_OUTLINE  = '#c1c8c4'
+const C_SURFACE  = '#f2f4f3'
+const C_BG       = '#f8faf9'
+const C_PRIMARY  = '#0d631b'
+
+const CARD_SHADOW = 'shadow-[0px_12px_32px_rgba(25,28,28,0.04)]'
+
+function Icon({ name, className = '' }) {
+  return <span className={`material-symbols-outlined ${className}`}>{name}</span>
+}
+
+function fmtLastRun(iso) {
+  if (!iso) return 'No runs yet'
+  const d = new Date(iso)
+  const diffMs = Date.now() - d.getTime()
+  const h = diffMs / 3_600_000
+  if (h < 1)  return `${Math.max(1, Math.floor(h * 60))}m ago`
+  if (h < 24) return `${Math.floor(h)}h ago`
+  if (h < 48) return 'Yesterday'
+  return `${Math.floor(h / 24)} days ago`
+}
 
 export default function Dashboard() {
   const { data, connected } = useLiveTelemetry(TOPICS)
   const { names } = useZoneNames()
+  const { groupSchedules } = useScheduleRules()
+  const { alerts } = useAlerts()
   const [busy, setBusy] = useState({})
-  const [a6v3Busy, setA6v3Busy] = useState({})
+  const [lastRuns, setLastRuns] = useState({})
+  const [pressureBars, setPressureBars] = useState([])
 
-  async function handleZoneOn(id) {
+  async function handleZoneToggle(id, currentlyOn) {
     setBusy(b => ({ ...b, [id]: true }))
-    try { await zoneOn(id, 30) } catch (e) { console.error(e) }
+    try { currentlyOn ? await zoneOff(id) : await zoneOn(id, 30) }
+    catch (e) { console.error(e) }
     setBusy(b => ({ ...b, [id]: false }))
   }
 
-  async function handleZoneOff(id) {
-    setBusy(b => ({ ...b, [id]: true }))
-    try { await zoneOff(id) } catch (e) { console.error(e) }
-    setBusy(b => ({ ...b, [id]: false }))
-  }
+  useEffect(() => {
+    async function load() {
+      const { data: rows } = await supabase
+        .from('zone_history')
+        .select('zone_num, ended_at')
+        .eq('device', 'irrigation1')
+        .not('ended_at', 'is', null)
+        .order('ended_at', { ascending: false })
+        .limit(50)
+      if (!rows) return
+      const map = {}
+      for (const r of rows) if (r.zone_num != null && !map[r.zone_num]) map[r.zone_num] = r.ended_at
+      setLastRuns(map)
+    }
+    load()
+  }, [])
+
+  useEffect(() => {
+    async function load() {
+      const { data: rows } = await supabase
+        .from('pressure_log')
+        .select('ts, supply_psi')
+        .not('supply_psi', 'is', null)
+        .order('ts', { ascending: false })
+        .limit(60)
+      if (!rows?.length) return
+      const vals = rows.map(r => parseFloat(r.supply_psi)).filter(Number.isFinite)
+      if (!vals.length) return
+      const bucket = Math.max(1, Math.floor(vals.length / 15))
+      const bars = []
+      for (let i = 0; i < 15; i++) {
+        const slice = vals.slice(i * bucket, (i + 1) * bucket)
+        if (slice.length) bars.push(slice.reduce((a, b) => a + b, 0) / slice.length)
+      }
+      const max = Math.max(...bars, 1)
+      setPressureBars(bars.reverse().map(v => Math.max(10, (v / max) * 100)))
+    }
+    load()
+  }, [])
 
   const irr      = data[IRR_TOPIC]      ?? null
   const pressure = data[PRESSURE_TOPIC] ?? null
-  const backwash = data[BACKWASH_TOPIC] ?? null
   const b16m     = data[B16M_TOPIC]     ?? null
   const a6v3     = data[A6V3_TOPIC]     ?? null
+  const sim      = data[SIM_TOPIC]      ?? null
 
-  // Merge per-zone state updates over the full status zones array
   const zoneOverrides = {}
   Object.entries(data).forEach(([topic, payload]) => {
     const m = topic.match(/^farm\/irrigation1\/zone\/(\d+)\/state$/)
@@ -47,233 +113,409 @@ export default function Dashboard() {
   })
   const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
   const zones = baseZones.map(z => zoneOverrides[z.id] ? { ...z, ...zoneOverrides[z.id] } : z)
-  const sim         = data[SIM_TOPIC]  ?? null
+
   const supplyPsi   = sim?.supply_psi ?? irr?.supply_psi ?? '—'
   const activeCount = zones.filter(z => z.on).length
   const inletPsi    = pressure?.inlet_psi ?? '—'
   const outletPsi   = pressure?.outlet_psi ?? '—'
-  const diffPsi     = pressure?.differential_psi ?? '—'
-  const bwState     = backwash?.state ?? '—'
+  const diffPsi     = (pressure?.differential_psi != null)
+    ? pressure.differential_psi
+    : (typeof inletPsi === 'number' && typeof outletPsi === 'number')
+      ? +(inletPsi - outletPsi).toFixed(1)
+      : null
+  const diffPct     = (typeof diffPsi === 'number') ? Math.min(100, (diffPsi / 20) * 100) : 0
 
-  const b16mOutputs = Array.from({ length: 16 }, (_, i) => b16m?.[`output${i + 1}`]?.value ?? false)
-  const b16mInputs  = Array.from({ length: 16 }, (_, i) => b16m?.[`input${i + 1}`]?.value ?? false)
+  const now = new Date()
+  const subtitleDate = now.toLocaleDateString('en-AU', {
+    timeZone: 'Australia/Melbourne', weekday: 'long', day: 'numeric', month: 'short', year: 'numeric',
+  })
 
-  const a6v3Outputs = Array.from({ length: 6 }, (_, i) => a6v3?.[`output${i + 1}`]?.value ?? false)
-  const a6v3Inputs  = Array.from({ length: 6 }, (_, i) => a6v3?.[`input${i + 1}`]?.value ?? false)
-  const a6v3Adc     = [1, 2, 3, 4].map(n => a6v3?.[`adc${n}`]?.value ?? 0)
+  const upcoming = useMemo(() => {
+    const todayIdx = now.getDay()
+    return (groupSchedules ?? [])
+      .filter(s => s.enabled !== false)
+      .slice(0, 3)
+      .map(s => {
+        const nextDow = (s.days_of_week ?? []).find(d => d >= todayIdx) ?? (s.days_of_week ?? [])[0] ?? todayIdx
+        const daysAhead = (nextDow - todayIdx + 7) % 7
+        const when = new Date(now); when.setDate(now.getDate() + daysAhead)
+        const members = (s.zone_groups?.zone_group_members ?? [])
+        const totalMin = members.reduce((a, m) => a + (m.duration_min ?? 30), 0)
+        return {
+          id: s.id,
+          month: MONTHS[when.getMonth()],
+          day: when.getDate(),
+          name: s.zone_groups?.name ?? 'Program',
+          time: (s.start_time ?? '').slice(0, 5),
+          durationMin: totalMin,
+        }
+      })
+  }, [groupSchedules, now])
 
-  async function handleA6v3Toggle(n, currentlyOn) {
-    setA6v3Busy(b => ({ ...b, [n]: true }))
-    try {
-      currentlyOn ? await a6v3OutputOff(n) : await a6v3OutputOn(n)
-    } catch (e) { console.error(e) }
-    setA6v3Busy(b => ({ ...b, [n]: false }))
-  }
-
-  const vitals = [
-    { label: 'Supply Pressure', value: supplyPsi, unit: 'PSI', status: irr?.online ? 'online' : 'offline', statusLabel: irr?.online ? 'ONLINE' : 'OFFLINE' },
-    { label: 'Filter Inlet',    value: inletPsi,  unit: 'PSI', status: 'online',  statusLabel: 'NORMAL' },
-    { label: 'Filter Outlet',   value: outletPsi, unit: 'PSI', status: 'online',  statusLabel: 'NORMAL' },
-    { label: 'Active Zones',    value: String(activeCount), unit: `/ ${zones.length}`, status: activeCount > 0 ? 'running' : 'offline', statusLabel: activeCount > 0 ? 'RUNNING' : 'IDLE' },
+  const devices = [
+    { label: 'Irrigation Controller', online: irr?.online === true, to: '/zones' },
+    ...KCS_DEVICES.map(d => ({
+      label: d.name,
+      online: d.id === 'a6v3' ? !!a6v3 : d.id === 'b16m' ? !!b16m : false,
+      to:    d.path,
+    })),
   ]
 
+  const critical = (alerts ?? [])
+    .filter(a => !a.acknowledged && (a.severity === 'fault' || a.severity === 'critical' || a.severity === 'error'))
+    .slice(0, 2)
+  const warnings = (alerts ?? [])
+    .filter(a => !a.acknowledged && a.severity === 'warning')
+    .slice(0, 2 - critical.length)
+
+  const onlineNow = irr?.online === true
+  const diffTone = (typeof diffPsi === 'number' && diffPsi < 8) ? 'good' : diffPsi != null ? 'warn' : 'muted'
+
   return (
-    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Farm Dashboard</h1>
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
-          <span className="text-xs font-body text-[#40493d]">{connected ? 'Live' : 'Connecting…'}</span>
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+
+      {/* Page header */}
+      <div className="flex justify-between items-end mb-8">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#717975] mb-2">Farm Operations</p>
+          <h1 className="text-4xl font-extrabold text-[#17362e] tracking-tight">Farm Overview</h1>
+          <p className="text-sm text-[#717975] mt-1">{subtitleDate}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-[#c1c8c4]'}`} />
+            <span className="text-xs font-semibold text-[#717975]">{connected ? 'Live' : 'Connecting…'}</span>
+          </div>
+          <button
+            onClick={() => allZonesOff().catch(console.error)}
+            disabled={activeCount === 0}
+            className="px-5 py-2.5 rounded-full border border-[#c1c8c4] text-sm font-bold text-[#17362e] hover:bg-[#f2f4f3] transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            All Zones Off
+          </button>
+          <Link
+            to="/calendar"
+            className="px-5 py-2.5 rounded-full text-white text-sm font-bold shadow-lg shadow-[#17362e]/20"
+            style={{ background: 'linear-gradient(135deg, #17362e 0%, #2e4d44 100%)' }}
+          >
+            View Schedule
+          </Link>
         </div>
       </div>
 
-      {/* Vitals strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {vitals.map(v => (
-          <div key={v.label} className="bg-[#ffffff] rounded-xl shadow-card p-4">
-            <p className="text-xs font-body text-[#40493d] uppercase tracking-[0.02em] mb-1">{v.label}</p>
-            <div className="flex items-end gap-2">
-              <span className="text-3xl font-headline font-bold text-[#1a1c1c] leading-none">{v.value}</span>
-              <span className="text-sm text-[#40493d] mb-0.5">{v.unit}</span>
+      {/* Vitals */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <VitalsTile
+          label="Supply PSI"
+          value={supplyPsi}
+          icon="compress"
+          trendLabel={onlineNow ? 'Device online' : 'Device offline'}
+          trendColor={onlineNow ? 'text-emerald-600' : 'text-[#717975]'}
+          badge={onlineNow}
+          badgeLabel={onlineNow ? 'LIVE' : null}
+        />
+        <VitalsTile
+          label="Filter Inlet"
+          value={inletPsi}
+          icon="input"
+          trendLabel="Filter inlet"
+          trendColor="text-[#717975]"
+        />
+        <VitalsTile
+          label="Filter Outlet"
+          value={outletPsi}
+          icon="output"
+          trendLabel={typeof outletPsi === 'number' && outletPsi < 30 ? 'Low pressure alert' : 'Normal'}
+          trendColor={typeof outletPsi === 'number' && outletPsi < 30 ? 'text-[#ba1a1a]' : 'text-[#717975]'}
+        />
+        <VitalsTile
+          label="Active Zones"
+          value={String(activeCount)}
+          unit={`/ ${zones.length}`}
+          icon="water_drop"
+          trendLabel={activeCount > 0 ? `${activeCount} running` : 'Idle'}
+          trendColor={activeCount > 0 ? 'text-emerald-600' : 'text-[#717975]'}
+          badge={activeCount > 0}
+          badgeLabel={activeCount > 0 ? 'RUNNING' : null}
+        />
+      </div>
+
+      <div className="grid grid-cols-12 gap-6">
+        {/* Left: Zone grid + trend chart */}
+        <div className="col-span-12 lg:col-span-8 space-y-6">
+
+          {/* Zone management */}
+          <div className={`bg-white rounded-xl ${CARD_SHADOW} overflow-hidden`}>
+            <div className="px-8 py-5 border-b border-[#f2f4f3] flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <h2 className="text-lg font-extrabold text-[#17362e] tracking-tight">Zone Management</h2>
+                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full">
+                  <span className={`w-2 h-2 rounded-full ${activeCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-[#c1c8c4]'}`} />
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">
+                    {activeCount > 0 ? `${activeCount} Active` : 'All Idle'}
+                  </span>
+                </div>
+              </div>
+              <Link to="/zones" className="text-xs font-bold text-[#17362e] hover:underline">
+                Manage →
+              </Link>
             </div>
-            <div className="mt-2"><StatusChip status={v.status} label={v.statusLabel} /></div>
+            <div className="p-6 grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {zones.map(zone => (
+                <ZoneCard
+                  key={zone.id}
+                  zone={zone}
+                  name={names[zone.id] ?? zone.name}
+                  busy={!!busy[zone.id]}
+                  lastRun={lastRuns[zone.id]}
+                  onToggle={() => handleZoneToggle(zone.id, zone.on)}
+                />
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Zone grid */}
-        <div className="lg:col-span-2">
-          <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">Irrigation Zones</h2>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-            {zones.map(zone => (
-              <Card key={zone.id} accent={zone.on ? 'green' : undefined}>
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-headline font-bold text-sm text-[#1a1c1c]">{names[zone.id] ?? zone.name}</p>
-                    <p className="text-xs text-[#40493d]">{zone.state}</p>
-                  </div>
-                  <span className={`w-2.5 h-2.5 rounded-full mt-1 ${zone.on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+          {/* System health trend */}
+          <div className={`bg-white rounded-xl ${CARD_SHADOW} overflow-hidden`}>
+            <div className="px-8 py-5 border-b border-[#f2f4f3] flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-extrabold text-[#17362e] tracking-tight">System Health Trend</h2>
+                <p className="text-xs text-[#717975]">Supply pressure — last hour</p>
+              </div>
+              <Link to="/pressure" className="px-4 py-1.5 rounded-full border border-[#c1c8c4] text-xs font-bold text-[#17362e] hover:bg-[#f2f4f3] transition-colors">
+                Full Analysis →
+              </Link>
+            </div>
+            <div className="p-8">
+              {pressureBars.length === 0 ? (
+                <div className="h-40 flex items-center justify-center text-sm text-[#717975]">
+                  No pressure data recorded yet.
                 </div>
-                <StatusChip status={zone.on ? 'running' : 'offline'} label={zone.on ? 'ON' : 'OFF'} />
-                <div className="flex gap-1 mt-2">
-                  <button
-                    onClick={() => handleZoneOn(zone.id)}
-                    disabled={!!busy[zone.id]}
-                    className="flex-1 py-1 rounded-md bg-[#0d631b] text-white text-[10px] font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
-                  >Start</button>
-                  <button
-                    onClick={() => handleZoneOff(zone.id)}
-                    disabled={!!busy[zone.id]}
-                    className="flex-1 py-1 rounded-md bg-[#e2e2e2] text-[#1a1c1c] text-[10px] font-semibold hover:bg-[#d5d5d5] disabled:opacity-40 transition-all"
-                  >Stop</button>
+              ) : (
+                <div className="h-40 flex items-end gap-1.5">
+                  {pressureBars.map((h, i) => (
+                    <div
+                      key={i}
+                      className={`flex-1 rounded-t transition-all ${i === pressureBars.length - 1 ? 'bg-[#17362e]' : 'bg-[#2e4d44]/30'}`}
+                      style={{ height: `${h}%` }}
+                    />
+                  ))}
                 </div>
-              </Card>
-            ))}
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Right column */}
-        <div className="space-y-4">
+        {/* Right rail */}
+        <div className="col-span-12 lg:col-span-4 space-y-6">
+
           {/* Filter station */}
-          <Card accent="blue">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Filter Station</h2>
-            <div className="space-y-2 mb-4">
-              {[
-                { label: 'Inlet PSI',     value: inletPsi },
-                { label: 'Outlet PSI',    value: outletPsi },
-                { label: 'Differential',  value: diffPsi !== '—' ? `${diffPsi} PSI` : '—' },
-                { label: 'Backwash',      value: bwState },
-              ].map(r => (
-                <div key={r.label} className="flex justify-between text-xs">
-                  <span className="text-[#40493d]">{r.label}</span>
-                  <span className="font-semibold text-[#1a1c1c]">{r.value}</span>
-                </div>
-              ))}
+          <div className={`bg-white rounded-xl p-7 ${CARD_SHADOW} relative overflow-hidden`}>
+            <div className="absolute top-0 right-0 p-3 opacity-[0.06] pointer-events-none">
+              <Icon name="filter_alt" className="text-7xl text-[#17362e]" />
+            </div>
+            <div className="flex items-center gap-3 mb-5 relative">
+              <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-700 shrink-0">
+                <Icon name="filter_alt" className="text-xl" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-extrabold text-[#17362e] text-base leading-tight">Filter Station</h3>
+                <p className="text-[11px] text-[#717975]">Inlet {inletPsi} • Outlet {outletPsi} PSI</p>
+              </div>
+            </div>
+            <div className="bg-[#f2f4f3] rounded-lg p-4 mb-5">
+              <div className="flex justify-between items-baseline mb-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#717975]">Differential</span>
+                <span className={`text-lg font-extrabold tracking-tight ${
+                  diffTone === 'good' ? 'text-emerald-700'
+                  : diffTone === 'warn' ? 'text-[#e65100]'
+                  : 'text-[#c1c8c4]'
+                }`}>
+                  {diffPsi != null ? `${diffPsi}` : '—'}
+                  {diffPsi != null && <span className="text-[11px] font-semibold text-[#c1c8c4] ml-1">psi</span>}
+                </span>
+              </div>
+              <div className="w-full bg-white h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${diffTone === 'warn' ? 'bg-[#e65100]' : 'bg-emerald-500'}`}
+                  style={{ width: `${diffPct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-[#717975] mt-2">
+                {diffTone === 'good' ? 'Optimized range' : diffTone === 'warn' ? 'Clogging — consider backwash' : 'No sensor data'}
+              </p>
             </div>
             <button
               onClick={() => startBackwash().catch(console.error)}
-              className="w-full py-2 rounded-lg bg-[#f3f3f3] text-xs font-body font-semibold text-[#00639a] hover:bg-[#e8e8e8] transition-colors"
+              className="w-full py-3.5 rounded-full text-white text-sm font-extrabold tracking-wide shadow-lg shadow-[#17362e]/20 transition-transform active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #17362e 0%, #2e4d44 100%)' }}
             >
-              Start Backwash
+              MANUAL BACKWASH
             </button>
-          </Card>
+          </div>
 
-          {/* B16M status summary */}
-          <Card accent="green">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-headline font-semibold text-sm text-[#1a1c1c]">B16M (Test)</h2>
-              <Link to="/b16m" className="text-xs text-[#00639a] font-semibold hover:underline">Open →</Link>
+          {/* Upcoming schedule */}
+          <div className={`bg-white rounded-xl p-7 ${CARD_SHADOW}`}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-extrabold text-[#17362e] text-base flex items-center gap-2">
+                <Icon name="event" className="text-lg text-[#717975]" />
+                Upcoming Schedule
+              </h3>
+              <Link to="/calendar" className="text-[10px] font-bold text-[#17362e] uppercase tracking-widest hover:underline">All</Link>
             </div>
-            <div className="space-y-2 text-xs font-body">
-              {[
-                { label: 'Status',  value: b16m ? 'Online' : 'Offline' },
-                { label: 'Outputs', value: `${b16mOutputs.filter(Boolean).length} / 16 on` },
-                { label: 'Inputs',  value: `${b16mInputs.filter(Boolean).length} / 16 active` },
-              ].map(r => (
-                <div key={r.label} className="flex justify-between">
-                  <span className="text-[#40493d]">{r.label}</span>
-                  <span className="font-semibold text-[#1a1c1c]">{r.value}</span>
-                </div>
+            {upcoming.length === 0 ? (
+              <p className="text-xs text-[#717975]">No schedules configured yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {upcoming.map(s => (
+                  <div key={s.id} className="flex gap-4 items-center">
+                    <div className="flex flex-col items-center w-11 shrink-0 py-1.5 bg-[#f2f4f3] rounded-lg">
+                      <span className="text-[9px] font-extrabold uppercase text-[#717975] tracking-widest">{s.month}</span>
+                      <span className="text-lg font-extrabold text-[#17362e] leading-none">{s.day}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-[#17362e] truncate">{s.name}</p>
+                      <p className="text-xs text-[#717975]">
+                        {s.time || '—'}{s.durationMin ? ` • ${s.durationMin} mins` : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Device health */}
+          <div className={`bg-white rounded-xl p-7 ${CARD_SHADOW}`}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-extrabold text-[#17362e] text-base flex items-center gap-2">
+                <Icon name="developer_board" className="text-lg text-[#717975]" />
+                Device Health
+              </h3>
+              <span className="text-[10px] font-bold text-[#717975] uppercase tracking-widest">
+                {devices.filter(d => d.online).length}/{devices.length} online
+              </span>
+            </div>
+            <div className="space-y-1">
+              {devices.map(d => (
+                <Link
+                  key={d.label}
+                  to={d.to}
+                  className="flex items-center gap-3 px-3 py-2.5 -mx-3 rounded-lg hover:bg-[#f2f4f3] transition-colors group"
+                >
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${d.online ? 'bg-emerald-500 shadow-[0_0_6px_rgba(5,150,105,0.5)]' : 'bg-[#c1c8c4]'}`} />
+                  <span className="flex-1 text-sm font-bold text-[#17362e] truncate">{d.label}</span>
+                  <span className={`text-[10px] font-extrabold uppercase tracking-widest ${d.online ? 'text-emerald-700' : 'text-[#717975]'}`}>
+                    {d.online ? 'Online' : 'Offline'}
+                  </span>
+                  <Icon name="chevron_right" className="text-base text-[#c1c8c4] group-hover:text-[#717975] transition-colors" />
+                </Link>
               ))}
             </div>
-          </Card>
+          </div>
 
-          {/* A6v3 status summary */}
-          <Card accent="green">
-            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">A6v3 Controller</h2>
-            <div className="space-y-2 text-xs font-body">
-              {[
-                { label: 'Status',  value: a6v3 ? 'Online' : 'Offline' },
-                { label: 'Outputs', value: `${a6v3Outputs.filter(Boolean).length} / 6 on` },
-                { label: 'Inputs',  value: `${a6v3Inputs.filter(Boolean).length} / 6 active` },
-              ].map(r => (
-                <div key={r.label} className="flex justify-between">
-                  <span className="text-[#40493d]">{r.label}</span>
-                  <span className="font-semibold text-[#1a1c1c]">{r.value}</span>
-                </div>
-              ))}
+          {/* Critical alerts */}
+          <div className={`bg-white rounded-xl p-7 ${CARD_SHADOW}`}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-extrabold text-[#17362e] text-base flex items-center gap-2">
+                <Icon name="warning_amber" className={`text-lg ${critical.length > 0 ? 'text-[#ba1a1a]' : 'text-[#717975]'}`} />
+                Critical Alerts
+              </h3>
+              <Link to="/alerts" className="text-[10px] font-bold text-[#17362e] uppercase tracking-widest hover:underline">All</Link>
             </div>
-          </Card>
+            {critical.length === 0 && warnings.length === 0 ? (
+              <div className="text-center py-4">
+                <Icon name="check_circle" className="text-3xl text-emerald-500 mb-2" />
+                <p className="text-xs text-[#717975]">All systems healthy</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {critical.map(a => <AlertRow key={a.id} alert={a} tone="error" />)}
+                {warnings.map(a => <AlertRow key={a.id} alert={a} tone="warning" />)}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* A6v3 full detail — outputs, inputs, ADC */}
-      <div className="mt-6">
-        <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">
-          A6v3 Detail
-          <span className={`ml-2 inline-block w-2 h-2 rounded-full align-middle ${a6v3 ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
-        </h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-          {/* Outputs */}
-          <Card>
-            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Outputs (DO1–DO6)</h3>
-            <div className="grid grid-cols-3 gap-1.5">
-              {a6v3Outputs.map((on, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleA6v3Toggle(i + 1, on)}
-                  disabled={!!a6v3Busy[i + 1]}
-                  className={`py-1.5 rounded text-[10px] font-semibold transition-all disabled:opacity-40 ${
-                    on
-                      ? 'bg-[#0d631b] text-white'
-                      : 'bg-[#e2e2e2] text-[#40493d] hover:bg-[#d5d5d5]'
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          {/* Inputs */}
-          <Card>
-            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Inputs (DI1–DI6)</h3>
-            <div className="grid grid-cols-3 gap-1.5">
-              {a6v3Inputs.map((active, i) => (
-                <div
-                  key={i}
-                  className={`py-1.5 rounded text-[10px] font-semibold text-center ${
-                    active ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'
-                  }`}
-                >
-                  {i + 1}
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* ADC */}
-          <Card>
-            <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">Analog (CH1–CH4)</h3>
-            <div className="space-y-3">
-              {a6v3Adc.map((val, i) => (
-                <div key={i}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-[#40493d]">CH{i + 1}</span>
-                    <span className="font-semibold text-[#1a1c1c]">{val}</span>
-                  </div>
-                  <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#0d631b] rounded-full transition-all"
-                      style={{ width: `${Math.min((val / 4095) * 100, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-        </div>
-      </div>
-
     </div>
   )
 }
 
-function fmtUptime(sec) {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
+function VitalsTile({ label, value, unit = 'psi', icon, trendLabel, trendColor, badge, badgeLabel }) {
+  return (
+    <div className={`bg-white p-7 rounded-xl ${CARD_SHADOW} relative overflow-hidden group`}>
+      <div className="absolute top-0 right-0 p-3 opacity-[0.07] group-hover:opacity-[0.13] transition-opacity pointer-events-none">
+        <Icon name={icon} className="text-6xl text-[#17362e]" />
+      </div>
+      <div className="flex items-start justify-between mb-4 relative">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[#717975]">{label}</p>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-5xl font-extrabold text-[#17362e] tracking-tighter leading-none">{value}</span>
+        <span className="text-sm font-semibold text-[#c1c8c4]">{unit}</span>
+      </div>
+      <div className={`mt-4 flex items-center gap-2 ${trendColor}`}>
+        {badge && badgeLabel ? (
+          <span className="text-[10px] font-extrabold uppercase tracking-widest bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full">
+            {badgeLabel}
+          </span>
+        ) : (
+          <span className="text-xs font-bold">{trendLabel}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ZoneCard({ zone, name, busy, lastRun, onToggle }) {
+  const on = zone.on
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={busy}
+      aria-label={on ? `Stop ${name}` : `Start ${name}`}
+      className={`text-left bg-[#f2f4f3] rounded-xl p-4 relative overflow-hidden transition-all disabled:opacity-50 hover:shadow-md ${
+        on ? 'ring-2 ring-[#17362e]/80 bg-white' : 'hover:bg-white'
+      }`}
+    >
+      {/* Top bar */}
+      <div className={`absolute top-0 left-0 w-full h-[3px] ${on ? 'bg-[#17362e]' : 'bg-[#c1c8c4]'}`} />
+
+      <div className="flex justify-between items-start mb-3">
+        <span className={`font-extrabold text-sm truncate ${on ? 'text-[#17362e]' : 'text-[#17362e]/80'}`}>
+          {name}
+        </span>
+        <span className={`w-9 h-5 rounded-full p-0.5 shrink-0 transition-colors ${on ? 'bg-emerald-500' : 'bg-[#c1c8c4]'}`}>
+          <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
+        </span>
+      </div>
+      <p className="text-[9px] text-[#717975] font-bold uppercase tracking-widest">Runtime</p>
+      <p className={`font-extrabold text-xl tracking-tight leading-tight ${on ? 'text-emerald-700' : 'text-[#c1c8c4]'}`}>
+        {on ? '—:—' : '--:--'}
+      </p>
+      <p className="text-[10px] text-[#717975] mt-1.5">Last run: {fmtLastRun(lastRun)}</p>
+    </button>
+  )
+}
+
+function AlertRow({ alert, tone }) {
+  const isError = tone === 'error'
+  return (
+    <div className={`p-3.5 rounded-xl flex gap-3 items-start ${isError ? 'bg-red-50' : 'bg-orange-50'}`}>
+      <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
+        isError ? 'bg-[#ba1a1a] shadow-[0_0_6px_rgba(186,26,26,0.5)]' : 'bg-orange-500 shadow-[0_0_6px_rgba(234,88,12,0.5)]'
+      }`} />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-[#17362e] truncate">{alert.title ?? alert.kind ?? 'Alert'}</p>
+        {(alert.message || alert.description) && (
+          <p className="text-[11px] text-[#717975] mt-0.5 line-clamp-2">{alert.message ?? alert.description}</p>
+        )}
+        <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest ${
+          isError ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
+        }`}>
+          {isError ? 'Critical' : 'Warning'}
+        </span>
+      </div>
+    </div>
+  )
 }

@@ -1,16 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAlerts } from '../hooks/useAlerts'
 import { KCS_DEVICES } from '../config/devices'
 
 const primary = [
-  { to: '/', label: 'Home', icon: <GridIcon /> },
-  ...KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> })),
-  { to: '/alerts', label: 'Alerts', icon: <BellIcon />, badge: true },
+  { to: '/',         label: 'Home',     icon: <GridIcon /> },
+  { to: '/zones',    label: 'Zones',    icon: <DropIcon /> },
+  { to: '/calendar', label: 'Schedule', icon: <CalIcon /> },
+  { to: '/alerts',   label: 'Alerts',   icon: <BellIcon />, badge: true },
 ]
 
 const overflow = [
-  { to: '/admin', label: 'Admin', icon: <AdminIcon /> },
+  { to: '/pressure', label: 'Pressure', icon: <GaugeIcon /> },
+  ...KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> })),
+  { to: '/admin',    label: 'Admin',    icon: <AdminIcon /> },
 ]
 
 export default function BottomNav() {
@@ -18,19 +21,6 @@ export default function BottomNav() {
   const unreadCount = alerts.filter(a => !a.acknowledged).length
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
-
-  const [clock, setClock] = useState('')
-  useEffect(() => {
-    function tick() {
-      setClock(new Date().toLocaleTimeString('en-AU', {
-        timeZone: 'Australia/Melbourne',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-      }))
-    }
-    tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
-  }, [])
 
   function goTo(to) {
     setOpen(false)
@@ -51,9 +41,6 @@ export default function BottomNav() {
       <div className={`md:hidden fixed bottom-14 inset-x-0 z-50 bg-[#304047] rounded-t-2xl transition-transform duration-200 ${open ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="px-2 pt-3 pb-4">
           <div className="w-8 h-1 bg-white/20 rounded-full mx-auto mb-3" />
-          {clock && (
-            <p className="text-center text-white/50 text-xs font-mono mb-3">{clock}</p>
-          )}
           <div className="grid grid-cols-3 gap-1">
             {overflow.map(({ to, label, icon, badge }) => (
               <button

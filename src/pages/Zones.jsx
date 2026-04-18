@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
+import PageHeader from '../components/PageHeader'
+import { btnPrimary, btnPrimaryStyle, btnSecondary, btnDanger } from '../components/ui'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useDeviceData } from '../context/DeviceContext'
 import { useZoneNames } from '../hooks/useZoneNames'
@@ -251,36 +253,21 @@ export default function Zones() {
   const inputCls = 'bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
 
   return (
-    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Irrigation</h1>
-          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
-        </div>
-        <div className="flex items-center gap-3">
-          <StatusChip status={irr?.online ? 'online' : 'offline'} label={irr?.online ? 'Online' : 'Offline'} />
-          <button
-            onClick={() => allZonesOff().catch(console.error)}
-            className="border-2 border-[#ba1a1a]/30 text-[#ba1a1a] font-body font-semibold text-xs px-4 py-2 rounded-xl hover:bg-[#ba1a1a]/5 transition-colors"
-          >
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <PageHeader
+        eyebrow="Irrigation"
+        title="Zones & Programs"
+        subtitle={irr ? `Supply ${irr.supply_psi} PSI • Firmware v${irr.fw} • Uptime ${fmtUptime(irr.uptime)}` : undefined}
+        connected={connected}
+        actions={
+          <button onClick={() => allZonesOff().catch(console.error)} className={btnDanger}>
             All Off
           </button>
-        </div>
-      </div>
-
-      {/* Device info strip */}
-      {irr && (
-        <div className="flex flex-wrap gap-4 mb-4 text-xs font-body">
-          <span className="text-[#40493d]">Supply: <strong className="text-[#1a1c1c]">{irr.supply_psi} PSI</strong></span>
-          <span className="text-[#40493d]">Firmware: <strong className="text-[#1a1c1c]">v{irr.fw}</strong></span>
-          <span className="text-[#40493d]">RSSI: <strong className="text-[#1a1c1c]">{irr.rssi} dBm</strong></span>
-          <span className="text-[#40493d]">Uptime: <strong className="text-[#1a1c1c]">{fmtUptime(irr.uptime)}</strong></span>
-        </div>
-      )}
+        }
+      />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5">
+      <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
         {[
           { id: 'zones',   label: 'Zones' },
           { id: 'history', label: 'History' },
@@ -289,8 +276,8 @@ export default function Zones() {
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
-              activeTab === t.id ? 'bg-[#1a1c1c] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
+            className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+              activeTab === t.id ? 'bg-white shadow-sm text-[#17362e]' : 'text-[#717975] hover:text-[#17362e]'
             }`}
           >
             {t.label}

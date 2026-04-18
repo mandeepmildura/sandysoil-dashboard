@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import StatusChip from '../components/StatusChip'
+import PageHeader from '../components/PageHeader'
+import { btnPrimary, btnPrimaryStyle, btnSecondary } from '../components/ui'
 import { supabase } from '../lib/supabase'
 import { zoneOn, a6v3OutputOn } from '../lib/commands'
 
@@ -373,22 +375,25 @@ export default function Calendar() {
     d.getFullYear() === today.getFullYear()
 
   return (
-    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Irrigation Calendar</h1>
-        <div className="flex items-center gap-1">
-          {['week', 'day'].map(v => (
-            <button key={v} onClick={() => {
-              setView(v)
-              if (v === 'day') setSelectedDay(today)
-            }}
-              className={`px-4 py-1.5 rounded-lg text-sm font-body font-medium transition-colors capitalize ${
-                view === v ? 'bg-[#0d631b] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
-              }`}>{v}</button>
-          ))}
-        </div>
-      </div>
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <PageHeader
+        eyebrow="Scheduling"
+        title="Irrigation Calendar"
+        subtitle="Weekly and daily view of all programs"
+        actions={
+          <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full">
+            {['week', 'day'].map(v => (
+              <button key={v} onClick={() => {
+                setView(v)
+                if (v === 'day') setSelectedDay(today)
+              }}
+                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all capitalize ${
+                  view === v ? 'bg-white shadow-sm text-[#17362e]' : 'text-[#717975] hover:text-[#17362e]'
+                }`}>{v}</button>
+            ))}
+          </div>
+        }
+      />
 
       {saved && (
         <div className="mb-4 px-4 py-3 bg-[#0d631b]/10 border border-[#0d631b]/20 rounded-xl text-sm text-[#0d631b] font-semibold">
@@ -524,12 +529,14 @@ export default function Calendar() {
             )}
           </div>
 
-          <button onClick={() => setShowAddModal(true)}
-            className="w-full gradient-primary text-white font-body font-semibold text-sm py-3 rounded-xl shadow-fab hover:opacity-90 transition-opacity">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className={`w-full ${btnPrimary}`}
+            style={btnPrimaryStyle}
+          >
             + Add Schedule
           </button>
-          <button onClick={() => setShowRunModal(true)}
-            className="w-full bg-[#e2e2e2] text-[#1a1c1c] font-body font-semibold text-sm py-3 rounded-xl hover:bg-[#e8e8e8] transition-colors">
+          <button onClick={() => setShowRunModal(true)} className={`w-full ${btnSecondary}`}>
             Run Zone Now
           </button>
         </div>

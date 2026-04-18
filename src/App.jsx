@@ -22,7 +22,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f9f9f9] flex items-center justify-center">
+      <div className="min-h-screen bg-[#f8faf9] flex items-center justify-center">
         <div className="flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-[#0d631b] animate-pulse" />
           <span className="text-sm font-body text-[#40493d]">Loading…</span>
