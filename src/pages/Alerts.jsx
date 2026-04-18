@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
+import PageHeader from '../components/PageHeader'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 
@@ -72,16 +73,20 @@ export default function Alerts() {
   }
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
-      <h1 className="font-headline font-bold text-2xl text-[#1a1c1c] mb-5">Alerts & Notifications</h1>
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <PageHeader
+        eyebrow="System Monitoring"
+        title="Alerts & Notifications"
+        subtitle="Faults, warnings and info from across all connected devices"
+      />
 
-      <div className="flex gap-1 mb-5">
+      <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
         {tabs.map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
-              tab === t ? 'bg-[#1a1c1c] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
+            className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+              tab === t ? 'bg-white shadow-sm text-[#17362e]' : 'text-[#717975] hover:text-[#17362e]'
             }`}
           >
             {t}

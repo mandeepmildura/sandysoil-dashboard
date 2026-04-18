@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
+import PageHeader from '../components/PageHeader'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useDeviceData } from '../context/DeviceContext'
 import { useZoneNames } from '../hooks/useZoneNames'
@@ -546,22 +547,21 @@ export default function RelayDevice({ deviceCfg }) {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">{deviceCfg.name}</h1>
-          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
-        </div>
-        <StatusChip status={device ? 'online' : 'offline'} label={device ? 'Online' : 'Offline'} />
-      </div>
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <PageHeader
+        eyebrow={`Device • Serial ${deviceCfg.serial}`}
+        title={deviceCfg.name}
+        subtitle={`${deviceCfg.outputCount} relays • ${deviceCfg.inputCount} inputs${deviceCfg.adcCount ? ` • ${deviceCfg.adcCount} analog` : ''}`}
+        connected={connected}
+        actions={<StatusChip status={device ? 'online' : 'offline'} label={device ? 'Online' : 'Offline'} />}
+      />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5">
+      <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
         {[{ id: 'relays', label: 'Relays' }, { id: 'history', label: 'History' }, { id: 'groups', label: 'Programs' }].map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
-              activeTab === t.id ? 'bg-[#1a1c1c] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
+            className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+              activeTab === t.id ? 'bg-white shadow-sm text-[#17362e]' : 'text-[#717975] hover:text-[#17362e]'
             }`}>{t.label}</button>
         ))}
       </div>

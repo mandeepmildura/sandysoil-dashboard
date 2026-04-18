@@ -126,7 +126,7 @@ export default function ZoneDetail() {
   ]
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-xs font-body text-[#40493d] mb-4">
         <Link to="/" className="hover:text-[#1a1c1c]">Dashboard</Link>

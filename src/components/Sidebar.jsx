@@ -1,19 +1,21 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useAlerts } from '../hooks/useAlerts'
 import { KCS_DEVICES } from '../config/devices'
 
-const staticNav = [
-  { to: '/', label: 'Dashboard', icon: <GridIcon /> },
+const mainNav = [
+  { to: '/',         label: 'Dashboard', icon: DashIcon },
+  { to: '/zones',    label: 'Zones',     icon: LayersIcon },
+  { to: '/calendar', label: 'Schedule',  icon: CalIcon },
+  { to: '/pressure', label: 'Pressure',  icon: SpeedIcon },
 ]
-const kcsNav = KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> }))
+
 const tailNav = [
-  { to: '/alerts', label: 'Alerts', icon: <BellIcon />, badge: true },
-  { to: '/admin',  label: 'Admin',  icon: <AdminIcon /> },
+  { to: '/alerts', label: 'Alerts', icon: BellIcon, badge: true },
+  { to: '/admin',  label: 'Admin',  icon: SettingsIcon },
 ]
-const nav = [...staticNav, ...kcsNav, ...tailNav]
 
 export default function Sidebar({ session }) {
   const { data } = useLiveTelemetry(['farm/irrigation1/status'])
@@ -23,22 +25,6 @@ export default function Sidebar({ session }) {
   const { alerts } = useAlerts()
   const unreadCount = alerts.filter(a => !a.acknowledged).length
 
-  // Live clock (Melbourne time)
-  const [clock, setClock] = useState('')
-  useEffect(() => {
-    function tick() {
-      setClock(new Date().toLocaleTimeString('en-AU', {
-        timeZone: 'Australia/Melbourne',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-      }))
-    }
-    tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  // Poll latest supply PSI from pressure_log every 10s — works for both
-  // real device data and simulated data, persists across page navigation
   const [dbPsi, setDbPsi] = useState(null)
   useEffect(() => {
     async function fetchLatest() {
@@ -56,135 +42,139 @@ export default function Sidebar({ session }) {
     return () => clearInterval(id)
   }, [])
 
-  // Prefer real MQTT value when device is online & reporting > 0, else use DB
   const mqttPsi = irr.supply_psi
   const supplyPsi = (mqttPsi != null && mqttPsi > 0) ? mqttPsi : dbPsi ?? mqttPsi ?? '—'
 
+  const userEmail = session?.user?.email ?? 'User'
+  const initials = userEmail.split('@')[0].slice(0, 2).toUpperCase()
+
   return (
-    <aside className="hidden md:flex w-56 min-h-screen bg-[#304047] flex-col shrink-0">
-      {/* Logo */}
-      <div className="px-5 py-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-md gradient-primary flex items-center justify-center">
-            <span className="text-white text-xs font-headline font-bold">SS</span>
-          </div>
-          <div>
-            <p className="font-headline font-bold text-white text-sm leading-tight">Sandy Soil</p>
-            <p className="text-white/50 text-xs">Automations</p>
-          </div>
-        </div>
+    <aside className="hidden md:flex sticky top-0 h-screen w-64 bg-[#485860] flex-col shrink-0 shadow-2xl">
+      {/* Title */}
+      <div className="px-6 py-8">
+        <h1 className="font-headline font-bold text-xl text-white tracking-tight leading-tight">Sandy Soil</h1>
+        <p className="text-white/50 text-xs mt-0.5">Automations</p>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {nav.map(({ to, label, icon, badge }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-body font-medium transition-colors relative ${
-                isActive
-                  ? 'bg-white/15 text-white'
-                  : 'text-white/60 hover:bg-white/10 hover:text-white'
-              }`
-            }
-          >
-            <span className="w-5 h-5 shrink-0">{icon}</span>
-            {label}
-            {badge && unreadCount > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </NavLink>
-        ))}
+      <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
+        {mainNav.map(item => <NavItem key={item.to} {...item} />)}
+
+        {/* Devices group */}
+        <div className="pt-4">
+          <p className="px-4 pb-1 ml-2 mr-4 text-[10px] uppercase tracking-widest text-white/40 font-bold">Devices</p>
+          {KCS_DEVICES.map(d => (
+            <NavItem key={d.path} to={d.path} label={d.name} icon={RelayIcon} />
+          ))}
+        </div>
+
+        <div className="pt-4">
+          {tailNav.map(item => (
+            <NavItem key={item.to} {...item} badgeCount={item.badge ? unreadCount : 0} />
+          ))}
+        </div>
       </nav>
 
-      {/* Live supply pressure */}
-      <div className="px-4 py-3 border-t border-white/10">
-        <p className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Supply Pressure</p>
-        <div className="flex items-center gap-2">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${online ? 'bg-[#4caf50] animate-pulse' : 'bg-white/20'}`} />
-          <span className="font-headline font-bold text-white text-lg leading-none">{supplyPsi}</span>
-          {supplyPsi !== '—' && <span className="text-white/50 text-xs">PSI</span>}
+      {/* Live supply pressure chip */}
+      <div className="px-4 mb-2">
+        <div className="bg-white/5 rounded-xl px-4 py-3">
+          <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-1">Supply Pressure</p>
+          <div className="flex items-center gap-2">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${online ? 'bg-[#4caf50] animate-pulse' : 'bg-white/20'}`} />
+            <span className="font-headline font-bold text-white text-lg leading-none">{supplyPsi}</span>
+            {supplyPsi !== '—' && <span className="text-white/50 text-xs">PSI</span>}
+          </div>
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="px-4 py-4 border-t border-white/10 space-y-2">
-        {session?.user?.email && (
-          <p className="text-white/40 text-[10px] truncate">{session.user.email}</p>
-        )}
-        <p className="text-white/30 text-xs">Mildura, VIC</p>
-        {clock && <p className="text-white/50 text-xs font-mono">{clock}</p>}
-        <button
-          onClick={() => supabase.auth.signOut()}
-          className="text-white/40 hover:text-white/70 text-xs font-body transition-colors"
-        >
-          Sign out
-        </button>
+      {/* User footer */}
+      <div className="px-4 pb-4">
+        <div className="bg-white/5 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-[#0d631b] flex items-center justify-center text-white font-headline font-bold text-xs shrink-0">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-white truncate leading-tight">{userEmail}</p>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-white/40 hover:text-white/70 text-[11px] font-body transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
   )
 }
 
-function GridIcon() {
+function NavItem({ to, label, icon: Icon, badgeCount = 0 }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    <NavLink
+      to={to}
+      end={to === '/'}
+      className={({ isActive }) =>
+        `flex items-center gap-3 py-3 px-4 ml-2 mr-4 rounded-lg text-sm transition-all ${
+          isActive
+            ? 'bg-white/10 text-white font-bold scale-95'
+            : 'text-slate-300 hover:text-white hover:bg-white/5 font-body font-medium'
+        }`
+      }
+    >
+      <Icon />
+      <span className="flex-1">{label}</span>
+      {badgeCount > 0 && (
+        <span className="bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center shrink-0">
+          {badgeCount > 9 ? '9+' : badgeCount}
+        </span>
+      )}
+    </NavLink>
+  )
+}
+
+// Icons — outlined stroke style, 20px
+const iconProps = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }
+
+function DashIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
+      <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
     </svg>
   )
 }
-function DropIcon() {
+function LayersIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2C12 2 5 10 5 15a7 7 0 0014 0C19 10 12 2 12 2z"/>
+    <svg {...iconProps}>
+      <path d="M12 2l9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/>
     </svg>
   )
 }
 function CalIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg {...iconProps}>
       <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
     </svg>
   )
 }
-function ListIcon() {
+function SpeedIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
-    </svg>
-  )
-}
-function GaugeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a10 10 0 100 20A10 10 0 0012 2z"/><path d="M12 12l4-4"/>
+    <svg {...iconProps}>
+      <path d="M12 3a9 9 0 10.001 0zM12 12l4-4"/>
       <circle cx="12" cy="12" r="1" fill="currentColor"/>
     </svg>
   )
 }
 function BellIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg {...iconProps}>
       <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
-    </svg>
-  )
-}
-
-function HistoryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
-      <path d="M12 7v5l4 2"/>
     </svg>
   )
 }
 function RelayIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg {...iconProps}>
       <rect x="2" y="7" width="20" height="10" rx="2"/>
       <circle cx="8" cy="12" r="1.5" fill="currentColor"/>
       <circle cx="16" cy="12" r="1.5" fill="currentColor"/>
@@ -192,10 +182,11 @@ function RelayIcon() {
     </svg>
   )
 }
-function AdminIcon() {
+function SettingsIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
     </svg>
   )
 }
