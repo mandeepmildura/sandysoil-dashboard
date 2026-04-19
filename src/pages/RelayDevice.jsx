@@ -7,7 +7,7 @@
  *   pressureConfig → PressurePanel (gauge, history graph, alerts)
  *   pollConfig     → DAC-toggle polling to force STATE responses
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -20,7 +20,7 @@ import { useZoneNames } from '../hooks/useZoneNames'
 import { useZoneHistory } from '../hooks/useZoneHistory'
 import { useA6v3PressureHistory } from '../hooks/useA6v3PressureHistory'
 import { useDeviceOffline } from '../hooks/useDeviceOffline'
-import { relayOn, relayOff, requestDeviceState, logDevicePressure } from '../lib/commands'
+import { relayOn, relayOff, requestDeviceState } from '../lib/commands'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { supabase } from '../lib/supabase'
 
@@ -138,7 +138,15 @@ function PressurePanel({ deviceCfg, live, anyRelayOn }) {
   const psi = (smoothedAdc / 4095) * maxPsi
   psiRef.current = psi
 
-  function computeHistRange() {
+  // Tick once a minute so rolling windows advance, but not on every render.
+  const [rangeTick, setRangeTick] = useState(0)
+  useEffect(() => {
+    if (histPreset === 'custom') return
+    const id = setInterval(() => setRangeTick(t => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [histPreset])
+
+  const histRange = useMemo(() => {
     if (histPreset === 'custom') {
       return {
         from: new Date(`${customDate}T${customFrom}:00`).toISOString(),
@@ -151,17 +159,9 @@ function PressurePanel({ deviceCfg, live, anyRelayOn }) {
       from: new Date(now - hours * 3600_000).toISOString(),
       to:   new Date(now).toISOString(),
     }
-  }
-  const histRange = computeHistRange()
-  const { data: pressureHistory, loading: pressHistLoading, reload: reloadPressure } = useA6v3PressureHistory(histRange.from, histRange.to)
+  }, [histPreset, customDate, customFrom, customTo, rangeTick])
 
-  // Log pressure every 5 min when device is online
-  useEffect(() => {
-    if (!device) return
-    logDevicePressure(deviceCfg, psiRef.current)
-    const id = setInterval(() => { if (device) logDevicePressure(deviceCfg, psiRef.current) }, 300_000)
-    return () => clearInterval(id)
-  }, [!!device]) // eslint-disable-line react-hooks/exhaustive-deps
+  const { data: pressureHistory, loading: pressHistLoading, reload: reloadPressure } = useA6v3PressureHistory(histRange.from, histRange.to)
 
   // Pressure alerts
   useEffect(() => {
