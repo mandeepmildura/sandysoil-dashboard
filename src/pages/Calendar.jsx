@@ -3,7 +3,7 @@ import StatusChip from '../components/StatusChip'
 import PageHeader from '../components/PageHeader'
 import { btnPrimary, btnPrimaryStyle, btnSecondary } from '../components/ui'
 import { supabase } from '../lib/supabase'
-import { zoneOn, a6v3OutputOn } from '../lib/commands'
+import { zoneOn, a6v3ZoneOn } from '../lib/commands'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
@@ -48,12 +48,29 @@ function EventModal({ event, onClose }) {
     if (!p.zones?.length) return
     setRunning(true)
     try {
+      // A6v3 firmware has no auto-off timer, so for each A6v3 'on' we also
+      // queue an 'off' step in program_queue at now + duration. The
+      // run-program-queue cron job fires it. (irrigation1 auto-offs itself.)
+      const a6v3OffSteps = []
       for (const z of p.zones) {
+        const dur = z.duration_min ?? 30
         if (z.device === 'a6v3') {
-          await a6v3OutputOn(z.zone_num)
+          await a6v3ZoneOn(z.zone_num, dur)
+          a6v3OffSteps.push({
+            group_id:     p.id,
+            step_type:    'off',
+            device:       'a6v3',
+            zone_num:     z.zone_num,
+            duration_min: null,
+            fire_at:      new Date(Date.now() + dur * 60_000).toISOString(),
+          })
         } else {
-          await zoneOn(z.zone_num, z.duration_min ?? 30)
+          await zoneOn(z.zone_num, dur)
         }
+      }
+      if (a6v3OffSteps.length > 0) {
+        const { error } = await supabase.from('program_queue').insert(a6v3OffSteps)
+        if (error) console.error('failed to queue a6v3 off step(s):', error)
       }
     } catch (e) { console.error(e) }
     setRunning(false)

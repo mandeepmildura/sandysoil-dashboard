@@ -172,6 +172,7 @@ Deno.serve(async (_req) => {
 
       for (const step of steps) {
         const stepType = step.step_type ?? 'on'
+        const device   = step.device ?? 'irrigation1'
 
         if (stepType === 'delay') {
           cursorMs += (step.delay_min ?? 0) * 60_000
@@ -181,16 +182,31 @@ Deno.serve(async (_req) => {
         queueRows.push({
           group_id:    group.id,
           step_type:   stepType,
-          device:      step.device ?? 'irrigation1',
+          device,
           zone_num:    step.zone_num,
           duration_min: step.duration_min,
           fire_at:     new Date(cursorMs).toISOString(),
         })
 
-        // For irrigation1 sequential 'on' steps: advance cursor by duration so the
-        // next step fires after this one completes (backwards-compatible behaviour)
+        // A6v3 firmware has no built-in auto-off timer, so the scheduler must
+        // explicitly queue an off command after the requested duration.
+        // (irrigation1 firmware honours the `duration` field in the MQTT payload.)
+        if (stepType === 'on' && device === 'a6v3' && (step.duration_min ?? 0) > 0) {
+          const offAtMs = cursorMs + (step.duration_min ?? 0) * 60_000
+          queueRows.push({
+            group_id:    group.id,
+            step_type:   'off',
+            device,
+            zone_num:    step.zone_num,
+            duration_min: null,
+            fire_at:     new Date(offAtMs).toISOString(),
+          })
+        }
+
+        // Sequential 'on' steps advance the cursor by their duration so the
+        // next step fires after this one completes.
         if (stepType === 'on'
-            && (step.device ?? 'irrigation1') === 'irrigation1'
+            && (device === 'irrigation1' || device === 'a6v3')
             && group.run_mode === 'sequential') {
           cursorMs += (step.duration_min ?? 0) * 60_000
         }
