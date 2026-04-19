@@ -1,10 +1,14 @@
 /**
  * Sandy Soil Automations — A6v3 Pressure Logger
- * Supabase Edge Function — invoked every 5 minutes via pg_cron
+ * Supabase Edge Function — invoked every minute via pg_cron
  *
- * Connects to HiveMQ, polls the A6v3 device for a fresh STATE message,
- * reads ADC1, converts to PSI, and inserts into pressure_log.
- * Runs server-side so pressure is recorded even when no browser is open.
+ * Behaviour:
+ *   pump ON  (open a6v3 zone_history row) → log every minute
+ *   pump OFF (no open row)                → log roughly every 5 min
+ *
+ * Connects to HiveMQ over WebSocket, polls A6v3 STATE (toggling DAC1 to
+ * force a fresh response), reads ADC1, converts to PSI, inserts into
+ * pressure_log.a6v3_ch1_psi.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -19,6 +23,9 @@ const A6V3_STATE_TOPIC = 'A6v3/8CBFEA03002C/STATE'
 const A6V3_SET_TOPIC   = 'A6v3/8CBFEA03002C/SET'
 const ADC_FULL = 4095
 const MAX_PSI  = 116
+
+// Idle cadence: skip if last a6v3 log is newer than this many minutes.
+const IDLE_SKIP_MIN = 4.5
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -186,19 +193,19 @@ Deno.serve(async (_req) => {
     const pumpIsOn = (openRuns?.length ?? 0) > 0
 
     if (!pumpIsOn) {
-      // Pump off — only log every 5 min. Check when we last logged.
+      // Idle: only log if last a6v3 reading is older than IDLE_SKIP_MIN.
       const { data: lastLog } = await supabase
         .from('pressure_log')
         .select('ts')
         .not('a6v3_ch1_psi', 'is', null)
         .order('ts', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
 
       const lastTs = lastLog?.ts ? new Date(lastLog.ts).getTime() : 0
       const ageMin = (Date.now() - lastTs) / 60_000
 
-      if (ageMin < 4.5) {
+      if (ageMin < IDLE_SKIP_MIN) {
         console.log(`[log-a6v3-pressure] pump off, last log ${ageMin.toFixed(1)} min ago — skipping`)
         return new Response(JSON.stringify({ ok: true, skipped: true, reason: 'pump off, logged recently' }), {
           headers: { 'Content-Type': 'application/json' },
