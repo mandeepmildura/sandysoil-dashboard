@@ -4,18 +4,7 @@ import StatusChip from '../components/StatusChip'
 import PageHeader from '../components/PageHeader'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-
-function fmtTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const now = new Date()
-  const diffMin = Math.floor((now - d) / 60000)
-  if (diffMin < 2)  return 'Just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24)   return `${diffH}h ago`
-  return d.toLocaleDateString()
-}
+import { fmtRelative as fmtTime } from '../lib/format'
 
 export default function Alerts() {
   const { alerts: dbAlerts, loading, acknowledge, dismiss } = useAlerts()

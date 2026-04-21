@@ -5,26 +5,7 @@ import VitalsStrip from '../components/VitalsStrip'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { mqttPublish } from '../lib/mqttClient'
-
-function fmtLastSeen(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const diffMin = Math.floor((Date.now() - d) / 60000)
-  if (diffMin < 2)   return 'Just now'
-  if (diffMin < 60)  return `${diffMin}m ago`
-  const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24)    return `${diffH}h ago`
-  return d.toLocaleDateString()
-}
-
-function fmtEvent(row) {
-  const deviceLabels = { a6v3: 'A6v3', b16m: 'B16M', irrigation1: 'Irrigation' }
-  const deviceLabel = deviceLabels[row.device] ?? row.device
-  const unitLabel = row.device === 'irrigation1' ? `Zone ${row.zone_num}` : `Relay ${row.zone_num}`
-  const diff = Math.floor((Date.now() - new Date(row.started_at)) / 60000)
-  const ago = diff < 2 ? 'just now' : diff < 60 ? `${diff}m ago` : `${Math.floor(diff/60)}h ago`
-  return { text: `${deviceLabel} · ${unitLabel} started`, time: ago }
-}
+import { fmtRelative as fmtLastSeen, fmtEvent } from '../lib/format'
 
 export default function AdminConsole() {
   const [activeTab, setActiveTab] = useState('farms')
