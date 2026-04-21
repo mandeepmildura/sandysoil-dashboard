@@ -23,14 +23,8 @@ import { useDeviceOffline } from '../hooks/useDeviceOffline'
 import { relayOn, relayOff, requestDeviceState } from '../lib/commands'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { supabase } from '../lib/supabase'
-import {
-  localDateStr,
-  fmtTime,
-  fmtDuration,
-  relayGridCls,
-  inputGridCols,
-  gaugeColor,
-} from '../lib/relayDevice'
+import { localDateStr, fmtTime, fmtDuration } from '../lib/format'
+import { relayGridCls, inputGridCols, gaugeColor } from '../lib/relayDevice'
 
 const inputCls = 'bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
 
