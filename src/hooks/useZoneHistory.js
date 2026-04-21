@@ -42,7 +42,7 @@ export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 5
   useEffect(() => {
     load()
 
-    // Realtime subscription for instant updates
+    // Realtime subscription for instant updates (websocket — no egress cost per change)
     const channel = supabase
       .channel(`zone_history_${device ?? 'all'}_${zoneNum ?? 'all'}_${Date.now()}`)
       .on(
@@ -52,12 +52,8 @@ export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 5
       )
       .subscribe()
 
-    // Polling fallback — catches any realtime misses
-    const poll = setInterval(load, 15_000)
-
     return () => {
       supabase.removeChannel(channel)
-      clearInterval(poll)
     }
   }, [load])
 

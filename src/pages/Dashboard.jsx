@@ -55,13 +55,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
+      // Only need enough rows to cover 8 distinct zones; 24 handles repeats.
       const { data: rows } = await supabase
         .from('zone_history')
         .select('zone_num, ended_at')
         .eq('device', 'irrigation1')
         .not('ended_at', 'is', null)
         .order('ended_at', { ascending: false })
-        .limit(50)
+        .limit(24)
       if (!rows) return
       const map = {}
       for (const r of rows) if (r.zone_num != null && !map[r.zone_num]) map[r.zone_num] = r.ended_at
@@ -72,12 +73,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
+      // 30 bars × 2 samples/bar is plenty for the sparkline; 60 was 2× what's needed.
       const { data: rows } = await supabase
         .from('pressure_log')
-        .select('ts, supply_psi')
+        .select('supply_psi')
         .not('supply_psi', 'is', null)
         .order('ts', { ascending: false })
-        .limit(60)
+        .limit(30)
       setPressureBars(bucketPressureBars(rows?.map(r => r.supply_psi)))
     }
     load()

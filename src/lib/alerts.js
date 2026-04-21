@@ -1,5 +1,12 @@
 import { supabase } from './supabase'
 
+// Client-side throttles so repeated alert checks driven by frequent MQTT
+// state updates don't hammer Supabase. The DB-level dedup in raiseAlert is
+// still correct; these just avoid the round-trip when nothing has changed.
+const THROTTLE_MS = 60_000
+const lastRaiseAt = new Map()
+const lastResolveAt = new Map()
+
 /**
  * Insert an alert into device_alerts, deduplicating within a time window.
  * If an unacknowledged alert with the same device + title already exists
@@ -9,6 +16,11 @@ import { supabase } from './supabase'
  * @param {number} dedupMinutes  - dedup window in minutes (default: 30)
  */
 export async function raiseAlert({ severity, title, description, device, device_id }, dedupMinutes = 30) {
+  const key = `${device ?? ''}|${title}`
+  const prev = lastRaiseAt.get(key) ?? 0
+  if (Date.now() - prev < THROTTLE_MS) return
+  lastRaiseAt.set(key, Date.now())
+
   try {
     const since = new Date(Date.now() - dedupMinutes * 60_000).toISOString()
 
@@ -40,6 +52,11 @@ export async function raiseAlert({ severity, title, description, device, device_
  * Auto-acknowledge all open alerts for a device+title (used for recovery events).
  */
 export async function resolveAlerts(device, title) {
+  const key = `${device ?? ''}|${title}`
+  const prev = lastResolveAt.get(key) ?? 0
+  if (Date.now() - prev < THROTTLE_MS) return
+  lastResolveAt.set(key, Date.now())
+
   try {
     await supabase
       .from('device_alerts')
