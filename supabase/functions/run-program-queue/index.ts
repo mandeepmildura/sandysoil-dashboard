@@ -164,6 +164,7 @@ Deno.serve(async (_req) => {
     // Build MQTT messages
     const messages: { topic: string; payload: string; label: string }[] = []
     const historyRows: object[] = []
+    const a6v3OffSteps: QueueRow[] = []
 
     for (const step of rows) {
       if (step.device === 'a6v3') {
@@ -172,6 +173,16 @@ Deno.serve(async (_req) => {
           payload: JSON.stringify({ [`output${step.zone_num}`]: { value: step.step_type === 'on' } }),
           label:   `a6v3 relay ${step.zone_num} → ${step.step_type}`,
         })
+        if (step.step_type === 'on') {
+          historyRows.push({
+            device:     'a6v3',
+            zone_num:   step.zone_num,
+            started_at: now,
+            source:     'schedule',
+          })
+        } else {
+          a6v3OffSteps.push(step)
+        }
       } else {
         if (step.step_type === 'on') {
           messages.push({
@@ -200,6 +211,25 @@ Deno.serve(async (_req) => {
 
     if (historyRows.length > 0) {
       await supabase.from('zone_history').insert(historyRows)
+    }
+
+    // Close the most recent open zone_history row for each A6v3 off step.
+    // A6v3 firmware doesn't report completion, so the queue executor is the
+    // only thing that knows when the relay actually turned off.
+    for (const step of a6v3OffSteps) {
+      const { data: open } = await supabase
+        .from('zone_history')
+        .select('id')
+        .eq('zone_num', step.zone_num)
+        .eq('device', 'a6v3')
+        .is('ended_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+      if (open?.length) {
+        await supabase.from('zone_history')
+          .update({ ended_at: firedAt })
+          .eq('id', open[0].id)
+      }
     }
 
     const fired = messages.map(m => m.label)
