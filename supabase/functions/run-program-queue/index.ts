@@ -7,6 +7,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { buildConnect, buildPublish, buildDisconnect } from './lib/mqttPacket.ts'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -28,44 +29,7 @@ async function raiseAlert(title: string, description: string, severity: string):
 }
 
 // ── Minimal MQTT 3.1.1 over WebSocket ────────────────────────────────────────
-
-function encodeLen(n: number): number[] {
-  const out: number[] = []
-  do {
-    let b = n % 128; n = Math.floor(n / 128)
-    if (n > 0) b |= 128
-    out.push(b)
-  } while (n > 0)
-  return out
-}
-
-function utf8Prefixed(s: string): number[] {
-  const b = [...new TextEncoder().encode(s)]
-  return [(b.length >> 8) & 0xff, b.length & 0xff, ...b]
-}
-
-function buildConnect(user: string, pass: string): Uint8Array {
-  const clientId = `edge-${Date.now()}`
-  const payload = [
-    ...utf8Prefixed(clientId),
-    ...utf8Prefixed(user),
-    ...utf8Prefixed(pass),
-  ]
-  // protocol name 'MQTT', level 4, flags: user+pass+clean, keepAlive 30s
-  const varHdr = [0x00,0x04,0x4d,0x51,0x54,0x54, 0x04, 0b11000010, 0x00,0x1e]
-  const rem = [...varHdr, ...payload]
-  return new Uint8Array([0x10, ...encodeLen(rem.length), ...rem])
-}
-
-function buildPublish(topic: string, payload: string, pid: number): Uint8Array {
-  const tp = [...new TextEncoder().encode(topic)]
-  const pp = [...new TextEncoder().encode(payload)]
-  // QoS 1: topic len prefix + topic + packet-id + payload
-  const rem = [(tp.length >> 8) & 0xff, tp.length & 0xff, ...tp, (pid >> 8) & 0xff, pid & 0xff, ...pp]
-  return new Uint8Array([0x32, ...encodeLen(rem.length), ...rem])
-}
-
-function buildDisconnect(): Uint8Array { return new Uint8Array([0xe0, 0x00]) }
+// Packet encoders live in ./lib/mqttPacket.ts for unit testability.
 
 async function mqttPublishAll(messages: { topic: string; payload: string }[]): Promise<void> {
   if (messages.length === 0) return
@@ -92,7 +56,7 @@ async function mqttPublishAll(messages: { topic: string; payload: string }[]): P
 
     const timer = setTimeout(() => fail('MQTT connect timeout (15s)'), 15_000)
 
-    ws.onopen = () => { ws.send(buildConnect(MQTT_USER, MQTT_PASS)) }
+    ws.onopen = () => { ws.send(buildConnect(MQTT_USER, MQTT_PASS, `edge-${Date.now()}`)) }
 
     ws.onerror = (e) => fail(`WebSocket error: ${JSON.stringify(e)}`)
 
