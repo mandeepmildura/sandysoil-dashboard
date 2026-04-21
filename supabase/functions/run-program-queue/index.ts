@@ -7,7 +7,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { buildConnect, buildPublish, buildDisconnect } from './lib/mqttPacket.ts'
+import { buildConnect, buildPublish, buildDisconnect } from '../_shared/mqttPacket.ts'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

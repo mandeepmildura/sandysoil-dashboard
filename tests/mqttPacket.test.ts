@@ -4,8 +4,11 @@ import {
   utf8Prefixed,
   buildConnect,
   buildPublish,
+  buildSubscribe,
   buildDisconnect,
-} from '../supabase/functions/run-program-queue/lib/mqttPacket.ts'
+  parseMqttPublish,
+  adcToPsi,
+} from '../supabase/functions/_shared/mqttPacket.ts'
 
 describe('encodeLen (MQTT remaining-length varint)', () => {
   it('encodes 0 as a single zero byte', () => {
@@ -134,5 +137,88 @@ describe('buildPublish', () => {
 describe('buildDisconnect', () => {
   it('is the fixed 2-byte DISCONNECT packet', () => {
     expect(Array.from(buildDisconnect())).toEqual([0xe0, 0x00])
+  })
+})
+
+describe('buildSubscribe', () => {
+  it('starts with 0x82 (SUBSCRIBE control byte with required flags)', () => {
+    const pkt = buildSubscribe('x', 1)
+    expect(pkt[0]).toBe(0x82)
+  })
+
+  it('encodes packet id, topic, and QoS-0 request byte in order', () => {
+    const pkt = buildSubscribe('a/b', 0x0102)
+    // control(1) + remLen(1) = header = 2 bytes
+    const body = Array.from(pkt.slice(2))
+    expect(body).toEqual([
+      0x01, 0x02,                     // packet id 0x0102
+      0x00, 0x03, 0x61, 0x2f, 0x62,   // topic "a/b"
+      0x00,                           // requested QoS 0
+    ])
+  })
+
+  it('remaining-length matches the body bytes', () => {
+    const pkt = buildSubscribe('topic', 1)
+    // rem = 2 (pid) + 2 (topic-len prefix) + 5 (topic) + 1 (qos) = 10
+    expect(pkt[1]).toBe(10)
+    expect(pkt.length).toBe(12)
+  })
+})
+
+describe('parseMqttPublish', () => {
+  it('decodes a round-trip PUBLISH back to the original topic + payload (QoS 1)', () => {
+    const original = buildPublish('A6v3/CCBA97071FD8/STATE', '{"adc1":{"value":1234}}', 42)
+    const parsed = parseMqttPublish(original)
+    expect(parsed).not.toBeNull()
+    expect(parsed!.topic).toBe('A6v3/CCBA97071FD8/STATE')
+    expect(parsed!.payload).toBe('{"adc1":{"value":1234}}')
+  })
+
+  it('returns null for a non-PUBLISH packet (e.g. CONNACK byte 0x20)', () => {
+    expect(parseMqttPublish(new Uint8Array([0x20, 0x02, 0x00, 0x00]))).toBeNull()
+  })
+
+  it('does not throw on truncated input — returns empty topic/payload', () => {
+    // Parser is lenient: Uint8Array.slice past the end returns empty, which is
+    // safe for callers that then filter by topic === expected.
+    const out = parseMqttPublish(new Uint8Array([0x30, 0x00]))
+    expect(out).toEqual({ topic: '', payload: '' })
+  })
+
+  it('handles QoS-0 PUBLISH (control byte 0x30, no packet id)', () => {
+    // Build by hand: 0x30 | remLen | topic-len | topic | payload
+    const topic = 'a'
+    const payload = 'z'
+    const body = [0x00, 0x01, 0x61, 0x7a]
+    const pkt = new Uint8Array([0x30, body.length, ...body])
+    const parsed = parseMqttPublish(pkt)
+    expect(parsed).toEqual({ topic, payload })
+  })
+
+  it('decodes topic + payload when remaining-length spans 2 bytes (large payload)', () => {
+    const big = 'x'.repeat(200)
+    const original = buildPublish('t', big, 5)
+    const parsed = parseMqttPublish(original)
+    expect(parsed!.topic).toBe('t')
+    expect(parsed!.payload).toBe(big)
+  })
+})
+
+describe('adcToPsi', () => {
+  it('maps 0 → 0 PSI', () => {
+    expect(adcToPsi(0)).toBe(0)
+  })
+
+  it('maps full scale 4095 → 116 PSI by default', () => {
+    expect(adcToPsi(4095)).toBe(116)
+  })
+
+  it('maps midpoint 2048 → 58.01 (rounded to 2dp)', () => {
+    expect(adcToPsi(2048)).toBe(58.01)
+  })
+
+  it('honours a custom maxPsi', () => {
+    expect(adcToPsi(4095, 50)).toBe(50)
+    expect(adcToPsi(2048, 50)).toBe(25.01)
   })
 })
