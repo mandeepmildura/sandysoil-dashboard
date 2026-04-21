@@ -21,7 +21,10 @@ export default function AdminConsole() {
 
   const loadFarms = useCallback(async () => {
     setFarmsLoading(true)
-    const { data, error } = await supabase.from('farms').select('*').order('created_at')
+    const { data, error } = await supabase
+      .from('farms')
+      .select('id, name, location, contact_name, contact_email, contact_phone, notes')
+      .order('created_at')
     if (!error && data) setFarms(data)
     setFarmsLoading(false)
   }, [])
@@ -105,7 +108,7 @@ export default function AdminConsole() {
     setDevicesLoading(true)
     const { data, error } = await supabase
       .from('farm_devices')
-      .select('*, farms(name)')
+      .select('id, farm_id, device_id, model, type, firmware, last_seen, status, farms(name)')
       .order('farm_id')
     if (!error && data) {
       setDevices(data.map(d => ({ ...d, farm_name: d.farms?.name ?? '—' })))

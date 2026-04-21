@@ -25,7 +25,8 @@ export function useA6v3PressureHistory(from, to) {
         .not('a6v3_ch1_psi', 'is', null)
         .gte('ts', from)
         .lte('ts', to)
-        .order('ts', { ascending: true })
+        .order('ts', { ascending: false })
+        .limit(5000)
 
       if (!error && rows) {
         setData(bucketA6v3(rows, multiDay))
