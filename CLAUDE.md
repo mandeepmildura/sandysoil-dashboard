@@ -136,7 +136,7 @@ END $$;
 | `src/pages/Zones.jsx` | Zone list with live state |
 
 ## Known Issues / TODO
-- [ ] **DEPLOY `run-schedules` edge function** (fix committed 2026-04-19 on branch `claude/fix-pump-timer-TaDFA`): A6v3 pump auto-off fix is in the repo but the edge function has NOT been redeployed to Supabase yet. Until it is, scheduled A6v3 runs will still fail to turn off. Deploy via Supabase dashboard → Edge Functions → `run-schedules` → Code tab → paste updated `supabase/functions/run-schedules/index.ts` → Deploy.
+- [ ] **DEPLOY edge functions** (fixes committed 2026-04-19 on branch `claude/fix-pump-timer-TaDFA`): A6v3 pump auto-off fix is in the repo but the edge functions have NOT been redeployed to Supabase yet. Until they are, scheduled A6v3 runs will still fail to turn off, and A6v3 run history will be missing. Redeploy both `run-schedules` and `run-program-queue` via Supabase dashboard → Edge Functions → [function name] → Code tab → paste updated file from `supabase/functions/[function name]/index.ts` → Deploy.
 - [ ] **Schedule auto-execution**: Schedules are stored in Supabase and displayed in Calendar but nothing executes them automatically at the scheduled time. Options: (A) add scheduling to `sandysoil-8z` firmware to poll Supabase, (B) Supabase Edge Function + pg_cron that publishes MQTT at schedule time
 - [ ] **Filter pressure sensors**: `farm/filter1/pressure` topic not yet publishing — no sensor wired
 - [ ] **Backwash control**: `farm/filter1/backwash/*` topics not yet wired to a device

@@ -110,22 +110,6 @@ export async function logA6v3Pressure(psi) {
   return error ?? null
 }
 
-export async function a6v3OutputOn(outputNum) {
-  await mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
-  try {
-    await supabase.from('zone_history').insert({
-      device: 'a6v3',
-      zone_num: outputNum,
-      started_at: new Date().toISOString(),
-      source: 'manual',
-    })
-  } catch (e) { console.warn('a6v3 relay history insert failed:', e) }
-}
-export async function a6v3OutputOff(outputNum) {
-  await mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
-  await closeOpenHistoryRecord(outputNum, 'a6v3')
-}
-
 /** Turn on an A6v3 relay and log to zone_history with PSI snapshot. */
 export async function a6v3ZoneOn(relayNum, durationMin, source = 'manual') {
   await mqttPublish(A6V3_SET_TOPIC, { [`output${relayNum}`]: { value: true } })
