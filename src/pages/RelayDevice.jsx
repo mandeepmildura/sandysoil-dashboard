@@ -588,20 +588,22 @@ export default function RelayDevice({ deviceCfg }) {
                     </div>
                     <StatusChip status={on ? 'running' : 'offline'} label={on ? 'ON' : 'OFF'} />
 
-                    {/* Duration selector — shown when relay is OFF */}
+                    {/* Duration input — shown when relay is OFF (matches Zones page UX) */}
                     {!on && (
-                      <div className="flex gap-0.5 mt-2">
-                        {[[5,'5m'],[15,'15m'],[30,'30m'],[60,'1hr'],[null,'∞']].map(([dur, lbl]) => {
-                          const selected = (selectedDurations[n] !== undefined ? selectedDurations[n] : 30) === dur
-                          return (
-                            <button key={lbl}
-                              onClick={() => setSelectedDurations(prev => ({ ...prev, [n]: dur }))}
-                              className={`flex-1 py-0.5 rounded text-[9px] font-semibold transition-colors ${
-                                selected ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d] hover:bg-[#e2e2e2]'
-                              }`}
-                            >{lbl}</button>
-                          )
-                        })}
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={240}
+                          placeholder="30"
+                          value={selectedDurations[n] === null ? '' : (selectedDurations[n] ?? '')}
+                          onChange={e => {
+                            const v = e.target.value
+                            setSelectedDurations(prev => ({ ...prev, [n]: v === '' ? null : Number(v) }))
+                          }}
+                          className="w-14 bg-[#f3f3f3] rounded-md px-2 py-1 text-xs text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:bg-white transition-all"
+                        />
+                        <span className="text-[10px] text-[#40493d]">min</span>
                       </div>
                     )}
 

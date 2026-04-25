@@ -15,7 +15,10 @@ import { useDeviceOffline } from '../src/hooks/useDeviceOffline'
 const FIVE_MIN = 5 * 60_000
 
 beforeEach(() => {
-  vi.useFakeTimers()
+  // Only fake the timer APIs the hook uses. Faking microtasks
+  // (queueMicrotask / process.nextTick) hangs React's render flushing
+  // inside @testing-library/react's renderHook on Windows + happy-dom.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
   raiseAlert.mockClear()
   resolveAlerts.mockClear()
 })

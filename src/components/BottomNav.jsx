@@ -6,7 +6,7 @@ import { isAdmin } from '../lib/role'
 
 const primary = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
-  { to: '/zones',    label: 'Zones',    icon: <DropIcon /> },
+  { to: '/zones',    label: 'Valves',   icon: <DropIcon /> },
   { to: '/calendar', label: 'Schedule', icon: <CalIcon /> },
   { to: '/alerts',   label: 'Alerts',   icon: <BellIcon />, badge: true },
 ]

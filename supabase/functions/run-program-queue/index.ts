@@ -106,18 +106,23 @@ type QueueRow = {
 Deno.serve(async (_req) => {
   try {
     const now = new Date().toISOString()
-    console.log(`[run-program-queue] checking at ${now}`)
+    // Look-ahead window: catch anything due in the next 65 s as well as
+    // anything already overdue. This eliminates the up-to-1-minute lag
+    // for OFF steps that previously had to wait for the next pg_cron tick.
+    const lookAhead = new Date(Date.now() + 65_000).toISOString()
+    console.log(`[run-program-queue] checking at ${now} (lookAhead ${lookAhead})`)
 
     const { data: due, error: fetchErr } = await supabase
       .from('program_queue')
       .select('*')
-      .lte('fire_at', now)
+      .lte('fire_at', lookAhead)
       .is('fired_at', null)
+      .order('fire_at')
 
     if (fetchErr) throw fetchErr
 
     const rows = (due ?? []) as QueueRow[]
-    console.log(`[run-program-queue] ${rows.length} step(s) due`)
+    console.log(`[run-program-queue] ${rows.length} step(s) within window`)
 
     if (rows.length === 0) {
       return new Response(JSON.stringify({ ok: true, fired: [], errors: [] }), {
@@ -125,53 +130,86 @@ Deno.serve(async (_req) => {
       })
     }
 
-    // Build MQTT messages
-    const messages: { topic: string; payload: string; label: string }[] = []
-    const historyRows: object[] = []
-    const a6v3OffSteps: QueueRow[] = []
+    // Claim every row up-front by setting fired_at = now(). This prevents
+    // the next cron tick (which fires every 60 s) from racing with our wait
+    // window and double-publishing the same step. Trade-off: a mid-run
+    // crash leaves these rows marked fired even though no MQTT was sent —
+    // surfaced via the "Queue executor error" alert path below.
+    const claimedAt = new Date().toISOString()
+    await Promise.all(rows.map(r =>
+      supabase.from('program_queue').update({ fired_at: claimedAt }).eq('id', r.id)
+    ))
 
-    for (const step of rows) {
-      if (step.device === 'a6v3') {
-        messages.push({
-          topic:   A6V3_SET_TOPIC,
-          payload: JSON.stringify({ [`output${step.zone_num}`]: { value: step.step_type === 'on' } }),
-          label:   `a6v3 relay ${step.zone_num} → ${step.step_type}`,
-        })
-        if (step.step_type === 'on') {
-          historyRows.push({
-            device:     'a6v3',
-            zone_num:   step.zone_num,
-            started_at: now,
-            source:     'schedule',
+    // Group rows by exact fire_at so steps scheduled to fire together
+    // (e.g. multiple zones at the same time) get one publish batch each.
+    const groups = new Map<string, QueueRow[]>()
+    for (const r of rows) {
+      const key = r.fire_at
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(r)
+    }
+    const orderedKeys = Array.from(groups.keys()).sort()
+
+    const allFiredLabels: string[] = []
+    const allHistoryRows: object[] = []
+    const allA6v3OffSteps: QueueRow[] = []
+
+    for (const fireAtKey of orderedKeys) {
+      const group = groups.get(fireAtKey)!
+      // Wait until this group's fire_at if it's still in the future.
+      const wait = Math.max(0, new Date(fireAtKey).getTime() - Date.now())
+      if (wait > 0) {
+        console.log(`[run-program-queue] sleeping ${wait}ms until ${fireAtKey}`)
+        await new Promise(r => setTimeout(r, wait))
+      }
+
+      const groupMessages: { topic: string; payload: string; label: string }[] = []
+      const groupNow = new Date().toISOString()
+
+      for (const step of group) {
+        if (step.device === 'a6v3') {
+          groupMessages.push({
+            topic:   A6V3_SET_TOPIC,
+            payload: JSON.stringify({ [`output${step.zone_num}`]: { value: step.step_type === 'on' } }),
+            label:   `a6v3 relay ${step.zone_num} → ${step.step_type}`,
           })
+          if (step.step_type === 'on') {
+            allHistoryRows.push({
+              device:     'a6v3',
+              zone_num:   step.zone_num,
+              started_at: groupNow,
+              source:     'schedule',
+            })
+          } else {
+            allA6v3OffSteps.push(step)
+          }
         } else {
-          a6v3OffSteps.push(step)
-        }
-      } else {
-        if (step.step_type === 'on') {
-          messages.push({
-            topic:   `farm/irrigation1/zone/${step.zone_num}/cmd`,
-            payload: JSON.stringify({ cmd: 'on', duration: step.duration_min, source: 'schedule' }),
-            label:   `irrigation1 zone ${step.zone_num} → on`,
-          })
-          historyRows.push({ zone_num: step.zone_num, started_at: now, source: 'schedule' })
-        } else {
-          messages.push({
-            topic:   `farm/irrigation1/zone/${step.zone_num}/cmd`,
-            payload: JSON.stringify({ cmd: 'off' }),
-            label:   `irrigation1 zone ${step.zone_num} → off`,
-          })
+          if (step.step_type === 'on') {
+            groupMessages.push({
+              topic:   `farm/irrigation1/zone/${step.zone_num}/cmd`,
+              payload: JSON.stringify({ cmd: 'on', duration: step.duration_min, source: 'schedule' }),
+              label:   `irrigation1 zone ${step.zone_num} → on`,
+            })
+            allHistoryRows.push({ zone_num: step.zone_num, started_at: groupNow, source: 'schedule' })
+          } else {
+            groupMessages.push({
+              topic:   `farm/irrigation1/zone/${step.zone_num}/cmd`,
+              payload: JSON.stringify({ cmd: 'off' }),
+              label:   `irrigation1 zone ${step.zone_num} → off`,
+            })
+          }
         }
       }
+
+      await mqttPublishAll(groupMessages.map(m => ({ topic: m.topic, payload: m.payload })))
+      groupMessages.forEach(m => allFiredLabels.push(m.label))
     }
 
-    await mqttPublishAll(messages.map(m => ({ topic: m.topic, payload: m.payload })))
-
-    // Mark all rows fired
+    // Compatibility shims for the post-loop logging / history close blocks.
+    const messages = allFiredLabels.map(label => ({ label }))
+    const historyRows = allHistoryRows
+    const a6v3OffSteps = allA6v3OffSteps
     const firedAt = new Date().toISOString()
-    await Promise.all(rows.map(r =>
-      supabase.from('program_queue').update({ fired_at: firedAt }).eq('id', r.id)
-    ))
 
     if (historyRows.length > 0) {
       await supabase.from('zone_history').insert(historyRows)
