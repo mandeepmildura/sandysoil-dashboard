@@ -9,13 +9,19 @@ import { useDeviceData } from '../context/DeviceContext'
 import { useZoneNames } from '../hooks/useZoneNames'
 import { useZoneHistory } from '../hooks/useZoneHistory'
 import { useDeviceOffline } from '../hooks/useDeviceOffline'
+import { useAuth } from '../hooks/useAuth'
+import { useMyDevice } from '../hooks/useMyDevice'
 import { zoneOn, zoneOff, allZonesOff } from '../lib/commands'
 import { supabase } from '../lib/supabase'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { fmtTime, fmtDuration, fmtUptime } from '../lib/format'
+import { isAdmin } from '../lib/role'
 
 export default function Zones() {
   const navigate = useNavigate()
+  const { session } = useAuth()
+  const admin = isAdmin(session)
+  const { device: myDevice, loading: deviceLoading } = useMyDevice()
   const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/zone/+/state'])
   const { patchOptimistic } = useDeviceData()
   const { names, renameZone } = useZoneNames('irrigation1')
@@ -328,6 +334,25 @@ export default function Zones() {
   }
 
   const inputCls = 'bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
+
+  // Customer (non-admin) with no controller assigned to their account
+  if (!admin && !deviceLoading && !myDevice) {
+    return (
+      <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen flex items-center justify-center">
+        <div className="max-w-md text-center">
+          <div className="text-6xl mb-4">🌱</div>
+          <h1 className="text-3xl font-extrabold text-[#17362e] tracking-tight mb-2">No controller assigned</h1>
+          <p className="text-sm text-[#717975] mb-6">
+            Your account doesn't have an irrigation controller linked yet. Please contact Sandy Soil Automations to assign your SSA-V8 to your farm.
+          </p>
+          <a href="mailto:mandeep@freshoz.com" className="inline-block px-6 py-3 rounded-full text-white text-sm font-bold shadow-lg shadow-[#17362e]/20"
+             style={{ background: 'linear-gradient(135deg, #17362e 0%, #2e4d44 100%)' }}>
+            Contact Support
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
