@@ -9,6 +9,12 @@ import { zoneOn, zoneOff, allZonesOff, startBackwash } from '../lib/commands'
 import { KCS_DEVICES } from '../config/devices'
 import { supabase } from '../lib/supabase'
 import { isAdmin } from '../lib/role'
+import {
+  fmtLastRun,
+  bucketPressureBars,
+  upcomingSchedules,
+  diffPsi as computeDiffPsi,
+} from '../lib/dashboard'
 
 const IRR_TOPIC        = 'farm/irrigation1/status'
 const ZONE_STATE_TOPIC = 'farm/irrigation1/zone/+/state'
@@ -18,8 +24,6 @@ const B16M_TOPIC       = 'B16M/CCBA97071FD8/STATE'
 const A6V3_TOPIC       = 'A6v3/8CBFEA03002C/STATE'
 const SIM_TOPIC        = 'farm/irrigation1/sim/pressure'
 const TOPICS = [IRR_TOPIC, ZONE_STATE_TOPIC, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC, A6V3_TOPIC, SIM_TOPIC]
-
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 // Shared palette (matches Pressure page)
 const C_DARK     = '#17362e'
@@ -33,17 +37,6 @@ const CARD_SHADOW = 'shadow-[0px_12px_32px_rgba(25,28,28,0.04)]'
 
 function Icon({ name, className = '' }) {
   return <span className={`material-symbols-outlined ${className}`}>{name}</span>
-}
-
-function fmtLastRun(iso) {
-  if (!iso) return 'No runs yet'
-  const d = new Date(iso)
-  const diffMs = Date.now() - d.getTime()
-  const h = diffMs / 3_600_000
-  if (h < 1)  return `${Math.max(1, Math.floor(h * 60))}m ago`
-  if (h < 24) return `${Math.floor(h)}h ago`
-  if (h < 48) return 'Yesterday'
-  return `${Math.floor(h / 24)} days ago`
 }
 
 export default function Dashboard() {
@@ -66,13 +59,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
+      // Only need enough rows to cover 8 distinct zones; 24 handles repeats.
       const { data: rows } = await supabase
         .from('zone_history')
         .select('zone_num, ended_at')
         .eq('device', 'irrigation1')
         .not('ended_at', 'is', null)
         .order('ended_at', { ascending: false })
-        .limit(50)
+        .limit(24)
       if (!rows) return
       const map = {}
       for (const r of rows) if (r.zone_num != null && !map[r.zone_num]) map[r.zone_num] = r.ended_at
@@ -83,23 +77,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
+      // 30 bars × 2 samples/bar is plenty for the sparkline; 60 was 2× what's needed.
       const { data: rows } = await supabase
         .from('pressure_log')
-        .select('ts, supply_psi')
+        .select('supply_psi')
         .not('supply_psi', 'is', null)
         .order('ts', { ascending: false })
-        .limit(60)
-      if (!rows?.length) return
-      const vals = rows.map(r => parseFloat(r.supply_psi)).filter(Number.isFinite)
-      if (!vals.length) return
-      const bucket = Math.max(1, Math.floor(vals.length / 15))
-      const bars = []
-      for (let i = 0; i < 15; i++) {
-        const slice = vals.slice(i * bucket, (i + 1) * bucket)
-        if (slice.length) bars.push(slice.reduce((a, b) => a + b, 0) / slice.length)
-      }
-      const max = Math.max(...bars, 1)
-      setPressureBars(bars.reverse().map(v => Math.max(10, (v / max) * 100)))
+        .limit(30)
+      setPressureBars(bucketPressureBars(rows?.map(r => r.supply_psi)))
     }
     load()
   }, [])
@@ -122,11 +107,7 @@ export default function Dashboard() {
   const activeCount = zones.filter(z => z.on).length
   const inletPsi    = pressure?.inlet_psi ?? '—'
   const outletPsi   = pressure?.outlet_psi ?? '—'
-  const diffPsi     = (pressure?.differential_psi != null)
-    ? pressure.differential_psi
-    : (typeof inletPsi === 'number' && typeof outletPsi === 'number')
-      ? +(inletPsi - outletPsi).toFixed(1)
-      : null
+  const diffPsi     = computeDiffPsi(pressure)
   const diffPct     = (typeof diffPsi === 'number') ? Math.min(100, (diffPsi / 20) * 100) : 0
 
   const now = new Date()
@@ -134,27 +115,7 @@ export default function Dashboard() {
     timeZone: 'Australia/Melbourne', weekday: 'long', day: 'numeric', month: 'short', year: 'numeric',
   })
 
-  const upcoming = useMemo(() => {
-    const todayIdx = now.getDay()
-    return (groupSchedules ?? [])
-      .filter(s => s.enabled !== false)
-      .slice(0, 3)
-      .map(s => {
-        const nextDow = (s.days_of_week ?? []).find(d => d >= todayIdx) ?? (s.days_of_week ?? [])[0] ?? todayIdx
-        const daysAhead = (nextDow - todayIdx + 7) % 7
-        const when = new Date(now); when.setDate(now.getDate() + daysAhead)
-        const members = (s.zone_groups?.zone_group_members ?? [])
-        const totalMin = members.reduce((a, m) => a + (m.duration_min ?? 30), 0)
-        return {
-          id: s.id,
-          month: MONTHS[when.getMonth()],
-          day: when.getDate(),
-          name: s.zone_groups?.name ?? 'Program',
-          time: (s.start_time ?? '').slice(0, 5),
-          durationMin: totalMin,
-        }
-      })
-  }, [groupSchedules, now])
+  const upcoming = useMemo(() => upcomingSchedules(groupSchedules, now), [groupSchedules, now])
 
   const devices = [
     { label: 'Irrigation Controller', sublabel: 'SSA-V8', online: irr?.online === true, to: '/zones' },

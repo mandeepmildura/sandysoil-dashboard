@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useAlerts } from '../hooks/useAlerts'
+import { useLatestSupplyPsi } from '../hooks/useLatestSupplyPsi'
 import { KCS_DEVICES } from '../config/devices'
 import { isAdmin } from '../lib/role'
 
@@ -25,22 +25,7 @@ export default function Sidebar({ session }) {
   const { alerts } = useAlerts()
   const unreadCount = alerts.filter(a => !a.acknowledged).length
 
-  const [dbPsi, setDbPsi] = useState(null)
-  useEffect(() => {
-    async function fetchLatest() {
-      const { data: row } = await supabase
-        .from('pressure_log')
-        .select('supply_psi')
-        .not('supply_psi', 'is', null)
-        .order('ts', { ascending: false })
-        .limit(1)
-        .single()
-      if (row?.supply_psi != null) setDbPsi(parseFloat(row.supply_psi))
-    }
-    fetchLatest()
-    const id = setInterval(fetchLatest, 10000)
-    return () => clearInterval(id)
-  }, [])
+  const { psi: dbPsi } = useLatestSupplyPsi()
 
   const mqttPsi = irr.supply_psi
   const supplyPsi = (mqttPsi != null && mqttPsi > 0) ? mqttPsi : dbPsi ?? mqttPsi ?? '—'

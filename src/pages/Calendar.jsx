@@ -3,41 +3,19 @@ import StatusChip from '../components/StatusChip'
 import PageHeader from '../components/PageHeader'
 import { btnPrimary, btnPrimaryStyle, btnSecondary } from '../components/ui'
 import { supabase } from '../lib/supabase'
-import { zoneOn, a6v3OutputOn } from '../lib/commands'
+import { zoneOn, a6v3ZoneOn } from '../lib/commands'
+import {
+  dbDayToCalIdx,
+  getWeekMonday,
+  fmtTime,
+  fmtDuration,
+  fmtDays,
+  totalDuration,
+} from '../lib/calendar'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
 const COLORS = ['#0d631b', '#2e7d32', '#00639a', '#6a4c93', '#c0392b', '#d35400', '#16a085', '#8e44ad']
-
-function dbDayToCalIdx(d) { return d === 0 ? 6 : d - 1 }
-
-function getWeekMonday(date) {
-  const d = new Date(date)
-  const dow = d.getDay()
-  d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow))
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
-function fmtTime(t) { return t ? t.slice(0, 5) : '—' }
-
-function fmtDuration(min) {
-  if (min < 60) return `${min} min`
-  const h = Math.floor(min / 60), m = min % 60
-  return m ? `${h}h ${m}m` : `${h}h`
-}
-
-function fmtDays(days) {
-  if (!days?.length) return 'No days'
-  return days.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d] ?? d).join(', ')
-}
-
-function totalDuration(p) {
-  if (!p.zones.length) return 0
-  return p.run_mode === 'sequential'
-    ? p.zones.reduce((s, z) => s + z.duration_min, 0)
-    : Math.max(...p.zones.map(z => z.duration_min))
-}
 
 // ── Event detail modal ──────────────────────────────────────────────────────
 function EventModal({ event, onClose }) {
@@ -48,12 +26,29 @@ function EventModal({ event, onClose }) {
     if (!p.zones?.length) return
     setRunning(true)
     try {
+      // A6v3 firmware has no auto-off timer, so for each A6v3 'on' we also
+      // queue an 'off' step in program_queue at now + duration. The
+      // run-program-queue cron job fires it. (irrigation1 auto-offs itself.)
+      const a6v3OffSteps = []
       for (const z of p.zones) {
+        const dur = z.duration_min ?? 30
         if (z.device === 'a6v3') {
-          await a6v3OutputOn(z.zone_num)
+          await a6v3ZoneOn(z.zone_num, dur)
+          a6v3OffSteps.push({
+            group_id:     p.id,
+            step_type:    'off',
+            device:       'a6v3',
+            zone_num:     z.zone_num,
+            duration_min: null,
+            fire_at:      new Date(Date.now() + dur * 60_000).toISOString(),
+          })
         } else {
-          await zoneOn(z.zone_num, z.duration_min ?? 30)
+          await zoneOn(z.zone_num, dur)
         }
+      }
+      if (a6v3OffSteps.length > 0) {
+        const { error } = await supabase.from('program_queue').insert(a6v3OffSteps)
+        if (error) console.error('failed to queue a6v3 off step(s):', error)
       }
     } catch (e) { console.error(e) }
     setRunning(false)

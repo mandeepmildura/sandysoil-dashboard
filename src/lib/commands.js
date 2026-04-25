@@ -5,15 +5,20 @@ export const B16M_SET_TOPIC = 'B16M/CCBA97071FD8/SET'
 export const A6V3_SET_TOPIC = 'A6v3/8CBFEA03002C/SET'
 
 // ── PSI snapshot helper ────────────────────────────────────────────────────
-function psiSnapshot() {
-  const cache      = getMqttCache()
-  const irrStatus  = cache['farm/irrigation1/status']
-  const a6v3State  = cache[A6V3_SET_TOPIC.replace('SET', 'STATE').replace('8CBFEA03002C/SET', '8CBFEA03002C/STATE')]
-    ?? cache['A6v3/8CBFEA03002C/STATE']
-  const supplyPsi  = irrStatus?.supply_psi != null
+/**
+ * Pull a PSI snapshot from the MQTT cache. Exported + cache-injectable so it
+ * can be unit tested without a live MQTT connection.
+ *
+ *   supplyPsi — from the 8-zone irrigation controller's status payload
+ *   a6v3Psi   — ADC1 raw (0–4095) converted to PSI (0–116 range)
+ */
+export function psiSnapshot(cache = getMqttCache()) {
+  const irrStatus = cache['farm/irrigation1/status']
+  const a6v3State = cache['A6v3/8CBFEA03002C/STATE']
+  const supplyPsi = irrStatus?.supply_psi != null
     ? parseFloat(Number(irrStatus.supply_psi).toFixed(2)) : null
-  const adcRaw     = a6v3State?.adc1?.value ?? null
-  const a6v3Psi    = adcRaw != null
+  const adcRaw    = a6v3State?.adc1?.value ?? null
+  const a6v3Psi   = adcRaw != null
     ? parseFloat(((adcRaw / 4095) * 116).toFixed(2)) : null
   return { supplyPsi, a6v3Psi }
 }
@@ -108,22 +113,6 @@ export async function logA6v3Pressure(psi) {
   })
   if (error) console.error('pressure_log insert failed:', error.message, error.code)
   return error ?? null
-}
-
-export async function a6v3OutputOn(outputNum) {
-  await mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: true } })
-  try {
-    await supabase.from('zone_history').insert({
-      device: 'a6v3',
-      zone_num: outputNum,
-      started_at: new Date().toISOString(),
-      source: 'manual',
-    })
-  } catch (e) { console.warn('a6v3 relay history insert failed:', e) }
-}
-export async function a6v3OutputOff(outputNum) {
-  await mqttPublish(A6V3_SET_TOPIC, { [`output${outputNum}`]: { value: false } })
-  await closeOpenHistoryRecord(outputNum, 'a6v3')
 }
 
 /** Turn on an A6v3 relay and log to zone_history with PSI snapshot. */

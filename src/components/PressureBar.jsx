@@ -1,35 +1,12 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useLatestSupplyPsi } from '../hooks/useLatestSupplyPsi'
 
 /**
  * Persistent pressure indicator — mounted in App.jsx OUTSIDE <Routes>,
- * so it stays visible on every page. Polls pressure_log directly from
- * Supabase every 10 seconds. No MQTT dependency.
+ * so it stays visible on every page. Reads the shared latest-supply-PSI
+ * cache (polled once globally, not per-component).
  */
 export default function PressureBar() {
-  const [psi, setPsi] = useState(null)
-  const [simActive, setSimActive] = useState(false)
-
-  useEffect(() => {
-    async function fetchLatest() {
-      // Get latest pressure reading
-      const { data: row } = await supabase
-        .from('pressure_log')
-        .select('supply_psi, simulated, ts')
-        .not('supply_psi', 'is', null)
-        .order('ts', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (row?.supply_psi != null) {
-        setPsi(parseFloat(row.supply_psi))
-        setSimActive(row.simulated === true)
-      }
-    }
-    fetchLatest()
-    const id = setInterval(fetchLatest, 10000)
-    return () => clearInterval(id)
-  }, [])
+  const { psi, simulated } = useLatestSupplyPsi()
 
   if (psi == null) return null
 
@@ -45,7 +22,7 @@ export default function PressureBar() {
         <span className="font-headline font-bold text-sm">{psi.toFixed(1)}</span>
         <span className="text-[10px] text-white/40">PSI</span>
       </div>
-      {simActive && (
+      {simulated && (
         <span className="text-[10px] text-[#4caf50] font-semibold flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-[#4caf50] animate-pulse" />
           SIM

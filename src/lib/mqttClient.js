@@ -1,4 +1,5 @@
 import mqtt from 'mqtt'
+import { mqttMatch } from './mqttMatch'
 
 const HOST = import.meta.env.VITE_MQTT_HOST
 const USER = import.meta.env.VITE_MQTT_USER
@@ -87,12 +88,4 @@ export async function mqttPublish(topic, payload, qos = 1) {
 /** Returns all cached topic payloads as a plain object { topic: payload } */
 export function getMqttCache() {
   return Object.fromEntries(_cache)
-}
-
-/** Simple MQTT wildcard matcher for single-level '+' wildcards */
-function mqttMatch(pattern, topic) {
-  const p = pattern.split('/')
-  const t = topic.split('/')
-  if (p.length !== t.length) return false
-  return p.every((seg, i) => seg === '+' || seg === t[i])
 }

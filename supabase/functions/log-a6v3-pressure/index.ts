@@ -12,6 +12,14 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  buildConnect,
+  buildSubscribe,
+  buildPublish,
+  buildDisconnect,
+  parseMqttPublish,
+  adcToPsi,
+} from '../_shared/mqttPacket.ts'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -21,84 +29,11 @@ const MQTT_PASS = Deno.env.get('MQTT_PASS') ?? 'Zayan@09022022'
 
 const A6V3_STATE_TOPIC = 'A6v3/8CBFEA03002C/STATE'
 const A6V3_SET_TOPIC   = 'A6v3/8CBFEA03002C/SET'
-const ADC_FULL = 4095
-const MAX_PSI  = 116
 
 // Idle cadence: skip if last a6v3 log is newer than this many minutes.
 const IDLE_SKIP_MIN = 4.5
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-// ── Minimal MQTT 3.1.1 helpers ────────────────────────────────────────────────
-
-function encodeLen(n: number): number[] {
-  const out: number[] = []
-  do {
-    let b = n % 128; n = Math.floor(n / 128)
-    if (n > 0) b |= 128
-    out.push(b)
-  } while (n > 0)
-  return out
-}
-
-function utf8Prefixed(s: string): number[] {
-  const b = [...new TextEncoder().encode(s)]
-  return [(b.length >> 8) & 0xff, b.length & 0xff, ...b]
-}
-
-function buildConnect(user: string, pass: string): Uint8Array {
-  const clientId = `pressure-logger-${Date.now()}`
-  const payload = [...utf8Prefixed(clientId), ...utf8Prefixed(user), ...utf8Prefixed(pass)]
-  const varHdr  = [0x00,0x04,0x4d,0x51,0x54,0x54, 0x04, 0b11000010, 0x00,0x1e]
-  const rem = [...varHdr, ...payload]
-  return new Uint8Array([0x10, ...encodeLen(rem.length), ...rem])
-}
-
-function buildSubscribe(topic: string, pid: number): Uint8Array {
-  const tp = [...new TextEncoder().encode(topic)]
-  const payload = [(tp.length >> 8) & 0xff, tp.length & 0xff, ...tp, 0x00] // QoS 0
-  const rem = [(pid >> 8) & 0xff, pid & 0xff, ...payload]
-  return new Uint8Array([0x82, ...encodeLen(rem.length), ...rem])
-}
-
-function buildPublish(topic: string, payload: string, pid: number): Uint8Array {
-  const tp = [...new TextEncoder().encode(topic)]
-  const pp = [...new TextEncoder().encode(payload)]
-  const rem = [(tp.length >> 8) & 0xff, tp.length & 0xff, ...tp, (pid >> 8) & 0xff, pid & 0xff, ...pp]
-  return new Uint8Array([0x32, ...encodeLen(rem.length), ...rem])
-}
-
-function buildDisconnect(): Uint8Array { return new Uint8Array([0xe0, 0x00]) }
-
-/** Parse topic + JSON payload from a raw MQTT PUBLISH packet. */
-function parseMqttPublish(data: Uint8Array): { topic: string; payload: string } | null {
-  try {
-    const type = (data[0] >> 4)
-    if (type !== 3) return null
-
-    // Decode remaining length
-    let offset = 1, mult = 1, remainLen = 0
-    do {
-      const b = data[offset++]
-      remainLen += (b & 0x7f) * mult
-      mult *= 128
-    } while (data[offset - 1] & 0x80)
-
-    const topicLen = (data[offset] << 8) | data[offset + 1]
-    offset += 2
-    const topic = new TextDecoder().decode(data.slice(offset, offset + topicLen))
-    offset += topicLen
-
-    // Skip packet ID if QoS > 0
-    const qos = (data[0] >> 1) & 0x03
-    if (qos > 0) offset += 2
-
-    const payload = new TextDecoder().decode(data.slice(offset))
-    return { topic, payload }
-  } catch {
-    return null
-  }
-}
 
 // ── Main MQTT flow ────────────────────────────────────────────────────────────
 
@@ -129,7 +64,7 @@ async function pollAndLogPressure(): Promise<{ psi: number }> {
     // 20s total timeout — device normally responds within 2s
     const timer = setTimeout(() => fail('Timeout waiting for A6v3 STATE (20s)'), 20_000)
 
-    ws.onopen  = () => { ws.send(buildConnect(MQTT_USER, MQTT_PASS)) }
+    ws.onopen  = () => { ws.send(buildConnect(MQTT_USER, MQTT_PASS, `pressure-logger-${Date.now()}`)) }
     ws.onerror = (e) => fail(`WebSocket error: ${JSON.stringify(e)}`)
     ws.onclose = (e) => { if (!done) fail(`WebSocket closed: code=${e.code}`) }
 
@@ -165,7 +100,7 @@ async function pollAndLogPressure(): Promise<{ psi: number }> {
         try {
           const state = JSON.parse(msg.payload)
           const adc = state?.adc1?.value ?? 0
-          const psi = parseFloat(((adc / ADC_FULL) * MAX_PSI).toFixed(2))
+          const psi = adcToPsi(adc)
           console.log(`[log-a6v3-pressure] ADC=${adc} → PSI=${psi}`)
           succeed(psi)
         } catch (e) {

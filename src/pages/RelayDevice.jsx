@@ -23,48 +23,12 @@ import { useDeviceOffline } from '../hooks/useDeviceOffline'
 import { relayOn, relayOff, requestDeviceState } from '../lib/commands'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { supabase } from '../lib/supabase'
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function localDateStr(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-}
-
-function fmtTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return `${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
-}
-
-function fmtDuration(dur) {
-  if (dur == null) return '—'
-  const n = parseFloat(dur)
-  if (n < 1) return `${Math.round(n * 60)}s`
-  return `${n.toFixed(1)} min`
-}
-
-/** Pick Tailwind grid-cols class based on output count. */
-function relayGridCls(count) {
-  if (count <= 6)  return 'grid-cols-2 xl:grid-cols-3'
-  if (count <= 12) return 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4'
-  return 'grid-cols-2 sm:grid-cols-4'
-}
-
-function inputGridCols(count) {
-  return count <= 6 ? 'grid-cols-3' : 'grid-cols-4'
-}
+import { localDateStr, fmtTime, fmtDuration } from '../lib/format'
+import { relayGridCls, inputGridCols, gaugeColor } from '../lib/relayDevice'
 
 const inputCls = 'bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
 
 // ── Pressure gauge SVG ────────────────────────────────────────────────────────
-
-function gaugeColor(psi, maxPsi) {
-  const hi = maxPsi * 0.86   // ~100/116
-  const warn = maxPsi * 0.69 // ~80/116
-  if (psi >= hi)   return '#ba1a1a'
-  if (psi >= warn) return '#e65c00'
-  return '#0d631b'
-}
 
 function PressureGauge({ psi, maxPsi }) {
   const R = 70, cx = 90, cy = 90

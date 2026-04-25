@@ -18,8 +18,9 @@ export function useAlerts() {
       try {
         const { data, error } = await supabase
           .from('device_alerts')
-          .select('*')
+          .select('id, severity, title, description, message, kind, device, device_id, acknowledged, created_at')
           .order('created_at', { ascending: false })
+          .limit(200)
         if (!error && data) setAlerts(data)
       } catch (e) {
         console.error('useAlerts error:', e)

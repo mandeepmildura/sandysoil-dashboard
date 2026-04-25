@@ -54,6 +54,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { expandSteps, type Step } from './lib/expandSteps.ts'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -75,15 +76,6 @@ function localTimeParts() {
 
 function currentHHMM(): string { return localTimeParts().hhmm }
 function currentDOW():  number { return localTimeParts().dow }
-
-type Step = {
-  zone_num:    number
-  duration_min: number | null
-  sort_order:  number
-  step_type:   string | null   // 'on' | 'off' | 'delay' — null treated as 'on'
-  delay_min:   number | null
-  device:      string | null   // 'irrigation1' | 'a6v3' — null treated as 'irrigation1'
-}
 
 Deno.serve(async (_req) => {
   try {
@@ -143,10 +135,7 @@ Deno.serve(async (_req) => {
 
       if (!group) continue
 
-      const steps = [...(group.zone_group_members ?? [])]
-        .sort((a, b) => a.sort_order - b.sort_order)
-
-      console.log(`[run-schedules] queuing "${group.name}" (${steps.length} steps)`)
+      console.log(`[run-schedules] queuing "${group.name}" (${(group.zone_group_members ?? []).length} steps)`)
 
       // Dedup: skip if this group already has unfired steps queued in the last 2 minutes
       // (guards against pg_cron calling us twice in the same minute)
@@ -166,35 +155,12 @@ Deno.serve(async (_req) => {
 
       // Base time is now — the function runs at the correct minute,
       // so Date.now() is the right fire_at for immediate steps.
-      // Delay steps advance the cursor forward in time.
-      let cursorMs = Date.now()
-      const queueRows: object[] = []
-
-      for (const step of steps) {
-        const stepType = step.step_type ?? 'on'
-
-        if (stepType === 'delay') {
-          cursorMs += (step.delay_min ?? 0) * 60_000
-          continue        }
-
-        // Actionable step: 'on' or 'off'
-        queueRows.push({
-          group_id:    group.id,
-          step_type:   stepType,
-          device:      step.device ?? 'irrigation1',
-          zone_num:    step.zone_num,
-          duration_min: step.duration_min,
-          fire_at:     new Date(cursorMs).toISOString(),
-        })
-
-        // For irrigation1 sequential 'on' steps: advance cursor by duration so the
-        // next step fires after this one completes (backwards-compatible behaviour)
-        if (stepType === 'on'
-            && (step.device ?? 'irrigation1') === 'irrigation1'
-            && group.run_mode === 'sequential') {
-          cursorMs += (step.duration_min ?? 0) * 60_000
-        }
-      }
+      const queueRows = expandSteps(
+        group.id,
+        group.run_mode,
+        (group.zone_group_members ?? []) as Step[],
+        Date.now(),
+      )
 
       if (queueRows.length > 0) {
         const { error: qErr } = await supabase.from('program_queue').insert(queueRows)

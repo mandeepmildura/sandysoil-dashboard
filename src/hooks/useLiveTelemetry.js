@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useDeviceData } from '../context/DeviceContext'
+import { mqttMatch } from '../lib/mqttMatch'
 
 /**
  * Selects the subset of device data for the given topics.
@@ -19,15 +20,8 @@ export function useLiveTelemetry(topics = []) {
     const result = {}
     for (const topic of topics) {
       if (topic.includes('+')) {
-        const pattern = topic.split('/')
         for (const [t, payload] of Object.entries(allData)) {
-          const parts = t.split('/')
-          if (
-            pattern.length === parts.length &&
-            pattern.every((seg, i) => seg === '+' || seg === parts[i])
-          ) {
-            result[t] = payload
-          }
+          if (mqttMatch(topic, t)) result[t] = payload
         }
       } else if (allData[topic] != null) {
         result[topic] = allData[topic]

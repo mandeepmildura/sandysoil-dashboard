@@ -12,26 +12,7 @@ import { useDeviceOffline } from '../hooks/useDeviceOffline'
 import { zoneOn, zoneOff, allZonesOff } from '../lib/commands'
 import { supabase } from '../lib/supabase'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
-
-function fmtTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return `${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-function fmtDuration(dur) {
-  if (dur == null) return '—'
-  const n = parseFloat(dur)
-  if (n < 1) return `${Math.round(n * 60)}s`
-  return `${n.toFixed(1)} min`
-}
-
-function fmtUptime(sec) {
-  if (!sec) return '—'
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
+import { fmtTime, fmtDuration, fmtUptime } from '../lib/format'
 
 export default function Zones() {
   const navigate = useNavigate()
