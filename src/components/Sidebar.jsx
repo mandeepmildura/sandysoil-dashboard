@@ -8,7 +8,7 @@ import { isAdmin } from '../lib/role'
 
 const mainNav = [
   { to: '/',         label: 'Dashboard', icon: DashIcon },
-  { to: '/zones',    label: 'Zones',     icon: LayersIcon },
+  { to: '/zones',    label: 'Controller', icon: LayersIcon },
   { to: '/calendar', label: 'Schedule',  icon: CalIcon },
   { to: '/pressure', label: 'Pressure',  icon: SpeedIcon },
 ]

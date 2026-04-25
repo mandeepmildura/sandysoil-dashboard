@@ -12,16 +12,19 @@
 ### 1. SSA-V8 — 8-Valve Irrigation Controller (`sandysoil-8z`)
 - **Product name (UI):** "Irrigation Controller (SSA-V8)" — Sandy Soil Automations 8-valve
 - **Repo**: `mandeepmildura/sandysoil-8z` (private, C++/ESP32 firmware)
-- **Firmware version**: 2.3.3
+- **Firmware version**: 2.4.1 (2026-04-25)
 - **Local IP**: 192.168.1.100
-- **MQTT publish topic**: `farm/irrigation1/status`
+- **Wi-Fi provisioning**: When NVS has no Wi-Fi creds, boots into hotspot mode `FarmControl-Irrigation-Setup` at `http://192.168.4.1` for customer setup.
+- **MQTT topic resolution**: Runtime, from `cfg.mqtt_base_topic` (NVS). Existing units retain `farm/irrigation1`; **fresh units default to `farm/<chip-id>`** (12-hex MAC, lowercase).
+- **MQTT publish topic**: `farm/irrigation1/status` (current unit) — fresh units use `farm/<chip-id>/status`
 - **MQTT subscribe topic**: `farm/irrigation1/zone/+/cmd`
 - **Command payload**: `{"cmd": "on", "duration": 30}` or `{"cmd": "off"}`
 - **State response topic**: `farm/irrigation1/zone/{N}/state`
 - **State response payload**: `{"zone": 1, "name": "Zone 1", "on": true, "state": "manual"}`
-- **Status payload example**:
+- **Status payload example (2.4.1 adds `device_id` + `base_topic`)**:
   ```json
-  {"device":"irrigation1","fw":"2.3.1","online":true,"supply_psi":35,
+  {"device":"irrigation1","device_id":"8cbfea03002c","base_topic":"farm/irrigation1",
+   "fw":"2.4.1","online":true,"supply_psi":35,
    "uptime":83595,"rssi":-45,"ip":"192.168.1.100",
    "zones":[{"id":1,"name":"Zone 1","on":false,"state":"off"}, ...]}
   ```
@@ -126,7 +129,9 @@ END $$;
 | `src/lib/mqttClient.js` | MQTT WSS client, subscribe/publish |
 | `src/lib/commands.js` | Zone on/off, backwash, B16M output commands |
 | `src/lib/supabase.js` | Supabase client |
+| `src/lib/role.js` | Admin gate (hard-coded `mandeep@freshoz.com`) |
 | `src/hooks/useLiveTelemetry.js` | Subscribe to MQTT topics, return live data |
+| `src/hooks/useMyDevice.js` | Resolve the logged-in customer's assigned controller |
 | `src/hooks/useZoneHistory.js` | Fetch zone run history |
 | `src/hooks/usePressureHistory.js` | Fetch/downsample pressure history |
 | `src/hooks/useAlerts.js` | Device alerts |
@@ -143,6 +148,14 @@ END $$;
 - [ ] **B16M ADC**: CH1–CH4 all reading 0 — no sensors connected yet
 - [ ] **SSA-V8 ADC pressure** — firmware to publish raw ADC values (modeled like A6v3); dashboard already supports `supply_psi` and the pressure_log table is ready
 - [ ] **Multi-tenant per-customer MQTT credentials** — banner fires in AdminConsole when farms ≥ 5; switch from "unique topic per unit" to per-customer HiveMQ credentials at that threshold
+
+## Audit Notes
+
+### `device_telemetry` table — stale (2026-04-25)
+- 60,814 rows, 18 MB, last write 2026-04-19 — i.e. ~24 h of data then silence.
+- Written to by the firmware (`src/supabase.cpp` POSTs to `/rest/v1/device_telemetry`) but only when `cfg.supabase_url` / `cfg.supabase_key` are configured. The deployed unit isn't currently configured for it, so writes silently no-op.
+- No dashboard code reads it. No DB functions/triggers reference it. Data overlaps with structured tables (`pressure_log`, `zone_history`) which the dashboard does use.
+- **Decision:** leave the table in place (preserves a future option to re-enable raw telemetry logging) but treat it as cold storage. Safe to `TRUNCATE` if disk pressure becomes an issue.
 
 ## Roles / Access
 - Admin = `mandeep@freshoz.com` (hard-coded in `src/lib/role.js`)
