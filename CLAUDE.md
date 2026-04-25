@@ -9,7 +9,8 @@
 
 ## Devices
 
-### 1. Old 8-Zone Irrigation Controller (`sandysoil-8z`)
+### 1. SSA-V8 — 8-Valve Irrigation Controller (`sandysoil-8z`)
+- **Product name (UI):** "Irrigation Controller (SSA-V8)" — Sandy Soil Automations 8-valve
 - **Repo**: `mandeepmildura/sandysoil-8z` (private, C++/ESP32 firmware)
 - **Firmware version**: 2.3.3
 - **Local IP**: 192.168.1.100
@@ -136,10 +137,17 @@ END $$;
 | `src/pages/Zones.jsx` | Zone list with live state |
 
 ## Known Issues / TODO
-- [ ] **Schedule auto-execution**: Schedules are stored in Supabase and displayed in Calendar but nothing executes them automatically at the scheduled time. Options: (A) add scheduling to `sandysoil-8z` firmware to poll Supabase, (B) Supabase Edge Function + pg_cron that publishes MQTT at schedule time
+- [x] **Schedule auto-execution** — DONE. `run-schedules` + `run-program-queue` Edge Functions on pg_cron handle this. `run-schedules` now kicks `run-program-queue` immediately after queueing, eliminating the previous 1-minute lag.
 - [ ] **Filter pressure sensors**: `farm/filter1/pressure` topic not yet publishing — no sensor wired
 - [ ] **Backwash control**: `farm/filter1/backwash/*` topics not yet wired to a device
 - [ ] **B16M ADC**: CH1–CH4 all reading 0 — no sensors connected yet
+- [ ] **SSA-V8 ADC pressure** — firmware to publish raw ADC values (modeled like A6v3); dashboard already supports `supply_psi` and the pressure_log table is ready
+- [ ] **Multi-tenant per-customer MQTT credentials** — banner fires in AdminConsole when farms ≥ 5; switch from "unique topic per unit" to per-customer HiveMQ credentials at that threshold
+
+## Roles / Access
+- Admin = `mandeep@freshoz.com` (hard-coded in `src/lib/role.js`)
+- Customers see: Dashboard, Zones, Schedule, Pressure, Alerts (their SSA-V8 only)
+- Hidden from customers: A6v3, B16M devices, AdminConsole; direct URLs (`/a6v3`, `/b16m`, `/admin`) redirect to `/`
 
 ## Environment Variables
 ```

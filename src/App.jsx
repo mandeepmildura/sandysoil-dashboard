@@ -16,6 +16,7 @@ import PressureBar    from './components/PressureBar'
 import { useAuth }    from './hooks/useAuth'
 import { DeviceProvider } from './context/DeviceContext'
 import { KCS_DEVICES } from './config/devices'
+import { isAdmin } from './lib/role'
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -35,6 +36,8 @@ export default function App() {
     return <Login />
   }
 
+  const admin = isAdmin(session)
+
   return (
     <DeviceProvider>
     <div className="flex min-h-screen">
@@ -49,14 +52,15 @@ export default function App() {
           <Route path="/calendar"   element={<Calendar />} />
           <Route path="/pressure"   element={<PressureAnalysis />} />
           <Route path="/alerts"     element={<Alerts />} />
-          {KCS_DEVICES.map(cfg => (
+          {/* Admin-only device + admin routes */}
+          {admin && KCS_DEVICES.map(cfg => (
             <Route key={cfg.id} path={cfg.path} element={<RelayDevice deviceCfg={cfg} />} />
           ))}
-          <Route path="/admin"      element={<AdminConsole />} />
+          {admin && <Route path="/admin" element={<AdminConsole />} />}
           <Route path="*"           element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      <BottomNav />
+      <BottomNav session={session} />
     </div>
     </DeviceProvider>
   )

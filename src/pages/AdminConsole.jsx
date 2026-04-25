@@ -239,6 +239,19 @@ export default function AdminConsole() {
 
       <VitalsStrip vitals={VITALS} />
 
+      {/* Multi-tenant upgrade reminder — fires when crossing 5 customer farms */}
+      {farms.length >= 5 && (
+        <div className="mb-6 px-5 py-4 rounded-xl bg-orange-50 border border-orange-200 flex items-start gap-3">
+          <span className="material-symbols-outlined text-orange-700 mt-0.5">priority_high</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-orange-900">You have {farms.length} customers — time to upgrade MQTT isolation</p>
+            <p className="text-xs text-orange-800 mt-1">
+              At this scale, switch from "unique topic per unit" to per-customer MQTT credentials so each customer's broker access is enforced by HiveMQ, not just the dashboard. See the multi-tenancy upgrade guide.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
         {[
           { id: 'farms',   label: 'Farms' },

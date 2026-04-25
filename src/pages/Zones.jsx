@@ -8,8 +8,10 @@ import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useDeviceData } from '../context/DeviceContext'
 import { useZoneNames } from '../hooks/useZoneNames'
 import { useZoneHistory } from '../hooks/useZoneHistory'
+import { useDeviceOffline } from '../hooks/useDeviceOffline'
 import { zoneOn, zoneOff, allZonesOff } from '../lib/commands'
 import { supabase } from '../lib/supabase'
+import { raiseAlert, resolveAlerts } from '../lib/alerts'
 
 function fmtTime(iso) {
   if (!iso) return '—'
@@ -42,8 +44,13 @@ export default function Zones() {
   const [zoneNameInput, setZoneNameInput] = useState('')
   const zoneNameRef = useRef(null)
 
-  // History
-  const { history, loading: histLoading } = useZoneHistory(null, 'irrigation1', 50)
+  // History — date-picker driven (default = today)
+  const localDateStr = (d = new Date()) =>
+    `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  const [histDate, setHistDate] = useState(() => localDateStr())
+  const histFrom = new Date(`${histDate}T00:00:00`).toISOString()
+  const histTo   = new Date(`${histDate}T23:59:59.999`).toISOString()
+  const { history, loading: histLoading } = useZoneHistory(null, 'irrigation1', 200, histFrom, histTo)
 
   // Groups
   const [groups, setGroups] = useState([])
@@ -59,12 +66,74 @@ export default function Zones() {
   const [editDuration, setEditDuration] = useState(30)
   const [savingEdit, setSavingEdit] = useState(false)
   const [schedulingGroup, setSchedulingGroup] = useState(null)
+  const [schedMode, setSchedMode] = useState('repeat')
   const [schedDays, setSchedDays] = useState([false,false,false,false,false,false,false])
   const [schedStartTime, setSchedStartTime] = useState('06:00')
+  const [schedOnceDate, setSchedOnceDate] = useState('')
   const [savingSched, setSavingSched] = useState(false)
   const [schedError, setSchedError] = useState(null)
 
+  // Manual zone control — per-zone minutes input + auto-off countdown
+  const [zoneMinutes, setZoneMinutes] = useState({}) // { [zoneNum]: number }
+  const autoOffRef = useRef({})                       // { [zoneNum]: endTimeMs }
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now()
+      let changed = false
+      for (const [num, end] of Object.entries(autoOffRef.current)) {
+        if (now >= end) { delete autoOffRef.current[num]; changed = true }
+      }
+      setTick(t => t + 1)
+      if (changed) {} // no-op; firmware handles the actual off via duration
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
   const irr = live['farm/irrigation1/status'] ?? null
+
+  // Track last-seen timestamp for the irrigation controller (for live offline badge)
+  const lastSeenRef = useRef(null)
+  useEffect(() => { if (irr) lastSeenRef.current = Date.now() }, [irr])
+  const [, setLastSeenTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setLastSeenTick(t => t + 1), 10_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // 15-min offline alert
+  useDeviceOffline('Irrigation Controller', 'irrigation1', irr, 15 * 60_000)
+
+  // Stuck-valve / manual-left-on watchdog — track when each zone first turned ON
+  // and raise an alert if it stays on past expected duration + 10-min grace.
+  const onSinceRef = useRef({})  // { [zoneNum]: { since: ms, expectedMin: number, source: 'manual'|'schedule' } }
+  useEffect(() => {
+    const live = irr?.zones ?? []
+    const now = Date.now()
+    for (const z of live) {
+      if (z.on && !onSinceRef.current[z.id]) {
+        onSinceRef.current[z.id] = { since: now, expectedMin: zoneMinutes[z.id] || 30, source: z.state || 'manual' }
+      } else if (!z.on && onSinceRef.current[z.id]) {
+        delete onSinceRef.current[z.id]
+        resolveAlerts('Irrigation Controller', `Zone ${z.id} stuck on`)
+        resolveAlerts('Irrigation Controller', `Zone ${z.id} manually left on`)
+      }
+    }
+    for (const [numStr, info] of Object.entries(onSinceRef.current)) {
+      const elapsedMin = (now - info.since) / 60_000
+      const overrun = elapsedMin - info.expectedMin
+      if (overrun > 10) {
+        const isManual = (info.source ?? 'manual') === 'manual'
+        raiseAlert({
+          severity: 'warning',
+          title: isManual ? `Zone ${numStr} manually left on` : `Zone ${numStr} stuck on`,
+          description: `Zone ${numStr} has been ON for ${Math.round(elapsedMin)} minutes (expected ${info.expectedMin}).`,
+          device: 'Irrigation Controller',
+          device_id: 'irrigation1',
+        }, 60)
+      }
+    }
+  }, [irr, zoneMinutes])
   // Per-zone state responses override the full status zones array.
   // No irr?.online guard here — per-zone state is a direct command response
   // and should be trusted immediately. The DeviceContext clears these when
@@ -178,32 +247,50 @@ export default function Zones() {
   function openSchedule(group) {
     const sched = group.group_schedules?.[0]
     if (sched) {
-      const d = [false,false,false,false,false,false,false]
-      sched.days_of_week.forEach(dow => { d[dow === 0 ? 6 : dow - 1] = true })
-      setSchedDays(d)
+      if (sched.run_once_date) {
+        setSchedMode('once'); setSchedOnceDate(sched.run_once_date)
+        setSchedDays([false,false,false,false,false,false,false])
+      } else {
+        setSchedMode('repeat')
+        const d = [false,false,false,false,false,false,false]
+        sched.days_of_week.forEach(dow => { d[dow === 0 ? 6 : dow - 1] = true })
+        setSchedDays(d)
+        setSchedOnceDate('')
+      }
       setSchedStartTime(sched.start_time.slice(0, 5))
     } else {
+      setSchedMode('repeat')
       setSchedDays([false,false,false,false,false,false,false])
       setSchedStartTime('06:00')
+      setSchedOnceDate('')
     }
     setSchedError(null)
     setSchedulingGroup(group)
   }
 
   async function saveSchedule() {
-    if (!schedDays.some(Boolean)) { setSchedError('Select at least one day'); return }
+    if (schedMode === 'repeat' && !schedDays.some(Boolean)) { setSchedError('Select at least one day'); return }
+    if (schedMode === 'once' && !schedOnceDate) { setSchedError('Pick a date'); return }
     setSavingSched(true); setSchedError(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const dow = schedDays.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
+      const dow = schedMode === 'repeat'
+        ? schedDays.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
+        : []
+      const fields = {
+        days_of_week: dow,
+        start_time:   schedStartTime,
+        enabled:      true,
+        run_once_date: schedMode === 'once' ? schedOnceDate : null,
+      }
       const existingId = schedulingGroup.group_schedules?.[0]?.id
       if (existingId) {
-        const { error } = await supabase.from('group_schedules').update({ days_of_week: dow, start_time: schedStartTime, enabled: true }).eq('id', existingId)
+        const { error } = await supabase.from('group_schedules').update(fields).eq('id', existingId)
         if (error) throw error
       } else {
         const { error } = await supabase.from('group_schedules').insert({
-          group_id: schedulingGroup.id, label: schedulingGroup.name, days_of_week: dow,
-          start_time: schedStartTime, enabled: true, customer_id: session?.user?.id,
+          group_id: schedulingGroup.id, label: schedulingGroup.name,
+          customer_id: session?.user?.id, ...fields,
         })
         if (error) throw error
       }
@@ -213,11 +300,19 @@ export default function Zones() {
     setSavingSched(false)
   }
 
+  async function toggleScheduleEnabled(sched) {
+    if (!sched?.id) return
+    await supabase.from('group_schedules').update({ enabled: !sched.enabled }).eq('id', sched.id)
+    await loadGroups()
+  }
+
   function fmtScheduleSummary(sched) {
     if (!sched) return null
+    const time = sched.start_time?.slice(0, 5) ?? ''
+    const paused = sched.enabled ? '' : ' (paused)'
+    if (sched.run_once_date) return `Once on ${sched.run_once_date} at ${time}${paused}`
     const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-    const days = (sched.days_of_week ?? []).map(d => DAY_ABBR[d]).join(', ')
-    return `${days} at ${sched.start_time?.slice(0, 5) ?? ''}${sched.enabled ? '' : ' (paused)'}`
+    return `${(sched.days_of_week ?? []).map(d => DAY_ABBR[d]).join(', ')} at ${time}${paused}`
   }
 
   function startZoneEdit(id, currentName) {
@@ -235,17 +330,18 @@ export default function Zones() {
   }
 
   async function handleOn(id) {
+    const minutes = Number.isFinite(zoneMinutes[id]) && zoneMinutes[id] > 0 ? zoneMinutes[id] : 30
     setBusy(b => ({ ...b, [id]: true }))
-    // Optimistically show zone as ON immediately — no waiting for device response
     patchOptimistic(`farm/irrigation1/zone/${id}/state`, { on: true, state: 'manual', zone: id })
-    try { await zoneOn(id, 30) } catch (e) { console.error(e) }
+    autoOffRef.current[id] = Date.now() + minutes * 60_000
+    try { await zoneOn(id, minutes) } catch (e) { console.error(e) }
     setBusy(b => ({ ...b, [id]: false }))
   }
 
   async function handleOff(id) {
     setBusy(b => ({ ...b, [id]: true }))
-    // Optimistically show zone as OFF immediately
     patchOptimistic(`farm/irrigation1/zone/${id}/state`, { on: false, state: 'off', zone: id })
+    delete autoOffRef.current[id]
     try { await zoneOff(id) } catch (e) { console.error(e) }
     setBusy(b => ({ ...b, [id]: false }))
   }
@@ -254,13 +350,27 @@ export default function Zones() {
 
   return (
     <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      {!connected && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-orange-50 border border-orange-200 flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
+          <p className="text-sm text-orange-800 font-semibold">Can't reach controller right now. Live controls are disabled. Check back in a few minutes.</p>
+        </div>
+      )}
+
       <PageHeader
-        eyebrow="Irrigation"
+        eyebrow="Irrigation Controller • SSA-V8"
         title="Zones & Programs"
-        subtitle={irr ? `Supply ${irr.supply_psi} PSI • Firmware v${irr.fw} • Uptime ${fmtUptime(irr.uptime)}` : undefined}
-        connected={connected}
+        subtitle={(() => {
+          if (irr) return `Supply ${irr.supply_psi} PSI • Firmware v${irr.fw} • Uptime ${fmtUptime(irr.uptime)}`
+          if (lastSeenRef.current) {
+            const mins = Math.floor((Date.now() - lastSeenRef.current) / 60_000)
+            return `Controller offline — last seen ${mins}m ago`
+          }
+          return undefined
+        })()}
+        connected={connected && !!irr}
         actions={
-          <button onClick={() => allZonesOff().catch(console.error)} className={btnDanger}>
+          <button onClick={() => allZonesOff().catch(console.error)} disabled={!connected} className={btnDanger} style={!connected ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
             All Off
           </button>
         }
@@ -271,7 +381,7 @@ export default function Zones() {
         {[
           { id: 'zones',   label: 'Zones' },
           { id: 'history', label: 'History' },
-          { id: 'groups',  label: 'Groups' },
+          { id: 'groups',  label: 'Programs' },
         ].map(t => (
           <button
             key={t.id}
@@ -320,15 +430,44 @@ export default function Zones() {
                   <span className={`w-3 h-3 rounded-full mt-0.5 shrink-0 ${zone.on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
                 </div>
                 <StatusChip status={zone.on ? 'running' : 'offline'} label={zone.on ? 'ON' : 'OFF'} />
+
+                {/* Minutes input — shown when zone is OFF */}
+                {!zone.on && (
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={240}
+                      placeholder="30"
+                      value={zoneMinutes[zone.id] ?? ''}
+                      onChange={e => setZoneMinutes(prev => ({ ...prev, [zone.id]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      className="w-14 bg-[#f3f3f3] rounded-md px-2 py-1 text-xs text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:bg-white transition-all"
+                    />
+                    <span className="text-[10px] text-[#40493d]">min</span>
+                  </div>
+                )}
+
+                {/* Countdown — shown when zone is ON */}
+                {zone.on && autoOffRef.current[zone.id] && (() => {
+                  const rem = Math.max(0, autoOffRef.current[zone.id] - Date.now())
+                  const min = Math.floor(rem / 60000)
+                  const sec = Math.floor((rem % 60000) / 1000)
+                  return (
+                    <p className="text-[10px] text-center text-[#0d631b] font-semibold mt-2">
+                      auto-off {min}:{String(sec).padStart(2, '0')}
+                    </p>
+                  )
+                })()}
+
                 <div className="flex gap-1 mt-2">
                   <button
                     onClick={() => handleOn(zone.id)}
-                    disabled={!!busy[zone.id] || zone.on}
+                    disabled={!!busy[zone.id] || zone.on || !connected}
                     className="flex-1 py-1.5 rounded-md bg-[#0d631b] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
                   >On</button>
                   <button
                     onClick={() => handleOff(zone.id)}
-                    disabled={!!busy[zone.id] || !zone.on}
+                    disabled={!!busy[zone.id] || !zone.on || !connected}
                     className="flex-1 py-1.5 rounded-md bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold hover:bg-[#d5d5d5] disabled:opacity-40 transition-all"
                   >Off</button>
                   <button
@@ -346,14 +485,21 @@ export default function Zones() {
       {/* ── HISTORY TAB ────────────────────────────────────────────── */}
       {activeTab === 'history' && (
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#f3f3f3]">
-            <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Zone Run Log</h2>
-            <p className="text-xs text-[#40493d] mt-0.5">Last 50 zone events — newest first</p>
+          <div className="px-5 py-4 border-b border-[#f3f3f3] flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Zone Run Log</h2>
+              <p className="text-xs text-[#40493d] mt-0.5">All zone events for the selected day</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <label className="text-xs font-semibold text-[#40493d]">Date</label>
+              <input type="date" value={histDate} onChange={e => setHistDate(e.target.value)}
+                className="bg-[#f3f3f3] rounded-lg px-3 py-1.5 text-sm outline-none border border-[#e2e2e2] focus:border-[#0d631b]/40" />
+            </div>
           </div>
           {histLoading ? (
             <div className="px-5 py-8 text-sm text-[#40493d]">Loading…</div>
           ) : history.length === 0 ? (
-            <div className="px-5 py-10 text-sm text-[#40493d] text-center">No zone events recorded yet.</div>
+            <div className="px-5 py-10 text-sm text-[#40493d] text-center">No zone events for this day.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm font-body">
@@ -400,14 +546,15 @@ export default function Zones() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Groups list */}
           <div className="lg:col-span-2 space-y-3">
-            <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-1">Zone Groups</h2>
+            <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-1">Programs</h2>
             {groupsLoading ? (
-              <p className="text-sm text-[#40493d]">Loading groups…</p>
+              <p className="text-sm text-[#40493d]">Loading programs…</p>
             ) : groups.length === 0 ? (
-              <p className="text-sm text-[#40493d]">No zone groups yet. Create one on the right.</p>
+              <p className="text-sm text-[#40493d]">No programs yet. Create one on the right.</p>
             ) : groups.map(group => {
               const anyOn = group.members.some(m => zones.find(z => z.id === m.zone_num)?.on)
-              const schedSummary = fmtScheduleSummary(group.group_schedules?.[0])
+              const sched = group.group_schedules?.[0]
+              const schedSummary = fmtScheduleSummary(sched)
               return (
                 <div key={group.id} className="bg-white rounded-xl shadow-card p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -419,10 +566,18 @@ export default function Zones() {
                       <p className="text-xs text-[#40493d] mt-0.5">
                         {group.members.map(m => names[m.zone_num] ?? `Zone ${m.zone_num}`).join(', ')} · {group.members[0]?.duration_min ?? 30}m each
                       </p>
-                      {schedSummary
-                        ? <p className="text-xs text-[#00639a] mt-1">{schedSummary}</p>
-                        : <p className="text-xs text-[#40493d]/50 mt-1">No schedule</p>
-                      }
+                      {schedSummary ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className={`text-xs ${sched.enabled ? 'text-[#00639a]' : 'text-[#40493d]/50 line-through'}`}>{schedSummary}</p>
+                          <button onClick={() => toggleScheduleEnabled(sched)}
+                            className={`relative inline-flex w-7 h-4 rounded-full transition-colors shrink-0 ${sched.enabled ? 'bg-[#0d631b]' : 'bg-[#e2e2e2]'}`}
+                            title={sched.enabled ? 'Pause schedule' : 'Resume schedule'}>
+                            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${sched.enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#40493d]/50 mt-1">No schedule</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                       <button onClick={() => openEdit(group)} className="px-2 py-1 rounded text-xs text-[#40493d] hover:bg-[#f3f3f3] transition-colors">Edit</button>
@@ -439,12 +594,12 @@ export default function Zones() {
 
           {/* Create group */}
           <div className="bg-white rounded-xl shadow-card p-5">
-            <h3 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-4">New Group</h3>
+            <h3 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-4">New Program</h3>
             <div className="space-y-3">
               <input
                 value={newGroupName}
                 onChange={e => setNewGroupName(e.target.value)}
-                placeholder="Group name (e.g. Front Block)"
+                placeholder="Program name (e.g. Avocado Block)"
                 className={`w-full ${inputCls}`}
               />
               <div>
@@ -471,7 +626,7 @@ export default function Zones() {
                 disabled={addingGroup || !newGroupName.trim() || newGroupZones.length === 0}
                 className="w-full py-2 rounded-xl gradient-primary text-white text-sm font-semibold shadow-fab hover:opacity-90 disabled:opacity-40 transition-opacity"
               >
-                {addingGroup ? 'Creating…' : 'Create Group'}
+                {addingGroup ? 'Creating…' : 'Create Program'}
               </button>
             </div>
           </div>
@@ -482,9 +637,9 @@ export default function Zones() {
       {editingGroup && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEditingGroup(null)}>
           <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <h2 className="font-headline font-bold text-base text-[#1a1c1c] mb-4">Edit Group</h2>
+            <h2 className="font-headline font-bold text-base text-[#1a1c1c] mb-4">Edit Program</h2>
             <div className="space-y-3">
-              <input value={editName} onChange={e => setEditName(e.target.value)} className={`w-full ${inputCls}`} placeholder="Group name" />
+              <input value={editName} onChange={e => setEditName(e.target.value)} className={`w-full ${inputCls}`} placeholder="Program name" />
               <div>
                 <p className="text-xs font-semibold text-[#40493d] mb-2">Zones:</p>
                 <div className="grid grid-cols-4 gap-1.5">
@@ -524,17 +679,33 @@ export default function Zones() {
             <h2 className="font-headline font-bold text-base text-[#1a1c1c] mb-1">Schedule</h2>
             <p className="text-xs text-[#40493d] mb-4">{schedulingGroup.name}</p>
             <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-[#40493d] block mb-2">Days</label>
-                <div className="flex gap-1.5">
-                  {['M','T','W','T','F','S','S'].map((d, i) => (
-                    <button key={i} onClick={() => setSchedDays(prev => prev.map((v, j) => j === i ? !v : v))}
-                      className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${schedDays[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
+              {/* Repeat / Once toggle */}
+              <div className="flex gap-1 bg-[#f3f3f3] rounded-lg p-1">
+                {[['repeat','Repeat'],['once','Once']].map(([m, label]) => (
+                  <button key={m} onClick={() => setSchedMode(m)}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors ${schedMode === m ? 'bg-white text-[#1a1c1c] shadow-sm' : 'text-[#40493d]'}`}>
+                    {label}
+                  </button>
+                ))}
               </div>
+              {schedMode === 'repeat' ? (
+                <div>
+                  <label className="text-xs font-semibold text-[#40493d] block mb-2">Days</label>
+                  <div className="flex gap-1.5">
+                    {['M','T','W','T','F','S','S'].map((d, i) => (
+                      <button key={i} onClick={() => setSchedDays(prev => prev.map((v, j) => j === i ? !v : v))}
+                        className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${schedDays[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-semibold text-[#40493d] block mb-1">Date</label>
+                  <input type="date" value={schedOnceDate} onChange={e => setSchedOnceDate(e.target.value)} className={`w-full ${inputCls}`} />
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold text-[#40493d] block mb-1">Start Time</label>
                 <input type="time" value={schedStartTime} onChange={e => setSchedStartTime(e.target.value)} className={`w-full ${inputCls}`} />
