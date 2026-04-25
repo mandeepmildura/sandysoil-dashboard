@@ -160,6 +160,15 @@ export default function AdminConsole() {
     if (!error) { setEditDevice(null); loadDevices() }
   }
 
+  /** One-click claim: set farm_id on an unclaimed device. */
+  async function claimDeviceToFarm(deviceRowId, farmId) {
+    if (!farmId) return
+    const { error } = await supabase.from('farm_devices').update({ farm_id: farmId }).eq('id', deviceRowId)
+    if (!error) loadDevices()
+  }
+
+  const unclaimedDevices = devices.filter(d => !d.farm_id)
+
   async function deleteDevice(id) {
     if (!window.confirm('Remove this device?')) return
     await supabase.from('farm_devices').delete().eq('id', id)
@@ -414,6 +423,39 @@ export default function AdminConsole() {
       {activeTab === 'devices' && (
         <div className="grid grid-cols-3 gap-6">
           <div className="col-span-2 space-y-4">
+            {/* Unclaimed devices — one-click assign to a farm */}
+            {unclaimedDevices.length > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-orange-700">priority_high</span>
+                  <h3 className="font-headline font-bold text-sm text-orange-900">
+                    {unclaimedDevices.length} unclaimed device{unclaimedDevices.length > 1 ? 's' : ''} — assign to a customer
+                  </h3>
+                </div>
+                <div className="space-y-2">
+                  {unclaimedDevices.map(d => (
+                    <div key={d.id} className="bg-white rounded-lg p-3 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-mono text-[#1a1c1c] font-bold truncate">{d.device_id}</p>
+                        <p className="text-[10px] text-[#717975]">{d.model ?? 'Unknown model'} • last seen {fmtLastSeen(d.last_seen)}</p>
+                      </div>
+                      <select
+                        defaultValue=""
+                        onChange={e => claimDeviceToFarm(d.id, e.target.value)}
+                        className="bg-[#f3f3f3] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40"
+                      >
+                        <option value="">Assign to farm…</option>
+                        {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                {farms.length === 0 && (
+                  <p className="text-[11px] text-orange-800 mt-2">⚠ Add a farm first under the Farms tab.</p>
+                )}
+              </div>
+            )}
+
             {/* Search + filter bar */}
             <div className="flex gap-3 items-center">
               <input
