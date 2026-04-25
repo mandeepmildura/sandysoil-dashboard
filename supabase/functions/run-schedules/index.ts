@@ -178,6 +178,25 @@ Deno.serve(async (_req) => {
       }
     }
 
+    // Kick the queue executor right now so steps fire immediately rather than waiting
+    // for the next minute boundary. Avoids the 1-minute lag between "scheduled" and
+    // "MQTT command actually published".
+    if (results.length > 0) {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/run-program-queue`, {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          },
+          body: '{}',
+        })
+      } catch (kickErr) {
+        // Non-fatal — pg_cron will pick it up on the next minute as a fallback.
+        console.warn('[run-schedules] queue-kick failed (will retry next minute):', kickErr)
+      }
+    }
+
     return new Response(
       JSON.stringify({ ok: true, time: now, dow, queued: results }),
       { headers: { 'Content-Type': 'application/json' } }

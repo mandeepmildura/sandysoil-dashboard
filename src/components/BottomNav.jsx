@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAlerts } from '../hooks/useAlerts'
 import { KCS_DEVICES } from '../config/devices'
+import { isAdmin } from '../lib/role'
 
 const primary = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
@@ -10,13 +11,17 @@ const primary = [
   { to: '/alerts',   label: 'Alerts',   icon: <BellIcon />, badge: true },
 ]
 
-const overflow = [
+const overflowBase = [
   { to: '/pressure', label: 'Pressure', icon: <GaugeIcon /> },
+]
+const overflowAdmin = [
   ...KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> })),
   { to: '/admin',    label: 'Admin',    icon: <AdminIcon /> },
 ]
 
-export default function BottomNav() {
+export default function BottomNav({ session }) {
+  const admin = isAdmin(session)
+  const overflow = admin ? [...overflowBase, ...overflowAdmin] : overflowBase
   const { alerts } = useAlerts()
   const unreadCount = alerts.filter(a => !a.acknowledged).length
   const [open, setOpen] = useState(false)

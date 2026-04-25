@@ -4,20 +4,20 @@
  */
 
 export const btnPrimary =
-  'px-5 py-2.5 rounded-full text-white text-sm font-bold shadow-lg shadow-[#17362e]/20 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed'
+  'px-6 py-3 rounded-full text-white text-sm font-bold shadow-lg shadow-[#17362e]/20 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed'
 
 export const btnPrimaryStyle = {
   background: 'linear-gradient(135deg, #17362e 0%, #2e4d44 100%)',
 }
 
 export const btnSecondary =
-  'px-5 py-2.5 rounded-full border border-[#c1c8c4] text-sm font-bold text-[#17362e] hover:bg-[#f2f4f3] transition-colors disabled:opacity-40 disabled:hover:bg-transparent'
+  'px-6 py-3 rounded-full border border-[#c1c8c4] text-sm font-bold text-[#17362e] hover:bg-[#f2f4f3] transition-colors disabled:opacity-40 disabled:hover:bg-transparent'
 
 export const btnGhost =
   'px-4 py-2 rounded-full text-xs font-bold text-[#17362e] hover:bg-[#f2f4f3] transition-colors disabled:opacity-30 disabled:hover:bg-transparent'
 
 export const btnDanger =
-  'px-5 py-2.5 rounded-full border border-[#ba1a1a]/30 text-[#ba1a1a] text-sm font-bold hover:bg-[#ba1a1a]/5 transition-colors disabled:opacity-40'
+  'px-6 py-3 rounded-full border border-[#ba1a1a]/30 text-[#ba1a1a] text-sm font-bold hover:bg-[#ba1a1a]/5 transition-colors disabled:opacity-40'
 
 /** Pill-style tag used for status chips (live monitoring, active, etc.) */
 export const pillEmerald =

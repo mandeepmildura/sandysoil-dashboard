@@ -4,6 +4,7 @@ import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLatestSupplyPsi } from '../hooks/useLatestSupplyPsi'
 import { KCS_DEVICES } from '../config/devices'
+import { isAdmin } from '../lib/role'
 
 const mainNav = [
   { to: '/',         label: 'Dashboard', icon: DashIcon },
@@ -12,12 +13,11 @@ const mainNav = [
   { to: '/pressure', label: 'Pressure',  icon: SpeedIcon },
 ]
 
-const tailNav = [
-  { to: '/alerts', label: 'Alerts', icon: BellIcon, badge: true },
-  { to: '/admin',  label: 'Admin',  icon: SettingsIcon },
-]
+const alertsNav = { to: '/alerts', label: 'Alerts', icon: BellIcon, badge: true }
+const adminNav  = { to: '/admin',  label: 'Admin',  icon: SettingsIcon }
 
 export default function Sidebar({ session }) {
+  const admin = isAdmin(session)
   const { data } = useLiveTelemetry(['farm/irrigation1/status'])
   const irr = data['farm/irrigation1/status'] ?? {}
   const online = irr.online ?? false
@@ -45,18 +45,19 @@ export default function Sidebar({ session }) {
       <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
         {mainNav.map(item => <NavItem key={item.to} {...item} />)}
 
-        {/* Devices group */}
-        <div className="pt-4">
-          <p className="px-4 pb-1 ml-2 mr-4 text-[10px] uppercase tracking-widest text-white/40 font-bold">Devices</p>
-          {KCS_DEVICES.map(d => (
-            <NavItem key={d.path} to={d.path} label={d.name} icon={RelayIcon} />
-          ))}
-        </div>
+        {/* Devices group — admin only */}
+        {admin && (
+          <div className="pt-4">
+            <p className="px-4 pb-1 ml-2 mr-4 text-[10px] uppercase tracking-widest text-white/40 font-bold">Devices</p>
+            {KCS_DEVICES.map(d => (
+              <NavItem key={d.path} to={d.path} label={d.name} icon={RelayIcon} />
+            ))}
+          </div>
+        )}
 
         <div className="pt-4">
-          {tailNav.map(item => (
-            <NavItem key={item.to} {...item} badgeCount={item.badge ? unreadCount : 0} />
-          ))}
+          <NavItem {...alertsNav} badgeCount={unreadCount} />
+          {admin && <NavItem {...adminNav} />}
         </div>
       </nav>
 

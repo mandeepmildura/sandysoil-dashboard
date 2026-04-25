@@ -4,9 +4,11 @@ import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useZoneNames } from '../hooks/useZoneNames'
 import { useScheduleRules } from '../hooks/useScheduleRules'
 import { useAlerts } from '../hooks/useAlerts'
+import { useAuth } from '../hooks/useAuth'
 import { zoneOn, zoneOff, allZonesOff, startBackwash } from '../lib/commands'
 import { KCS_DEVICES } from '../config/devices'
 import { supabase } from '../lib/supabase'
+import { isAdmin } from '../lib/role'
 import {
   fmtLastRun,
   bucketPressureBars,
@@ -42,6 +44,8 @@ export default function Dashboard() {
   const { names } = useZoneNames()
   const { groupSchedules } = useScheduleRules()
   const { alerts } = useAlerts()
+  const { session } = useAuth()
+  const admin = isAdmin(session)
   const [busy, setBusy] = useState({})
   const [lastRuns, setLastRuns] = useState({})
   const [pressureBars, setPressureBars] = useState([])
@@ -114,12 +118,13 @@ export default function Dashboard() {
   const upcoming = useMemo(() => upcomingSchedules(groupSchedules, now), [groupSchedules, now])
 
   const devices = [
-    { label: 'Irrigation Controller', online: irr?.online === true, to: '/zones' },
-    ...KCS_DEVICES.map(d => ({
+    { label: 'Irrigation Controller', sublabel: 'SSA-V8', online: irr?.online === true, to: '/zones' },
+    // KCS relay devices (A6v3, B16M) are admin-only — hidden for customers
+    ...(admin ? KCS_DEVICES.map(d => ({
       label: d.name,
       online: d.id === 'a6v3' ? !!a6v3 : d.id === 'b16m' ? !!b16m : false,
       to:    d.path,
-    })),
+    })) : []),
   ]
 
   const critical = (alerts ?? [])
@@ -364,7 +369,10 @@ export default function Dashboard() {
                   className="flex items-center gap-3 px-3 py-2.5 -mx-3 rounded-lg hover:bg-[#f2f4f3] transition-colors group"
                 >
                   <span className={`w-2 h-2 rounded-full shrink-0 ${d.online ? 'bg-emerald-500 shadow-[0_0_6px_rgba(5,150,105,0.5)]' : 'bg-[#c1c8c4]'}`} />
-                  <span className="flex-1 text-sm font-bold text-[#17362e] truncate">{d.label}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-bold text-[#17362e] truncate">{d.label}</span>
+                    {d.sublabel && <span className="block text-[10px] font-semibold text-[#717975] tracking-wide">{d.sublabel}</span>}
+                  </span>
                   <span className={`text-[10px] font-extrabold uppercase tracking-widest ${d.online ? 'text-emerald-700' : 'text-[#717975]'}`}>
                     {d.online ? 'Online' : 'Offline'}
                   </span>

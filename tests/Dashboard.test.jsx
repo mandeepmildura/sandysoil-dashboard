@@ -38,6 +38,10 @@ vi.mock('../src/hooks/useAlerts', () => ({
   useAlerts: () => ({ alerts: alertsData, loading: false, reload: vi.fn(), acknowledge: vi.fn(), dismiss: vi.fn() }),
 }))
 
+vi.mock('../src/hooks/useAuth', () => ({
+  useAuth: () => ({ session: null, loading: false }),
+}))
+
 // ── Mock Supabase (Dashboard pulls last-runs + pressure history) ───────────
 vi.mock('../src/lib/supabase', () => ({
   supabase: {
