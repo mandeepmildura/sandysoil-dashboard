@@ -25,45 +25,11 @@ import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { supabase } from '../lib/supabase'
 import { localDateStr, fmtTime, fmtDuration } from '../lib/format'
 import { relayGridCls, inputGridCols, gaugeColor } from '../lib/relayDevice'
+import PressureGauge from '../components/PressureGauge'
 
 const inputCls = 'bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
 
-// ── Pressure gauge SVG ────────────────────────────────────────────────────────
-
-function PressureGauge({ psi, maxPsi }) {
-  const R = 70, cx = 90, cy = 90
-  const startAngle = 210, totalArc = 240
-  const clamped = Math.min(Math.max(psi, 0), maxPsi)
-  const fillArc = (clamped / maxPsi) * totalArc
-  const color = gaugeColor(clamped, maxPsi)
-
-  function polar(angle, r = R) {
-    const rad = (angle * Math.PI) / 180
-    return [cx + r * Math.cos(rad), cy - r * Math.sin(rad)]
-  }
-  function arcPath(startDeg, sweepDeg, r = R) {
-    const [x1, y1] = polar(startDeg, r)
-    const endDeg = startDeg - sweepDeg
-    const [x2, y2] = polar(endDeg, r)
-    const large = sweepDeg > 180 ? 1 : 0
-    return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`
-  }
-
-  return (
-    <svg viewBox="0 0 180 110" className="w-full max-w-[220px] mx-auto">
-      <path d={arcPath(startAngle, totalArc)} fill="none" stroke="#e2e2e2" strokeWidth="10" strokeLinecap="round" />
-      {fillArc > 0 && (
-        <path d={arcPath(startAngle, fillArc)} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" />
-      )}
-      <text x={polar(startAngle, R+14)[0]} y={polar(startAngle, R+14)[1]} textAnchor="middle" fontSize="8" fill="#40493d">0</text>
-      <text x={polar(-30, R+14)[0]} y={polar(-30, R+14)[1]} textAnchor="middle" fontSize="8" fill="#40493d">{maxPsi}</text>
-      <text x={cx} y={cy-4} textAnchor="middle" fontSize="22" fontWeight="700" fill={color} fontFamily="sans-serif">
-        {clamped.toFixed(1)}
-      </text>
-      <text x={cx} y={cy+12} textAnchor="middle" fontSize="10" fill="#40493d" fontFamily="sans-serif">PSI</text>
-    </svg>
-  )
-}
+// PressureGauge moved to ../components/PressureGauge for reuse across pages.
 
 function PressureTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
