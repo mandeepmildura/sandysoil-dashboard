@@ -92,6 +92,27 @@ export default function AdminConsole() {
     loadFarms()
   }
 
+  // ── Customers (auth.users with farm linkage) ─────────────────────────────
+  const [users, setUsers]               = useState([])
+  const [usersLoading, setUsersLoading] = useState(false)
+
+  const loadUsers = useCallback(async () => {
+    setUsersLoading(true)
+    const { data, error } = await supabase.rpc('admin_list_users_with_farms')
+    if (!error && data) setUsers(data)
+    setUsersLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'customers') loadUsers()
+  }, [activeTab, loadUsers])
+
+  async function linkUserToFarm(userId, farmId) {
+    if (!farmId) return
+    const { error } = await supabase.rpc('admin_link_farm_to_user', { p_farm_id: farmId, p_user_id: userId })
+    if (!error) { loadUsers(); loadFarms() }
+  }
+
   // ── Devices ──────────────────────────────────────────────────────────────
   const [devices, setDevices]           = useState([])
   const [devicesLoading, setDevicesLoading] = useState(false)
@@ -247,8 +268,9 @@ export default function AdminConsole() {
 
       <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
         {[
-          { id: 'farms',   label: 'Farms' },
-          { id: 'devices', label: 'Customer Devices' },
+          { id: 'farms',     label: 'Farms' },
+          { id: 'devices',   label: 'Customer Devices' },
+          { id: 'customers', label: 'Customers' },
         ].map(t => (
           <button
             key={t.id}
@@ -613,6 +635,81 @@ export default function AdminConsole() {
               </button>
             </Card>
           </div>
+        </div>
+      )}
+
+      {/* ── Customers Tab ──────────────────────────────────────────────────── */}
+      {activeTab === 'customers' && (
+        <div className="bg-white rounded-xl shadow-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#f3f3f3] flex items-center justify-between">
+            <div>
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Customers</h2>
+              <p className="text-xs text-[#40493d] mt-0.5">Everyone who has signed up. Link them to a farm to give them access.</p>
+            </div>
+            <button onClick={loadUsers} className="text-xs font-semibold text-[#00639a] hover:underline">Refresh</button>
+          </div>
+
+          {usersLoading ? (
+            <div className="px-5 py-8 text-sm text-[#40493d]">Loading customers…</div>
+          ) : users.length === 0 ? (
+            <div className="px-5 py-10 text-sm text-[#40493d] text-center">No customers signed up yet.</div>
+          ) : (
+            <table className="w-full text-sm font-body">
+              <thead>
+                <tr className="bg-[#f3f3f3]">
+                  {['Email', 'Signed Up', 'Confirmed', 'Linked Farm', 'Action'].map(h => (
+                    <th key={h} className="text-left text-xs font-semibold text-[#40493d] px-4 py-3 first:pl-5">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u, i) => {
+                  const isAdminEmail = u.email?.toLowerCase() === 'mandeep@freshoz.com'
+                  return (
+                    <tr key={u.id} className={`hover:bg-[#f9f9f9] ${i % 2 !== 0 ? 'bg-[#f3f3f3]/40' : ''}`}>
+                      <td className="px-5 py-3 text-xs font-semibold text-[#1a1c1c]">
+                        {u.email}
+                        {isAdminEmail && <span className="ml-2 px-2 py-0.5 rounded-full bg-[#0d631b]/10 text-[#0d631b] text-[9px] font-bold uppercase tracking-wider">Admin</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#40493d]">
+                        {new Date(u.created_at).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {u.email_confirmed ? (
+                          <span className="text-[#0d631b]">✓ Yes</span>
+                        ) : (
+                          <span className="text-[#e65100]">Pending</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {u.farm_name ? (
+                          <span className="font-semibold text-[#1a1c1c]">{u.farm_name}</span>
+                        ) : (
+                          <span className="text-[#40493d]/50 italic">— unlinked —</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isAdminEmail ? (
+                          <span className="text-[10px] text-[#40493d]/50">no farm needed</span>
+                        ) : !u.farm_id ? (
+                          <select
+                            defaultValue=""
+                            onChange={e => linkUserToFarm(u.id, e.target.value)}
+                            className="bg-[#f3f3f3] rounded px-2 py-1 text-xs"
+                          >
+                            <option value="">Link to farm…</option>
+                            {farms.filter(f => !f.owner_id_dummy).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          </select>
+                        ) : (
+                          <span className="text-[10px] text-[#40493d]/50">linked</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     </div>
