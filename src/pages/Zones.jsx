@@ -16,7 +16,7 @@ import { supabase } from '../lib/supabase'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { fmtTime, fmtDuration, fmtUptime } from '../lib/format'
 import { isAdmin } from '../lib/role'
-import PressureGauge from '../components/PressureGauge'
+import SupplyPressurePanel from '../components/SupplyPressurePanel'
 
 export default function Zones() {
   const navigate = useNavigate()
@@ -377,12 +377,9 @@ export default function Zones() {
         })()}
         connected={connected && !!irr}
         actions={
-          <div className="flex items-center gap-3">
-            <PressureGauge psi={typeof irr?.supply_psi === 'number' ? irr.supply_psi : 0} maxPsi={100} size="sm" />
-            <button onClick={() => allZonesOff().catch(console.error)} disabled={!connected} className={btnDanger} style={!connected ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
-              All Off
-            </button>
-          </div>
+          <button onClick={() => allZonesOff().catch(console.error)} disabled={!connected} className={btnDanger} style={!connected ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+            All Off
+          </button>
         }
       />
 
@@ -407,7 +404,18 @@ export default function Zones() {
 
       {/* ── ZONES TAB ─────────────────────────────────────────────── */}
       {activeTab === 'zones' && (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left panel — supply pressure (mirrors A6v3 layout) */}
+          <div className="space-y-4">
+            <SupplyPressurePanel supplyPsi={irr?.supply_psi} maxPsi={100} />
+          </div>
+
+          {/* Right panel — zone grid */}
+          <div className="lg:col-span-2">
+            <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">
+              Valves (Zone 1–{zones.length})
+            </h2>
+            <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           {zones.map(zone => {
             const zoneName = names[zone.id] ?? zone.name
             return (
@@ -489,6 +497,8 @@ export default function Zones() {
               </Card>
             )
           })}
+            </div>
+          </div>
         </div>
       )}
 
