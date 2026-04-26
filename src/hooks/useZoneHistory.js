@@ -42,20 +42,37 @@ export function useZoneHistory(zoneNum = null, device = 'irrigation1', limit = 5
   useEffect(() => {
     load()
 
-    // Realtime subscription for instant updates (websocket — no egress cost per change)
+    // Realtime subscription. Use the row payload directly instead of
+    // refetching the whole window on every change — that was triggering a
+    // full ~50 KB read per insert across every active tab and was a major
+    // egress source.
     const channel = supabase
       .channel(`zone_history_${device ?? 'all'}_${zoneNum ?? 'all'}_${Date.now()}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'zone_history' },
-        () => load()
+        (payload) => {
+          // Filter by zone/device match (the realtime layer doesn't filter for us)
+          const row = payload.new ?? payload.old
+          if (!row) return
+          if (zoneNum != null && row.zone_num !== zoneNum) return
+          if (device != null && row.device !== device) return
+
+          if (payload.eventType === 'INSERT') {
+            setHistory(prev => [row, ...prev].slice(0, limit))
+          } else if (payload.eventType === 'UPDATE') {
+            setHistory(prev => prev.map(r => r.id === row.id ? { ...r, ...row } : r))
+          } else if (payload.eventType === 'DELETE') {
+            setHistory(prev => prev.filter(r => r.id !== row.id))
+          }
+        }
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [load])
+  }, [load, zoneNum, device, limit])
 
   return { history, loading, reload: load }
 }
