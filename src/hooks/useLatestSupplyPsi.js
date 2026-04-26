@@ -4,7 +4,11 @@ import { supabase } from '../lib/supabase'
 let cache = { psi: null, simulated: false, ts: 0 }
 const listeners = new Set()
 let timer = null
-const POLL_MS = 60_000
+// Poll Supabase as a fallback when MQTT live data isn't flowing. MQTT via
+// DeviceContext is the primary live source — this DB fallback exists for
+// fresh page loads before the MQTT stream warms up. 5 min is plenty.
+// (Was 60 s. 12× fewer queries × multiple tabs adds up to meaningful egress.)
+const POLL_MS = 300_000
 
 async function fetchLatest() {
   const { data: row } = await supabase
