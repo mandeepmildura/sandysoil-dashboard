@@ -244,10 +244,10 @@ export default function AdminConsole() {
   const inputClass = 'bg-[#f3f3f3] rounded-lg px-3 py-2.5 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
 
   return (
-    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
-      <div className="mb-8">
+    <div className="flex-1 p-4 sm:p-6 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <div className="mb-6 md:mb-8">
         <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#717975] mb-2">Service Dashboard</p>
-        <h1 className="text-4xl font-extrabold text-[#17362e] tracking-tight">Farm Management Console</h1>
+        <h1 className="text-2xl sm:text-4xl font-extrabold text-[#17362e] tracking-tight">Farm Management Console</h1>
         <p className="text-sm text-[#717975] mt-1">Sandy Soil Automations — all farms and devices</p>
       </div>
 
@@ -266,7 +266,7 @@ export default function AdminConsole() {
         </div>
       )}
 
-      <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
+      <div className="inline-flex flex-wrap bg-[#f2f4f3] p-1 rounded-full mb-6">
         {[
           { id: 'farms',     label: 'Farms' },
           { id: 'devices',   label: 'Customer Devices' },
@@ -286,10 +286,10 @@ export default function AdminConsole() {
 
       {/* ── Farms Tab ────────────────────────────────────────────────────────── */}
       {activeTab === 'farms' && (
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
             {/* Farm table */}
-            <div className="bg-white rounded-xl shadow-card overflow-hidden">
+            <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <table className="w-full text-sm font-body">
                 <thead>
                   <tr className="bg-[#f3f3f3]">
@@ -350,7 +350,7 @@ export default function AdminConsole() {
               <p className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">
                 {editFarm ? `✏️ Editing: ${editFarm.name}` : '+ Add New Farm'}
               </p>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 {['name', 'location', 'contact_name', 'contact_email', 'contact_phone'].map(field => (
                   <input
                     key={field}
@@ -443,8 +443,8 @@ export default function AdminConsole() {
 
       {/* ── Devices Tab ──────────────────────────────────────────────────────── */}
       {activeTab === 'devices' && (
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
             {/* Unclaimed devices — one-click assign to a farm */}
             {unclaimedDevices.length > 0 && (
               <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
@@ -479,7 +479,7 @@ export default function AdminConsole() {
             )}
 
             {/* Search + filter bar */}
-            <div className="flex gap-3 items-center">
+            <div className="flex flex-wrap gap-3 items-center">
               <input
                 value={deviceSearch}
                 onChange={e => setDeviceSearch(e.target.value)}
@@ -511,7 +511,7 @@ export default function AdminConsole() {
             {showAddDevice && (
               <div className="bg-white rounded-xl shadow-card p-4 border-2 border-dashed border-[#0d631b]/30">
                 <p className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Add New Device</p>
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                   <select
                     value={deviceForm.farm_id}
                     onChange={e => setDeviceForm(f => ({ ...f, farm_id: e.target.value }))}
@@ -537,7 +537,7 @@ export default function AdminConsole() {
             {devicesLoading ? (
               <p className="text-sm text-[#40493d] font-body">Loading devices…</p>
             ) : (
-              <div className="bg-white rounded-xl shadow-card overflow-hidden">
+              <div className="bg-white rounded-xl shadow-card overflow-x-auto">
                 <table className="w-full text-sm font-body">
                   <thead>
                     <tr className="bg-[#f3f3f3]">
@@ -640,7 +640,7 @@ export default function AdminConsole() {
 
       {/* ── Customers Tab ──────────────────────────────────────────────────── */}
       {activeTab === 'customers' && (
-        <div className="bg-white rounded-xl shadow-card overflow-hidden">
+        <div className="bg-white rounded-xl shadow-card overflow-x-auto">
           <div className="px-5 py-4 border-b border-[#f3f3f3] flex items-center justify-between">
             <div>
               <h2 className="font-headline font-semibold text-base text-[#1a1c1c]">Customers</h2>
