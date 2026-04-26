@@ -4,27 +4,39 @@ import StatusChip from '../components/StatusChip'
 import PageHeader from '../components/PageHeader'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { useAuth } from '../hooks/useAuth'
 import { fmtRelative as fmtTime } from '../lib/format'
+import { isAdmin } from '../lib/role'
 
 export default function Alerts() {
+  const { session } = useAuth()
+  const admin = isAdmin(session)
   const { alerts: dbAlerts, loading, acknowledge, dismiss } = useAlerts()
-  const { data: live } = useLiveTelemetry([
-    'farm/irrigation1/status',
-    'A6v3/8CBFEA03002C/STATE',
-    'B16M/CCBA97071FD8/STATE',
-  ])
+  const { data: live } = useLiveTelemetry(
+    admin
+      ? ['farm/irrigation1/status', 'A6v3/8CBFEA03002C/STATE', 'B16M/CCBA97071FD8/STATE']
+      : ['farm/irrigation1/status']
+  )
 
   const [localAlerts, setLocalAlerts] = useState([])
   const [usingDB, setUsingDB]         = useState(false)
   const [tab, setTab]                 = useState('All')
 
-  // Once DB load completes, switch to DB data
+  // Once DB load completes, switch to DB data.
+  // Customers see only alerts from their own irrigation controller,
+  // not A6v3 / B16M / scheduler / other admin-only devices.
   useEffect(() => {
     if (!loading) {
-      setLocalAlerts(dbAlerts)
+      const visible = admin
+        ? dbAlerts
+        : dbAlerts.filter(a => {
+            const dev = (a.device ?? '').toLowerCase()
+            return dev === '' || dev.includes('irrigation') || dev === 'irrigation1'
+          })
+      setLocalAlerts(visible)
       setUsingDB(true)
     }
-  }, [loading, dbAlerts])
+  }, [loading, dbAlerts, admin])
 
   const tabs = ['All', 'Critical', 'Warnings', 'Info', 'Resolved']
 
@@ -41,11 +53,17 @@ export default function Alerts() {
   const a6v3 = live['A6v3/8CBFEA03002C/STATE']  ?? null
   const b16m = live['B16M/CCBA97071FD8/STATE']   ?? null
 
-  const DEVICES = [
-    { name: 'Irrigation Controller', model: '8-zone ESP32',   fw: irr?.fw  ?? '—', status: irr  ? 'online' : 'offline' },
-    { name: 'A6v3 Relay / Pressure', model: 'KC868-A6v3',     fw: '—',             status: a6v3 ? 'online' : 'offline' },
-    { name: 'B16M MOSFET Board',     model: 'KinCony B16M',   fw: '—',             status: b16m ? 'online' : 'offline' },
-  ]
+  // Customer sees only their irrigation controller in System Health.
+  // A6v3 / B16M are admin-only relay devices.
+  const DEVICES = admin
+    ? [
+        { name: 'Irrigation Controller', model: 'SSA-V8 ESP32',   fw: irr?.fw  ?? '—', status: irr  ? 'online' : 'offline' },
+        { name: 'A6v3 Relay / Pressure', model: 'KC868-A6v3',     fw: '—',             status: a6v3 ? 'online' : 'offline' },
+        { name: 'B16M MOSFET Board',     model: 'KinCony B16M',   fw: '—',             status: b16m ? 'online' : 'offline' },
+      ]
+    : [
+        { name: 'Irrigation Controller', model: 'SSA-V8',         fw: irr?.fw  ?? '—', status: irr  ? 'online' : 'offline' },
+      ]
 
   async function handleAcknowledge(alert) {
     if (usingDB) {
