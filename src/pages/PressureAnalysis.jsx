@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { usePressureHistory } from '../hooks/usePressureHistory'
+import PressureGauge from '../components/PressureGauge'
 
 const TIME_RANGES = [
   { label: '1H',  hours: 1   },
@@ -121,6 +122,17 @@ export default function PressureAnalysis() {
             Refresh Data
           </button>
         </div>
+      </div>
+
+      {/* Supply pressure gauge — the SSA-V8's primary live reading */}
+      <div className="bg-white p-7 rounded-xl shadow-[0px_12px_32px_rgba(25,28,28,0.04)] mb-8 flex items-center justify-between gap-6 flex-wrap">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#717975] mb-2">Supply Pressure</p>
+          <p className="text-xs text-[#40493d] max-w-md">
+            Live reading from the irrigation controller's pressure sensor. Green = healthy range, orange = high, red = over threshold.
+          </p>
+        </div>
+        <PressureGauge psi={typeof supplyPsi === 'number' ? supplyPsi : 0} maxPsi={100} size="lg" />
       </div>
 
       {/* Vitals grid */}

@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { fmtTime, fmtDuration, fmtUptime } from '../lib/format'
 import { isAdmin } from '../lib/role'
+import PressureGauge from '../components/PressureGauge'
 
 export default function Zones() {
   const navigate = useNavigate()
@@ -376,9 +377,12 @@ export default function Zones() {
         })()}
         connected={connected && !!irr}
         actions={
-          <button onClick={() => allZonesOff().catch(console.error)} disabled={!connected} className={btnDanger} style={!connected ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
-            All Off
-          </button>
+          <div className="flex items-center gap-3">
+            <PressureGauge psi={typeof irr?.supply_psi === 'number' ? irr.supply_psi : 0} maxPsi={100} size="sm" />
+            <button onClick={() => allZonesOff().catch(console.error)} disabled={!connected} className={btnDanger} style={!connected ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+              All Off
+            </button>
+          </div>
         }
       />
 
