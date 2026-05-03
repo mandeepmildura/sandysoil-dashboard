@@ -12,6 +12,7 @@ import ZoneDetail     from './pages/ZoneDetail'
 import ZoneHistory    from './pages/ZoneHistory'
 import Calendar       from './pages/Calendar'
 import PressureAnalysis from './pages/PressureAnalysis'
+import Water          from './pages/Water'
 import Alerts         from './pages/Alerts'
 import AdminConsole   from './pages/AdminConsole'
 import RelayDevice    from './pages/RelayDevice'
@@ -63,10 +64,10 @@ export default function App() {
           <Route path="/zones/:id"       element={<ZoneDetail />} />
           <Route path="/calendar"        element={<Calendar />} />
           <Route path="/pressure"        element={<PressureAnalysis />} />
+          <Route path="/water"           element={<Water />} />
           <Route path="/alerts"          element={<Alerts />} />
           <Route path="/account"         element={<Account />} />
           <Route path="/reset-password"  element={<ResetPassword />} />
-          {/* Admin-only device + admin routes */}
           {admin && KCS_DEVICES.map(cfg => (
             <Route key={cfg.id} path={cfg.path} element={<RelayDevice deviceCfg={cfg} />} />
           ))}

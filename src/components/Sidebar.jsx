@@ -14,6 +14,7 @@ const mainNav = [
   { to: '/zones',    label: 'Zones',     icon: LayersIcon },
   { to: '/calendar', label: 'Schedule',  icon: CalIcon },
   { to: '/pressure', label: 'Pressure',  icon: SpeedIcon },
+  { to: '/water',    label: 'Water',     icon: WaterIcon },
 ]
 
 const alertsNav = { to: '/alerts', label: 'Alerts', icon: BellIcon, badge: true }
@@ -155,6 +156,13 @@ function CalIcon() {
   return (
     <svg {...iconProps}>
       <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+    </svg>
+  )
+}
+function WaterIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 2.5c4 5 7 8 7 11.5a7 7 0 11-14 0c0-3.5 3-6.5 7-11.5z"/>
     </svg>
   )
 }
