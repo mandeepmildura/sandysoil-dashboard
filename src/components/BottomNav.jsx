@@ -15,10 +15,12 @@ const primaryCustomer = [
 ]
 
 const overflowCustomer = [
+  { to: '/water',    label: 'Water',    icon: <WaterIcon /> },
   { to: '/account',  label: 'Account',  icon: <AccountIcon /> },
 ]
 
 const overflowAdmin = [
+  { to: '/water',    label: 'Water',    icon: <WaterIcon /> },
   { to: '/pressure', label: 'Pressure', icon: <GaugeIcon /> },
   ...KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> })),
   { to: '/admin',    label: 'Admin',    icon: <AdminIcon /> },
@@ -166,6 +168,13 @@ function HistoryIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
       <path d="M12 7v5l4 2"/>
+    </svg>
+  )
+}
+function WaterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2.5c4 5 7 8 7 11.5a7 7 0 11-14 0c0-3.5 3-6.5 7-11.5z"/>
     </svg>
   )
 }
