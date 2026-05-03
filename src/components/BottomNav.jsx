@@ -4,24 +4,31 @@ import { useAlerts } from '../hooks/useAlerts'
 import { KCS_DEVICES } from '../config/devices'
 import { isAdmin } from '../lib/role'
 
-const primary = [
+// Customer mobile nav: 4 destinations, no More menu. Pressure becomes a
+// card on Home. Admin nav (KCS devices, Admin Console) only appears when
+// signed in as admin and is rendered behind a More button below.
+const primaryCustomer = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
-  { to: '/zones',    label: 'Valves',   icon: <DropIcon /> },
+  { to: '/zones',    label: 'Zones',    icon: <DropIcon /> },
   { to: '/calendar', label: 'Schedule', icon: <CalIcon /> },
   { to: '/alerts',   label: 'Alerts',   icon: <BellIcon />, badge: true },
 ]
 
-const overflowBase = [
-  { to: '/pressure', label: 'Pressure', icon: <GaugeIcon /> },
+const overflowCustomer = [
+  { to: '/account',  label: 'Account',  icon: <AccountIcon /> },
 ]
+
 const overflowAdmin = [
+  { to: '/pressure', label: 'Pressure', icon: <GaugeIcon /> },
   ...KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> })),
   { to: '/admin',    label: 'Admin',    icon: <AdminIcon /> },
+  { to: '/account',  label: 'Account',  icon: <AccountIcon /> },
 ]
 
 export default function BottomNav({ session }) {
   const admin = isAdmin(session)
-  const overflow = admin ? [...overflowBase, ...overflowAdmin] : overflowBase
+  const primary = primaryCustomer
+  const overflow = admin ? overflowAdmin : overflowCustomer
   const { alerts } = useAlerts()
   const unreadCount = alerts.filter(a => !a.acknowledged).length
   const [open, setOpen] = useState(false)
@@ -93,7 +100,7 @@ export default function BottomNav({ session }) {
           </NavLink>
         ))}
 
-        {/* More button */}
+        {/* More button — all users */}
         <button
           onClick={() => setOpen(o => !o)}
           className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors ${open ? 'text-white' : 'text-white/50'}`}
@@ -182,6 +189,14 @@ function AdminIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+    </svg>
+  )
+}
+function AccountIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7.5" cy="15.5" r="3.5"/>
+      <path d="M11 15.5h9M16 12l3.5 3.5L16 19"/>
     </svg>
   )
 }

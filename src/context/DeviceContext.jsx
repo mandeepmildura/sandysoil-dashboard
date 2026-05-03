@@ -4,22 +4,28 @@ import { KCS_DEVICES } from '../config/devices'
 
 /**
  * All MQTT topics subscribed at app level.
- * KCS device topics are derived from the device registry — adding a new
- * device to src/config/devices.js automatically adds its topic here.
+ *
+ * For irrigation controllers we subscribe to wildcards (`farm/+/...`) so the
+ * provider picks up data from whatever per-customer device the user is
+ * authorised to see — without needing to re-resolve the per-user topic at
+ * provider mount time. The HiveMQ ACL (once per-customer creds are wired in
+ * Wave 2) restricts each user's connection to their own prefix anyway.
+ *
+ * KCS device topics (A6v3, B16M) are still device-specific because they use
+ * a different topic scheme (`<MODEL>/<SERIAL>/STATE`) and aren't yet
+ * customer-scoped — they're admin-only.
  */
 export const DEVICE_TOPICS = [
-  // 8-zone irrigation controller (bespoke firmware)
-  'farm/irrigation1/status',
-  'farm/irrigation1/zone/+/state',
+  // Irrigation controller(s) — wildcard prefix for multi-customer support
+  'farm/+/status',
+  'farm/+/zone/+/state',
+  'farm/+/sim/pressure',
+  'farm/+/ota/status',
   // All KCS firmware devices (A6v3, B16M, future boards)
   ...KCS_DEVICES.map(d => d.stateTopic),
   // Filter (future — topics ready for when sensor is wired)
   'farm/filter1/pressure',
   'farm/filter1/backwash/state',
-  // Sim pressure (dev/testing)
-  'farm/irrigation1/sim/pressure',
-  // OTA updates
-  'farm/irrigation1/ota/status',
 ]
 
 const DeviceContext = createContext({ data: {}, connected: false, patchOptimistic: () => {} })

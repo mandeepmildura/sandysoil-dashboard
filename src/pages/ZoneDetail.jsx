@@ -8,6 +8,8 @@ import StatusChip from '../components/StatusChip'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useZoneHistory } from '../hooks/useZoneHistory'
 import { useZoneNames } from '../hooks/useZoneNames'
+import { useMyDevice } from '../hooks/useMyDevice'
+import { topicsForPrefix } from '../lib/topics'
 import { zoneOn, zoneOff, allZonesOff, closeOpenHistoryRecord, durationToMinutes } from '../lib/commands'
 
 const DURATIONS = ['15 min', '30 min', '1 hour', 'Custom']
@@ -17,6 +19,8 @@ const SOURCE_COLORS = { manual: '#0d631b', schedule: '#00639a', program: '#6750a
 export default function ZoneDetail() {
   const { id = '1' } = useParams()
   const zoneNum = parseInt(id)
+  const { device: myDevice, mqttPrefix } = useMyDevice()
+  const myDeviceId = myDevice?.device_id ?? 'irrigation1'
   const [selectedDuration, setSelectedDuration] = useState('30 min')
   const [cmdSending, setCmdSending] = useState(false)
   const [cmdError, setCmdError]     = useState(null)
@@ -24,6 +28,7 @@ export default function ZoneDetail() {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput]     = useState('')
   const nameInputRef = useRef(null)
+  const t = topicsForPrefix(mqttPrefix)
 
   // Live 1-second ticker for elapsed / countdown
   useEffect(() => {
@@ -35,30 +40,30 @@ export default function ZoneDetail() {
 
   async function handleStart() {
     setCmdSending(true); setCmdError(null)
-    try { await zoneOn(zoneNum, durationToMinutes(selectedDuration)) }
+    try { await zoneOn(zoneNum, durationToMinutes(selectedDuration), 'manual', { prefix: mqttPrefix, device: myDeviceId }) }
     catch (e) { setCmdError(e.message) }
     setCmdSending(false)
   }
 
   async function handleStop() {
     setCmdSending(true); setCmdError(null)
-    try { await zoneOff(zoneNum) }
+    try { await zoneOff(zoneNum, { prefix: mqttPrefix, device: myDeviceId }) }
     catch (e) { setCmdError(e.message) }
     setCmdSending(false)
   }
 
   async function handleAllOff() {
     setCmdSending(true); setCmdError(null)
-    try { await allZonesOff() }
+    try { await allZonesOff({ prefix: mqttPrefix }) }
     catch (e) { setCmdError(e.message) }
     setCmdSending(false)
   }
 
-  const { data: live } = useLiveTelemetry(['farm/irrigation1/status'])
-  const { history, loading, reload } = useZoneHistory(zoneNum, 'irrigation1', 20)
+  const { data: live } = useLiveTelemetry([t.status])
+  const { history, loading, reload } = useZoneHistory(zoneNum, myDeviceId, 20)
   const { names, renameZone } = useZoneNames()
 
-  const irr   = live['farm/irrigation1/status'] ?? null
+  const irr   = live[t.status] ?? null
   const zones = irr?.zones ?? []
   const zone  = zones.find(z => z.id === zoneNum) ?? null
   const displayName = names[zoneNum] ?? zone?.name ?? `Zone ${zoneNum}`

@@ -12,8 +12,15 @@ import { buildConnect, buildPublish, buildDisconnect } from '../_shared/mqttPack
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const MQTT_HOST = Deno.env.get('MQTT_HOST') ?? 'eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud'
-const MQTT_USER = Deno.env.get('MQTT_USER') ?? 'farmcontrol-web'
-const MQTT_PASS = Deno.env.get('MQTT_PASS') ?? 'Zayan@09022022'
+const MQTT_USER = Deno.env.get('MQTT_USER')
+const MQTT_PASS = Deno.env.get('MQTT_PASS')
+
+// Fail fast if secrets are missing. Previously these had hard-coded production
+// fallbacks committed to source — a serious credential leak. Set them via:
+//   supabase secrets set MQTT_USER=... MQTT_PASS=... --project-ref <ref>
+if (!MQTT_USER || !MQTT_PASS) {
+  throw new Error('MQTT_USER and MQTT_PASS must be set as Edge Function secrets')
+}
 
 const A6V3_SET_TOPIC = 'A6v3/8CBFEA03002C/SET'
 
@@ -94,13 +101,14 @@ async function mqttPublishAll(messages: { topic: string; payload: string }[]): P
 // ── Queue executor ────────────────────────────────────────────────────────────
 
 type QueueRow = {
-  id:           string
-  group_id:     string | null
-  step_type:    string
-  device:       string
-  zone_num:     number
-  duration_min: number | null
-  fire_at:      string
+  id:              string
+  group_id:        string | null
+  step_type:       string
+  device:          string
+  zone_num:        number
+  duration_min:    number | null
+  fire_at:         string
+  mqtt_base_topic: string | null
 }
 
 Deno.serve(async (_req) => {
@@ -167,6 +175,10 @@ Deno.serve(async (_req) => {
       const groupNow = new Date().toISOString()
 
       for (const step of group) {
+        // Per-customer MQTT prefix resolved by the scheduler at queue time.
+        // Old rows without this column fall back to the legacy unit.
+        const prefix = step.mqtt_base_topic ?? 'farm/irrigation1'
+
         if (step.device === 'a6v3') {
           groupMessages.push({
             topic:   A6V3_SET_TOPIC,
@@ -186,16 +198,24 @@ Deno.serve(async (_req) => {
         } else {
           if (step.step_type === 'on') {
             groupMessages.push({
-              topic:   `farm/irrigation1/zone/${step.zone_num}/cmd`,
+              topic:   `${prefix}/zone/${step.zone_num}/cmd`,
               payload: JSON.stringify({ cmd: 'on', duration: step.duration_min, source: 'schedule' }),
-              label:   `irrigation1 zone ${step.zone_num} → on`,
+              label:   `${prefix} zone ${step.zone_num} → on`,
             })
-            allHistoryRows.push({ zone_num: step.zone_num, started_at: groupNow, source: 'schedule' })
+            // Record under the device label that matches farm_devices.device_id
+            // for RLS join-based scoping (see migration 009). Defaults to the
+            // legacy 'irrigation1' label when no device is set.
+            allHistoryRows.push({
+              device:     step.device ?? 'irrigation1',
+              zone_num:   step.zone_num,
+              started_at: groupNow,
+              source:     'schedule',
+            })
           } else {
             groupMessages.push({
-              topic:   `farm/irrigation1/zone/${step.zone_num}/cmd`,
+              topic:   `${prefix}/zone/${step.zone_num}/cmd`,
               payload: JSON.stringify({ cmd: 'off' }),
-              label:   `irrigation1 zone ${step.zone_num} → off`,
+              label:   `${prefix} zone ${step.zone_num} → off`,
             })
           }
         }

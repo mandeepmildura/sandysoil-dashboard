@@ -1,7 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import BottomNav from './components/BottomNav'
+import ErrorBoundary from './components/ErrorBoundary'
 import Login          from './pages/Login'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword  from './pages/ResetPassword'
+import Account        from './pages/Account'
 import Dashboard      from './pages/Dashboard'
 import Zones          from './pages/Zones'
 import ZoneDetail     from './pages/ZoneDetail'
@@ -33,35 +37,47 @@ export default function App() {
   }
 
   if (!session) {
-    return <Login />
+    return (
+      <Routes>
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password"  element={<ResetPassword />} />
+        <Route path="*"                element={<Login />} />
+      </Routes>
+    )
   }
 
   const admin = isAdmin(session)
 
   return (
+    <ErrorBoundary>
     <DeviceProvider>
     <div className="flex min-h-screen">
       <Sidebar session={session} />
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden pb-16 md:pb-0">
         <PressureBar />
+        <ErrorBoundary>
         <Routes>
-          <Route path="/"           element={<Dashboard />} />
-          <Route path="/zones"      element={<Zones />} />
-          <Route path="/history"    element={<ZoneHistory />} />
-          <Route path="/zones/:id"  element={<ZoneDetail />} />
-          <Route path="/calendar"   element={<Calendar />} />
-          <Route path="/pressure"   element={<PressureAnalysis />} />
-          <Route path="/alerts"     element={<Alerts />} />
+          <Route path="/"                element={<Dashboard />} />
+          <Route path="/zones"           element={<Zones />} />
+          <Route path="/history"         element={<ZoneHistory />} />
+          <Route path="/zones/:id"       element={<ZoneDetail />} />
+          <Route path="/calendar"        element={<Calendar />} />
+          <Route path="/pressure"        element={<PressureAnalysis />} />
+          <Route path="/alerts"          element={<Alerts />} />
+          <Route path="/account"         element={<Account />} />
+          <Route path="/reset-password"  element={<ResetPassword />} />
           {/* Admin-only device + admin routes */}
           {admin && KCS_DEVICES.map(cfg => (
             <Route key={cfg.id} path={cfg.path} element={<RelayDevice deviceCfg={cfg} />} />
           ))}
           {admin && <Route path="/admin" element={<AdminConsole />} />}
-          <Route path="*"           element={<Navigate to="/" replace />} />
+          <Route path="*"                element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </main>
       <BottomNav session={session} />
     </div>
     </DeviceProvider>
+    </ErrorBoundary>
   )
 }

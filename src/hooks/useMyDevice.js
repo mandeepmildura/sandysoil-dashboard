@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { prefixForDevice } from '../lib/topics'
 
 /**
  * Resolve the controller assigned to the logged-in customer.
  *
  * Returns the first SSA-V8 (or generic irrigation) device linked to a farm
- * owned by this user. Admin users get no special treatment here — they see
- * the legacy `irrigation1` topic via Sidebar/Dashboard fallbacks elsewhere.
+ * owned by this user. Admin users get no special treatment here — they get
+ * the LEGACY_PREFIX fallback so their UI continues to work against the
+ * original deployed unit.
  *
  * Shape:
- *   { device, loading, error }
- *   device = { id, device_id (chip serial), model, type, farm_id }  | null
- *
- * NOTE: Until the SSA-V8 firmware is updated to publish on
- *       `farm/{chip-serial}/...` (currently hard-coded to `irrigation1`),
- *       the dashboard still subscribes to `farm/irrigation1/...` for the
- *       first customer. This hook is the foundation for that switch.
+ *   { device, mqttPrefix, loading, error }
+ *   device      — { id, device_id, model, type, mqtt_base_topic, farm_id }  | null
+ *   mqttPrefix  — resolved topic prefix (always a string; falls back to
+ *                 'farm/irrigation1' if no device is assigned)
  */
 export function useMyDevice() {
   const [device, setDevice]   = useState(null)
@@ -32,10 +31,9 @@ export function useMyDevice() {
           if (!cancelled) { setDevice(null); setLoading(false) }
           return
         }
-        // Find this user's farms, then their first device.
         const { data: rows, error: qErr } = await supabase
           .from('farms')
-          .select('id, name, farm_devices(id, device_id, model, type, status, last_seen, firmware)')
+          .select('id, name, farm_devices(id, device_id, model, type, status, last_seen, firmware, mqtt_base_topic)')
           .eq('owner_id', user.id)
           .limit(1)
         if (qErr) throw qErr
@@ -53,5 +51,5 @@ export function useMyDevice() {
     return () => { cancelled = true }
   }, [])
 
-  return { device, loading, error }
+  return { device, mqttPrefix: prefixForDevice(device), loading, error }
 }

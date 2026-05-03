@@ -30,6 +30,7 @@ export type QueueRow = {
   zone_num: number
   duration_min: number | null
   fire_at: string
+  mqtt_base_topic: string
 }
 
 export function expandSteps(
@@ -37,6 +38,7 @@ export function expandSteps(
   runMode: string,
   steps: Step[],
   baseMs: number,
+  mqttBaseTopic: string = 'farm/irrigation1',
 ): QueueRow[] {
   const sorted = [...steps].sort((a, b) => a.sort_order - b.sort_order)
 
@@ -59,6 +61,7 @@ export function expandSteps(
       zone_num:    step.zone_num,
       duration_min: step.duration_min,
       fire_at:     new Date(cursorMs).toISOString(),
+      mqtt_base_topic: mqttBaseTopic,
     })
 
     if (stepType === 'on' && device === 'a6v3' && (step.duration_min ?? 0) > 0) {
@@ -70,6 +73,7 @@ export function expandSteps(
         zone_num:     step.zone_num,
         duration_min: null,
         fire_at:      new Date(offAtMs).toISOString(),
+        mqtt_base_topic: mqttBaseTopic,
       })
     }
 

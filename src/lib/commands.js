@@ -1,5 +1,6 @@
 import { mqttPublish, getMqttCache } from './mqttClient'
 import { supabase } from './supabase'
+import { LEGACY_PREFIX, topicsForPrefix } from './topics'
 
 export const B16M_SET_TOPIC = 'B16M/CCBA97071FD8/SET'
 export const A6V3_SET_TOPIC = 'A6v3/8CBFEA03002C/SET'
@@ -9,11 +10,14 @@ export const A6V3_SET_TOPIC = 'A6v3/8CBFEA03002C/SET'
  * Pull a PSI snapshot from the MQTT cache. Exported + cache-injectable so it
  * can be unit tested without a live MQTT connection.
  *
- *   supplyPsi — from the 8-zone irrigation controller's status payload
+ *   supplyPsi — from the irrigation controller's status payload
  *   a6v3Psi   — ADC1 raw (0–4095) converted to PSI (0–116 range)
+ *
+ * The status topic is configurable so each customer's device can publish on
+ * its own prefix; the legacy unit defaults to farm/irrigation1.
  */
-export function psiSnapshot(cache = getMqttCache()) {
-  const irrStatus = cache['farm/irrigation1/status']
+export function psiSnapshot(cache = getMqttCache(), prefix = LEGACY_PREFIX) {
+  const irrStatus = cache[`${prefix}/status`]
   const a6v3State = cache['A6v3/8CBFEA03002C/STATE']
   const supplyPsi = irrStatus?.supply_psi != null
     ? parseFloat(Number(irrStatus.supply_psi).toFixed(2)) : null
@@ -25,8 +29,8 @@ export function psiSnapshot(cache = getMqttCache()) {
 
 // ── DB helpers ─────────────────────────────────────────────────────────────
 
-async function insertZoneStart(zoneNum, source, device = 'irrigation1') {
-  const { supplyPsi, a6v3Psi } = psiSnapshot()
+async function insertZoneStart(zoneNum, source, device = 'irrigation1', prefix = LEGACY_PREFIX) {
+  const { supplyPsi, a6v3Psi } = psiSnapshot(getMqttCache(), prefix)
   const { error } = await supabase.from('zone_history').insert({
     zone_num:         zoneNum,
     started_at:       new Date().toISOString(),
@@ -39,15 +43,24 @@ async function insertZoneStart(zoneNum, source, device = 'irrigation1') {
 }
 
 // ── Zone commands (8-zone irrigation controller) ───────────────────────────
+//
+// All zone command functions take an optional opts.prefix. When omitted,
+// LEGACY_PREFIX (farm/irrigation1) is used so existing callers keep working.
+// Pages that know the user's device should pass { prefix: device's mqtt_base_topic }
+// so the command goes to the right physical controller.
 
-export async function zoneOn(zoneNum, durationMin, source = 'manual') {
-  await mqttPublish(`farm/irrigation1/zone/${zoneNum}/cmd`, { cmd: 'on', duration: durationMin })
-  await insertZoneStart(zoneNum, source)
+export async function zoneOn(zoneNum, durationMin, source = 'manual', opts = {}) {
+  const prefix = opts.prefix ?? LEGACY_PREFIX
+  const t = topicsForPrefix(prefix)
+  await mqttPublish(t.zoneCmd(zoneNum), { cmd: 'on', duration: durationMin })
+  await insertZoneStart(zoneNum, source, opts.device ?? 'irrigation1', prefix)
 }
 
-export async function zoneOff(zoneNum) {
-  await mqttPublish(`farm/irrigation1/zone/${zoneNum}/cmd`, { cmd: 'off' })
-  await closeOpenHistoryRecord(zoneNum)
+export async function zoneOff(zoneNum, opts = {}) {
+  const prefix = opts.prefix ?? LEGACY_PREFIX
+  const t = topicsForPrefix(prefix)
+  await mqttPublish(t.zoneCmd(zoneNum), { cmd: 'off' })
+  await closeOpenHistoryRecord(zoneNum, opts.device ?? 'irrigation1')
 }
 
 /** Close the most recent open zone_history row for this zone/device. */
@@ -72,10 +85,12 @@ export async function closeOpenHistoryRecord(zoneNum, device = 'irrigation1') {
   if (updErr) console.error('zone_history close failed:', updErr.message)
 }
 
-export async function allZonesOff() {
+export async function allZonesOff(opts = {}) {
+  const prefix = opts.prefix ?? LEGACY_PREFIX
+  const t = topicsForPrefix(prefix)
   await Promise.all(
     [1,2,3,4,5,6,7,8].map(z =>
-      mqttPublish(`farm/irrigation1/zone/${z}/cmd`, { cmd: 'off' })
+      mqttPublish(t.zoneCmd(z), { cmd: 'off' })
     )
   )
 }
