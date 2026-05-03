@@ -225,7 +225,14 @@ Deno.serve(async (_req) => {
       { headers: { 'Content-Type': 'application/json' } }
     )
   } catch (err) {
-    console.error('[run-schedules] error:', err)
-    return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    // Supabase errors are plain objects (not Error subclasses), so String(err)
+    // produces "[object Object]" which made past failures impossible to debug.
+    const msg = err instanceof Error
+      ? err.stack ?? err.message
+      : err && typeof err === 'object'
+        ? JSON.stringify(err)
+        : String(err)
+    console.error('[run-schedules] error:', msg)
+    return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })

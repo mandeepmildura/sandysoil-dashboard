@@ -48,7 +48,13 @@ Deno.serve(async (_req) => {
       headers: { 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    const msg = String(err)
+    // Supabase errors are plain objects (not Error subclasses), so String(err)
+    // produces "[object Object]" — useless for debugging.
+    const msg = err instanceof Error
+      ? err.stack ?? err.message
+      : err && typeof err === 'object'
+        ? JSON.stringify(err)
+        : String(err)
     console.error('[run-program-queue] fatal:', msg)
     await raiseAlert('Queue executor error', msg, 'fault')
     return new Response(JSON.stringify({ ok: false, error: msg }), {

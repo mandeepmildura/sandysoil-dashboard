@@ -53,4 +53,34 @@ describe('pickDueSchedules', () => {
     const broken = { start_time: null, run_once_date: null, days_of_week: [MONDAY] } as unknown as Schedule
     expect(pickDueSchedules([broken], '04:00', MONDAY, TODAY)).toHaveLength(0)
   })
+
+  // Catch-up: a transient cron failure (e.g. Postgres 500 at 04:00) means the
+  // schedule sits enabled but unfired. The lookback window lets the very next
+  // cron tick recover it instead of silently missing the day.
+  it('catches up a schedule whose minute fell inside the lookback window', () => {
+    const s = sched({ start_time: '04:00:00' })
+    expect(pickDueSchedules([s], '04:03', MONDAY, TODAY)).toHaveLength(1)
+    expect(pickDueSchedules([s], '04:04', MONDAY, TODAY)).toHaveLength(1)
+  })
+
+  it('does not catch up beyond the lookback window', () => {
+    const s = sched({ start_time: '04:00:00' })
+    expect(pickDueSchedules([s], '04:05', MONDAY, TODAY)).toHaveLength(0)
+  })
+
+  it('does not match a schedule whose minute is in the future', () => {
+    const s = sched({ start_time: '04:05:00' })
+    expect(pickDueSchedules([s], '04:00', MONDAY, TODAY)).toHaveLength(0)
+  })
+
+  it('does not wrap across midnight (a 23:59 schedule should not catch up at 00:01)', () => {
+    const s = sched({ start_time: '23:59:00' })
+    expect(pickDueSchedules([s], '00:01', MONDAY, TODAY)).toHaveLength(0)
+  })
+
+  it('respects a custom lookbackMinutes override', () => {
+    const s = sched({ start_time: '04:00:00' })
+    expect(pickDueSchedules([s], '04:10', MONDAY, TODAY, 10)).toHaveLength(1)
+    expect(pickDueSchedules([s], '04:11', MONDAY, TODAY, 10)).toHaveLength(0)
+  })
 })
