@@ -164,8 +164,8 @@ describe('<Calendar />', () => {
 
     await waitFor(() => expect(zoneOn).toHaveBeenCalledTimes(2))
     // sort_order 0 = zone 1 with 15 min; sort_order 1 = zone 3 with 20 min
-    expect(zoneOn).toHaveBeenNthCalledWith(1, 1, 15)
-    expect(zoneOn).toHaveBeenNthCalledWith(2, 3, 20)
+    expect(zoneOn).toHaveBeenNthCalledWith(1, 1, 15, 'manual', { prefix: 'farm/irrigation1', device: 'irrigation1' })
+    expect(zoneOn).toHaveBeenNthCalledWith(2, 3, 20, 'manual', { prefix: 'farm/irrigation1', device: 'irrigation1' })
     expect(a6v3ZoneOn).not.toHaveBeenCalled()
     expect(inserts.filter(i => i.table === 'program_queue')).toHaveLength(0)
   })
@@ -218,6 +218,8 @@ describe('<Calendar />', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Start Zone/i }))
 
-    await waitFor(() => expect(zoneOn).toHaveBeenCalledWith(3, 45))
+    await waitFor(() => expect(zoneOn).toHaveBeenCalledWith(
+      3, 45, 'manual', { prefix: 'farm/irrigation1', device: 'irrigation1' }
+    ))
   })
 })

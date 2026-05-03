@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sandy Soil v2 — Redesign Index</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #fafbfa; color: #0e1f1a; }
+  h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+</style>
+</head>
+<body>
+
+<div class="max-w-3xl mx-auto px-6 py-12">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-[#7a8580]">Sandy Soil Dashboard v2</p>
+  <h1 class="text-4xl font-extrabold mt-2">Redesign mockups</h1>
+  <p class="text-base text-[#3b4a44] mt-3 leading-relaxed">Static HTML mockups of the proposed redesign. Open each in a browser to see the visual direction. Nothing is wired up — these are review-only. Code changes happen after sign-off.</p>
+
+  <!-- Goals -->
+  <div class="mt-10 p-6 rounded-2xl bg-white border border-[#e4e9e6]">
+    <h2 class="text-lg font-bold mb-3">Design goals</h2>
+    <ul class="space-y-2 text-sm text-[#3b4a44] list-disc pl-5">
+      <li><strong class="text-[#0e1f1a]">"Is anything wrong?" answered in &lt; 1 second.</strong> One status banner at the top of every screen.</li>
+      <li><strong class="text-[#0e1f1a]">Mobile-first, glove-friendly tap targets.</strong> 48px minimum, 56px for primary actions. No "More" menu hiding important pages.</li>
+      <li><strong class="text-[#0e1f1a]">One terminology, used everywhere.</strong> Just "Zones" — not Valves, not Outputs, not Controller.</li>
+      <li><strong class="text-[#0e1f1a]">Dual personas, one app.</strong> Customer view (mobile-first) + admin / contractor view (table of all customers).</li>
+      <li><strong class="text-[#0e1f1a]">One unified design system.</strong> Manrope + Inter, dark green (#0d4d20) primary, no gradients except status banners, no decorative drop-shadows.</li>
+    </ul>
+  </div>
+
+  <!-- Mockups -->
+  <div class="mt-8 space-y-3">
+    <a href="v2_mobile_home.html" class="block p-6 rounded-2xl bg-white border border-[#e4e9e6] hover:border-[#0d4d20]/30 transition-colors">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-[#7a8580]">01 · Customer mobile</p>
+          <h3 class="text-xl font-bold mt-1">Mobile home — three states</h3>
+          <p class="text-sm text-[#3b4a44] mt-1.5 leading-relaxed">Healthy / running / problem. The screen a farmer opens at 6 AM in their ute. Status banner is the hero; live elapsed/remaining replaces the current "—:—".</p>
+        </div>
+        <span class="text-2xl text-[#7a8580]">→</span>
+      </div>
+    </a>
+
+    <a href="v2_desktop_home.html" class="block p-6 rounded-2xl bg-white border border-[#e4e9e6] hover:border-[#0d4d20]/30 transition-colors">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-[#7a8580]">02 · Customer desktop</p>
+          <h3 class="text-xl font-bold mt-1">Desktop home</h3>
+          <p class="text-sm text-[#3b4a44] mt-1.5 leading-relaxed">Wider grid for technicians at the office. New left sidebar with account switcher (groundwork for multi-customer admin). Includes weekly water usage and a real pressure sparkline.</p>
+        </div>
+        <span class="text-2xl text-[#7a8580]">→</span>
+      </div>
+    </a>
+
+    <a href="v2_admin_contractor.html" class="block p-6 rounded-2xl bg-white border border-[#e4e9e6] hover:border-[#0d4d20]/30 transition-colors">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-[#7a8580]">03 · Admin / installer</p>
+          <h3 class="text-xl font-bold mt-1">All customers — contractor view</h3>
+          <p class="text-sm text-[#3b4a44] mt-1.5 leading-relaxed">Replaces the current Admin Console's tabs (Farms / Devices / Customers) with one scannable table. Status pill per customer, last-seen, pressure, runs, firmware. Triage at a glance.</p>
+        </div>
+        <span class="text-2xl text-[#7a8580]">→</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- Not redesigned -->
+  <div class="mt-10 p-6 rounded-2xl bg-[#e8f3eb]/40 border border-[#0d4d20]/15">
+    <h3 class="text-base font-bold mb-2">Not redesigned in this round</h3>
+    <p class="text-sm text-[#3b4a44] leading-relaxed">Schedule (calendar week/day view) — current design is clean enough; minor polish only. Pressure analysis page — current Recharts implementation is fine, just style it to match new palette. Zone detail / history pages — straightforward apply of the new system. We tackle these once we agree on the direction shown in the three above.</p>
+  </div>
+
+  <!-- Next -->
+  <div class="mt-10 p-6 rounded-2xl bg-[#0e1f1a] text-white">
+    <h3 class="text-lg font-bold mb-2">Next steps</h3>
+    <ol class="space-y-2 text-sm text-white/80 list-decimal pl-5">
+      <li>You review the three mockups, send back what works / what doesn't / what's missing.</li>
+      <li>I tighten based on feedback.</li>
+      <li>We pick a screen to ship first (recommend: mobile home, since it's the highest-traffic and most-visible win for customers).</li>
+      <li>I implement the chosen screen as React components, replacing the current Dashboard.jsx, etc.</li>
+      <li>Repeat per screen until everything's on v2.</li>
+    </ol>
+  </div>
+</div>
+
+</body>
+</html>

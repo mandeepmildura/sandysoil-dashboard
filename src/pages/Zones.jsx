@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
@@ -11,6 +11,7 @@ import { useZoneHistory } from '../hooks/useZoneHistory'
 import { useDeviceOffline } from '../hooks/useDeviceOffline'
 import { useAuth } from '../hooks/useAuth'
 import { useMyDevice } from '../hooks/useMyDevice'
+import { topicsForPrefix } from '../lib/topics'
 import { zoneOn, zoneOff, allZonesOff } from '../lib/commands'
 import { supabase } from '../lib/supabase'
 import { raiseAlert, resolveAlerts } from '../lib/alerts'
@@ -22,10 +23,11 @@ export default function Zones() {
   const navigate = useNavigate()
   const { session } = useAuth()
   const admin = isAdmin(session)
-  const { device: myDevice, loading: deviceLoading } = useMyDevice()
-  const { data: live, connected } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/zone/+/state'])
+  const { device: myDevice, mqttPrefix, loading: deviceLoading } = useMyDevice()
+  const t = useMemo(() => topicsForPrefix(mqttPrefix), [mqttPrefix])
+  const { data: live, connected } = useLiveTelemetry([t.status, t.zoneStateWildcard])
   const { patchOptimistic } = useDeviceData()
-  const { names, renameZone } = useZoneNames('irrigation1')
+  const { names, renameZone } = useZoneNames(myDevice?.device_id ?? 'irrigation1')
   const [activeTab, setActiveTab] = useState('zones')
   const [busy, setBusy] = useState({})
   const [editingZone, setEditingZone] = useState(null)
@@ -38,7 +40,7 @@ export default function Zones() {
   const [histDate, setHistDate] = useState(() => localDateStr())
   const histFrom = new Date(`${histDate}T00:00:00`).toISOString()
   const histTo   = new Date(`${histDate}T23:59:59.999`).toISOString()
-  const { history, loading: histLoading } = useZoneHistory(null, 'irrigation1', 200, histFrom, histTo)
+  const { history, loading: histLoading } = useZoneHistory(null, myDevice?.device_id ?? 'irrigation1', 200, histFrom, histTo)
 
   // Groups
   const [groups, setGroups] = useState([])
@@ -78,7 +80,8 @@ export default function Zones() {
     return () => clearInterval(id)
   }, [])
 
-  const irr = live['farm/irrigation1/status'] ?? null
+  const irr = live[t.status] ?? null
+  const myDeviceId = myDevice?.device_id ?? 'irrigation1'
 
   // Track last-seen timestamp for the irrigation controller (for live offline badge)
   const lastSeenRef = useRef(null)
@@ -90,7 +93,7 @@ export default function Zones() {
   }, [])
 
   // 15-min offline alert
-  useDeviceOffline('Irrigation Controller', 'irrigation1', irr, 15 * 60_000)
+  useDeviceOffline('Irrigation Controller', myDeviceId, irr, 15 * 60_000)
 
   // Stuck-valve / manual-left-on watchdog — track when each zone first turned ON
   // and raise an alert if it stays on past expected duration + 10-min grace.
@@ -117,7 +120,7 @@ export default function Zones() {
           title: isManual ? `Zone ${numStr} manually left on` : `Zone ${numStr} stuck on`,
           description: `Zone ${numStr} has been ON for ${Math.round(elapsedMin)} minutes (expected ${info.expectedMin}).`,
           device: 'Irrigation Controller',
-          device_id: 'irrigation1',
+          device_id: myDeviceId,
         }, 60)
       }
     }
@@ -126,9 +129,13 @@ export default function Zones() {
   // No irr?.online guard here — per-zone state is a direct command response
   // and should be trusted immediately. The DeviceContext clears these when
   // the next real MQTT message arrives.
+  const zoneStateRe = useMemo(
+    () => new RegExp(`^${mqttPrefix.replace(/\//g, '\\/')}\\/zone\\/(\\d+)\\/state$`),
+    [mqttPrefix]
+  )
   const zoneOverrides = {}
   Object.entries(live).forEach(([topic, payload]) => {
-    const m = topic.match(/^farm\/irrigation1\/zone\/(\d+)\/state$/)
+    const m = topic.match(zoneStateRe)
     if (m) zoneOverrides[Number(m[1])] = payload
   })
   const baseZones = irr?.zones ?? Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}`, on: false, state: 'off' }))
@@ -146,14 +153,14 @@ export default function Zones() {
           .map(g => ({
             ...g,
             members: (g.zone_group_members ?? [])
-              .filter(m => m.device === 'irrigation1')
+              .filter(m => m.device === myDeviceId)
               .sort((a, b) => a.sort_order - b.sort_order),
           }))
           .filter(g => g.members.length > 0)
       )
     }
     setGroupsLoading(false)
-  }, [])
+  }, [myDeviceId])
 
   useEffect(() => { loadGroups() }, [loadGroups])
 
@@ -170,7 +177,7 @@ export default function Zones() {
         .single()
       if (e1) throw e1
       const members = newGroupZones.map((zoneNum, i) => ({
-        group_id: grp.id, zone_num: zoneNum, device: 'irrigation1', duration_min: 30, sort_order: i,
+        group_id: grp.id, zone_num: zoneNum, device: myDeviceId, duration_min: 30, sort_order: i,
       }))
       const { error: e2 } = await supabase.from('zone_group_members').insert(members)
       if (e2) throw e2
@@ -192,13 +199,13 @@ export default function Zones() {
 
   async function startGroup(group) {
     setGroupBusy(b => ({ ...b, [group.id]: true }))
-    for (const m of group.members) await zoneOn(m.zone_num, m.duration_min ?? 30, 'manual')
+    for (const m of group.members) await zoneOn(m.zone_num, m.duration_min ?? 30, 'manual', { prefix: mqttPrefix, device: myDeviceId })
     setGroupBusy(b => ({ ...b, [group.id]: false }))
   }
 
   async function stopGroup(group) {
     setGroupBusy(b => ({ ...b, [group.id]: true }))
-    for (const m of group.members) await zoneOff(m.zone_num)
+    for (const m of group.members) await zoneOff(m.zone_num, { prefix: mqttPrefix, device: myDeviceId })
     setGroupBusy(b => ({ ...b, [group.id]: false }))
   }
 
@@ -222,9 +229,9 @@ export default function Zones() {
     setSavingEdit(true)
     try {
       await supabase.from('zone_groups').update({ name: editName.trim() }).eq('id', editingGroup.id)
-      await supabase.from('zone_group_members').delete().eq('group_id', editingGroup.id).eq('device', 'irrigation1')
+      await supabase.from('zone_group_members').delete().eq('group_id', editingGroup.id).eq('device', myDeviceId)
       await supabase.from('zone_group_members').insert(
-        editZones.map((z, i) => ({ group_id: editingGroup.id, zone_num: z, device: 'irrigation1', duration_min: editDuration, sort_order: i }))
+        editZones.map((z, i) => ({ group_id: editingGroup.id, zone_num: z, device: myDeviceId, duration_min: editDuration, sort_order: i }))
       )
       setEditingGroup(null)
       await loadGroups()
@@ -320,17 +327,17 @@ export default function Zones() {
   async function handleOn(id) {
     const minutes = Number.isFinite(zoneMinutes[id]) && zoneMinutes[id] > 0 ? zoneMinutes[id] : 30
     setBusy(b => ({ ...b, [id]: true }))
-    patchOptimistic(`farm/irrigation1/zone/${id}/state`, { on: true, state: 'manual', zone: id })
+    patchOptimistic(t.zoneState(id), { on: true, state: 'manual', zone: id })
     autoOffRef.current[id] = Date.now() + minutes * 60_000
-    try { await zoneOn(id, minutes) } catch (e) { console.error(e) }
+    try { await zoneOn(id, minutes, 'manual', { prefix: mqttPrefix }) } catch (e) { console.error(e) }
     setBusy(b => ({ ...b, [id]: false }))
   }
 
   async function handleOff(id) {
     setBusy(b => ({ ...b, [id]: true }))
-    patchOptimistic(`farm/irrigation1/zone/${id}/state`, { on: false, state: 'off', zone: id })
+    patchOptimistic(t.zoneState(id), { on: false, state: 'off', zone: id })
     delete autoOffRef.current[id]
-    try { await zoneOff(id) } catch (e) { console.error(e) }
+    try { await zoneOff(id, { prefix: mqttPrefix }) } catch (e) { console.error(e) }
     setBusy(b => ({ ...b, [id]: false }))
   }
 
@@ -377,7 +384,7 @@ export default function Zones() {
         })()}
         connected={connected && !!irr}
         actions={
-          <button onClick={() => allZonesOff().catch(console.error)} disabled={!connected} className={btnDanger} style={!connected ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+          <button onClick={() => allZonesOff({ prefix: mqttPrefix }).catch(console.error)} disabled={!connected} className={btnDanger} style={!connected ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
             All Off
           </button>
         }

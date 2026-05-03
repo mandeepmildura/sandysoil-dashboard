@@ -102,6 +102,10 @@ Deno.serve(async (_req) => {
           id,
           name,
           run_mode,
+          devices (
+            mqtt_topic_base,
+            device_id
+          ),
           zone_group_members (
             zone_num,
             duration_min,
@@ -131,11 +135,18 @@ Deno.serve(async (_req) => {
         name: string
         run_mode: string
         zone_group_members: Step[]
+        devices: { mqtt_topic_base: string | null, device_id: string } | null
       } | null
 
       if (!group) continue
 
-      console.log(`[run-schedules] queuing "${group.name}" (${(group.zone_group_members ?? []).length} steps)`)
+      // Resolve the device's MQTT prefix at queue time so the executor doesn't
+      // need to re-query devices later. Falls back to the legacy
+      // irrigation controller for any zone_groups row not yet linked to a device.
+      const mqttBaseTopic = group.devices?.mqtt_topic_base
+        ?? (group.devices?.device_id ? `farm/${group.devices.device_id.toLowerCase()}` : 'farm/irrigation1')
+
+      console.log(`[run-schedules] queuing "${group.name}" → ${mqttBaseTopic} (${(group.zone_group_members ?? []).length} steps)`)
 
       // Dedup: skip if this group already has unfired steps queued in the last 2 minutes
       // (guards against pg_cron calling us twice in the same minute)
@@ -160,6 +171,7 @@ Deno.serve(async (_req) => {
         group.run_mode,
         (group.zone_group_members ?? []) as Step[],
         Date.now(),
+        mqttBaseTopic,
       )
 
       if (queueRows.length > 0) {

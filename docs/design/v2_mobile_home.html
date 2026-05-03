@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Sandy Soil v2 — Mobile Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink:       '#0e1f1a', // primary text
+          'ink-2':   '#3b4a44', // secondary text
+          'ink-3':   '#7a8580', // tertiary
+          'green-1': '#0d4d20', // brand green dark
+          'green-2': '#1f7a37', // brand green
+          'green-3': '#e8f3eb', // brand green tint
+          warn:      '#c25700', // amber
+          'warn-2':  '#fdf2e6',
+          danger:    '#a8281e', // red
+          'danger-2':'#fce8e6',
+          line:      '#e4e9e6', // hairlines
+          surface:   '#fafbfa', // page bg
+          card:      '#ffffff',
+        },
+        fontFamily: {
+          headline: ['Manrope', 'sans-serif'],
+          body:     ['Inter', 'sans-serif'],
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #d6dcd8; }
+  h1, h2, h3, .headline { font-family: 'Manrope', sans-serif; }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+  /* Phone frame */
+  .phone {
+    width: 390px; height: 844px;
+    background: #fafbfa; border-radius: 44px;
+    box-shadow: 0 30px 80px -20px rgba(14,31,26,0.4), 0 8px 20px -4px rgba(14,31,26,0.15);
+    overflow: hidden; position: relative;
+  }
+  .notch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 110px; height: 28px; background: #0e1f1a; border-radius: 18px; z-index: 50; }
+</style>
+</head>
+<body class="min-h-screen p-8 flex flex-col items-center gap-10">
+
+<div class="max-w-md text-center mb-2">
+  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-2">Sandy Soil v2 redesign</p>
+  <h1 class="headline text-2xl font-bold text-ink mt-1">Customer mobile home</h1>
+  <p class="text-sm text-ink-2 mt-2 leading-relaxed">The screen a farmer opens in their ute at 6 AM. Designed to answer "is anything wrong?" in under a second, then "do I need to do anything?" right after.</p>
+</div>
+
+<!-- ── Phone 1: Healthy state ─────────────────────────────────── -->
+<div class="flex flex-col md:flex-row gap-10 items-start">
+  <div>
+    <p class="text-center text-xs font-bold uppercase tracking-widest text-ink-2 mb-3">All healthy</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <!-- Status bar -->
+      <div class="px-7 pt-12 pb-2 flex justify-between text-[12px] font-semibold text-ink">
+        <span>6:42</span>
+        <span class="flex gap-1 items-center"><span>●●●●</span><span class="material-symbols-outlined" style="font-size:14px">wifi</span><span class="material-symbols-outlined" style="font-size:14px">battery_full</span></span>
+      </div>
+
+      <!-- Header -->
+      <div class="px-5 pt-3 pb-4 flex items-center justify-between">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-widest text-ink-3">Mildura · Sun 3 May</p>
+          <h1 class="headline text-2xl font-bold text-ink leading-tight">Hello, Mandeep</h1>
+        </div>
+        <button class="w-11 h-11 rounded-full bg-card border border-line flex items-center justify-center relative">
+          <span class="material-symbols-outlined text-ink" style="font-size:22px">notifications</span>
+        </button>
+      </div>
+
+      <!-- BIG STATUS BANNER — answers "is anything wrong?" -->
+      <div class="mx-5 mt-1 p-5 rounded-2xl bg-gradient-to-br from-green-1 to-green-2 text-white relative overflow-hidden">
+        <div class="absolute top-0 right-0 opacity-20">
+          <span class="material-symbols-outlined" style="font-size:120px">check_circle</span>
+        </div>
+        <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">System status</p>
+        <p class="headline text-2xl font-extrabold mt-1">Everything healthy</p>
+        <p class="text-sm text-white/80 mt-1">All zones idle · Pressure 35 PSI · Filter clean</p>
+        <div class="flex gap-2 mt-4">
+          <div class="flex-1 px-3 py-2 rounded-lg bg-white/15 backdrop-blur">
+            <p class="text-[10px] uppercase tracking-widest text-white/70">Last run</p>
+            <p class="text-sm font-bold mt-0.5">06:00 · Block A</p>
+          </div>
+          <div class="flex-1 px-3 py-2 rounded-lg bg-white/15 backdrop-blur">
+            <p class="text-[10px] uppercase tracking-widest text-white/70">Next run</p>
+            <p class="text-sm font-bold mt-0.5">22:00 · Block B</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick action: Run Now -->
+      <div class="mx-5 mt-5">
+        <button class="w-full bg-card rounded-2xl border border-line p-4 flex items-center gap-4 active:scale-[0.99] transition-transform">
+          <div class="w-12 h-12 rounded-full bg-green-3 text-green-1 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined" style="font-size:24px">play_arrow</span>
+          </div>
+          <div class="flex-1 text-left">
+            <p class="headline text-base font-bold text-ink leading-tight">Run a zone or program</p>
+            <p class="text-xs text-ink-3 mt-0.5">Manual control · stops automatically</p>
+          </div>
+          <span class="material-symbols-outlined text-ink-3" style="font-size:20px">chevron_right</span>
+        </button>
+      </div>
+
+      <!-- Pressure card (live, glanceable) -->
+      <div class="mx-5 mt-3">
+        <div class="bg-card rounded-2xl border border-line p-4">
+          <div class="flex items-baseline justify-between">
+            <p class="text-[11px] font-bold uppercase tracking-widest text-ink-3">Supply pressure</p>
+            <span class="px-2 py-0.5 rounded-full bg-green-3 text-green-1 text-[10px] font-bold uppercase tracking-wider">Normal</span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="headline text-5xl font-extrabold text-ink leading-none">35</span>
+            <span class="text-base font-semibold text-ink-3">PSI</span>
+          </div>
+          <!-- Sparkline -->
+          <div class="mt-3 flex items-end gap-1 h-10">
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:60%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:65%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:70%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:62%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:68%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:72%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:70%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:74%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:78%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:75%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:80%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:82%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:80%"></div>
+            <div class="flex-1 bg-green-3 rounded-sm" style="height:78%"></div>
+            <div class="flex-1 bg-green-2 rounded-sm" style="height:80%"></div>
+          </div>
+          <p class="text-[10px] text-ink-3 mt-2">Last 24 h · steady</p>
+        </div>
+      </div>
+
+      <!-- Bottom nav -->
+      <div class="absolute bottom-0 inset-x-0 bg-card/95 backdrop-blur border-t border-line">
+        <div class="flex">
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-green-1">
+            <span class="material-symbols-outlined" style="font-size:24px;font-variation-settings:'FILL' 1">home</span>
+            <span class="text-[10px] font-bold uppercase tracking-widest">Home</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">water_drop</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">Zones</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">event</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">Schedule</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">history</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">History</span>
+          </a>
+        </div>
+        <div class="h-7"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Phone 2: One zone running ─────────────────────────────────── -->
+  <div>
+    <p class="text-center text-xs font-bold uppercase tracking-widest text-ink-2 mb-3">Zone running</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="px-7 pt-12 pb-2 flex justify-between text-[12px] font-semibold text-ink">
+        <span>9:14</span>
+        <span class="flex gap-1 items-center"><span>●●●●</span><span class="material-symbols-outlined" style="font-size:14px">wifi</span><span class="material-symbols-outlined" style="font-size:14px">battery_full</span></span>
+      </div>
+
+      <div class="px-5 pt-3 pb-4 flex items-center justify-between">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-widest text-ink-3">Mildura · Sun 3 May</p>
+          <h1 class="headline text-2xl font-bold text-ink leading-tight">Hello, Mandeep</h1>
+        </div>
+        <button class="w-11 h-11 rounded-full bg-card border border-line flex items-center justify-center relative">
+          <span class="material-symbols-outlined text-ink" style="font-size:22px">notifications</span>
+        </button>
+      </div>
+
+      <!-- Active state banner — different colour, live timer -->
+      <div class="mx-5 mt-1 p-5 rounded-2xl bg-gradient-to-br from-green-2 to-[#3aa358] text-white relative overflow-hidden">
+        <div class="absolute -bottom-6 -right-6 w-32 h-32 rounded-full bg-white/15 animate-ping" style="animation-duration:3s"></div>
+        <div class="absolute -bottom-2 -right-2 w-24 h-24 rounded-full bg-white/10"></div>
+        <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/80">Running now</p>
+        <p class="headline text-2xl font-extrabold mt-1">Block A · Avocado</p>
+        <p class="text-sm text-white/85 mt-1">Zones 1, 2, 3 · 30 min program</p>
+        <div class="mt-4 flex gap-2">
+          <div class="flex-1 bg-white/20 rounded-lg backdrop-blur px-3 py-2">
+            <p class="text-[10px] uppercase tracking-widest text-white/70">Elapsed</p>
+            <p class="headline text-lg font-extrabold mt-0.5 leading-none">12<span class="text-xs font-semibold text-white/70 ml-0.5">m</span></p>
+          </div>
+          <div class="flex-1 bg-white/20 rounded-lg backdrop-blur px-3 py-2">
+            <p class="text-[10px] uppercase tracking-widest text-white/70">Remaining</p>
+            <p class="headline text-lg font-extrabold mt-0.5 leading-none">18<span class="text-xs font-semibold text-white/70 ml-0.5">m</span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- One-tap STOP -->
+      <div class="mx-5 mt-3">
+        <button class="w-full py-4 rounded-2xl bg-danger text-white headline font-bold text-base active:scale-[0.99] transition-transform shadow-lg shadow-danger/20">
+          Stop all zones
+        </button>
+      </div>
+
+      <!-- Zone activity (live) -->
+      <div class="mx-5 mt-4 bg-card rounded-2xl border border-line overflow-hidden">
+        <div class="px-4 py-3 flex items-center justify-between border-b border-line">
+          <p class="headline text-sm font-bold text-ink">Live zones</p>
+          <button class="text-[11px] font-semibold text-green-1 uppercase tracking-widest">View all</button>
+        </div>
+        <!-- running -->
+        <div class="px-4 py-3 flex items-center gap-3">
+          <span class="w-2 h-2 rounded-full bg-green-2 animate-pulse"></span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold text-ink truncate">Zone 1 · Avocado West</p>
+            <p class="text-[11px] text-ink-3">12m elapsed · auto-off in 18m</p>
+          </div>
+          <button class="px-3 py-1.5 rounded-full bg-danger-2 text-danger text-xs font-bold uppercase tracking-widest">Stop</button>
+        </div>
+        <div class="px-4 py-3 flex items-center gap-3 border-t border-line">
+          <span class="w-2 h-2 rounded-full bg-green-2 animate-pulse"></span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold text-ink truncate">Zone 2 · Avocado East</p>
+            <p class="text-[11px] text-ink-3">12m elapsed · auto-off in 18m</p>
+          </div>
+          <button class="px-3 py-1.5 rounded-full bg-danger-2 text-danger text-xs font-bold uppercase tracking-widest">Stop</button>
+        </div>
+        <div class="px-4 py-3 flex items-center gap-3 border-t border-line">
+          <span class="w-2 h-2 rounded-full bg-green-2 animate-pulse"></span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold text-ink truncate">Zone 3 · Avocado South</p>
+            <p class="text-[11px] text-ink-3">12m elapsed · auto-off in 18m</p>
+          </div>
+          <button class="px-3 py-1.5 rounded-full bg-danger-2 text-danger text-xs font-bold uppercase tracking-widest">Stop</button>
+        </div>
+      </div>
+
+      <!-- Bottom nav -->
+      <div class="absolute bottom-0 inset-x-0 bg-card/95 backdrop-blur border-t border-line">
+        <div class="flex">
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-green-1">
+            <span class="material-symbols-outlined" style="font-size:24px;font-variation-settings:'FILL' 1">home</span>
+            <span class="text-[10px] font-bold uppercase tracking-widest">Home</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">water_drop</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">Zones</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">event</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">Schedule</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">history</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">History</span>
+          </a>
+        </div>
+        <div class="h-7"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Phone 3: Problem state ─────────────────────────────────── -->
+  <div>
+    <p class="text-center text-xs font-bold uppercase tracking-widest text-ink-2 mb-3">Something wrong</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="px-7 pt-12 pb-2 flex justify-between text-[12px] font-semibold text-ink">
+        <span>14:08</span>
+        <span class="flex gap-1 items-center"><span>●●●●</span><span class="material-symbols-outlined" style="font-size:14px">wifi</span><span class="material-symbols-outlined" style="font-size:14px">battery_full</span></span>
+      </div>
+
+      <div class="px-5 pt-3 pb-4 flex items-center justify-between">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-widest text-ink-3">Mildura · Sun 3 May</p>
+          <h1 class="headline text-2xl font-bold text-ink leading-tight">Hello, Mandeep</h1>
+        </div>
+        <button class="w-11 h-11 rounded-full bg-card border border-line flex items-center justify-center relative">
+          <span class="material-symbols-outlined text-ink" style="font-size:22px">notifications</span>
+          <span class="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-danger text-white text-[9px] font-bold flex items-center justify-center">2</span>
+        </button>
+      </div>
+
+      <!-- Problem banner -->
+      <div class="mx-5 mt-1 p-5 rounded-2xl bg-gradient-to-br from-danger to-[#c93a30] text-white relative overflow-hidden">
+        <div class="absolute top-0 right-0 opacity-20">
+          <span class="material-symbols-outlined" style="font-size:120px">priority_high</span>
+        </div>
+        <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/80">System status</p>
+        <p class="headline text-2xl font-extrabold mt-1">Controller offline</p>
+        <p class="text-sm text-white/85 mt-1">Last seen 18 minutes ago · scheduled 14:00 run did not start</p>
+        <button class="mt-4 w-full py-3 rounded-xl bg-white/20 backdrop-blur text-white font-bold text-sm">
+          What to check →
+        </button>
+      </div>
+
+      <!-- Active alerts -->
+      <div class="mx-5 mt-4 bg-card rounded-2xl border border-line overflow-hidden">
+        <div class="px-4 py-3 flex items-center justify-between border-b border-line">
+          <p class="headline text-sm font-bold text-ink">Active alerts</p>
+          <span class="text-[10px] font-bold text-ink-3 uppercase tracking-widest">2</span>
+        </div>
+        <div class="px-4 py-3 flex items-start gap-3">
+          <span class="material-symbols-outlined text-danger mt-0.5" style="font-size:20px">priority_high</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold text-ink leading-tight">Controller offline</p>
+            <p class="text-[11px] text-ink-3 mt-0.5">No data in 18 min. Wi-Fi or power issue.</p>
+            <p class="text-[10px] text-ink-3 mt-1">14:08 · 12 min ago</p>
+          </div>
+        </div>
+        <div class="px-4 py-3 flex items-start gap-3 border-t border-line">
+          <span class="material-symbols-outlined text-warn mt-0.5" style="font-size:20px">schedule</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold text-ink leading-tight">Schedule didn't run</p>
+            <p class="text-[11px] text-ink-3 mt-0.5">Block C 14:00 program · controller offline at start time</p>
+            <p class="text-[10px] text-ink-3 mt-1">14:01 · 19 min ago</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Help / contact -->
+      <div class="mx-5 mt-3 bg-card rounded-2xl border border-line p-4">
+        <p class="headline text-sm font-bold text-ink">Need help?</p>
+        <p class="text-xs text-ink-3 mt-1 leading-relaxed">If the controller stays offline more than 30 minutes, tap below to message support — we can usually fix it remotely.</p>
+        <a href="#" class="mt-3 block w-full py-3 rounded-xl bg-ink text-white text-center font-bold text-sm">
+          Message Sandy Soil
+        </a>
+      </div>
+
+      <div class="absolute bottom-0 inset-x-0 bg-card/95 backdrop-blur border-t border-line">
+        <div class="flex">
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-green-1">
+            <span class="material-symbols-outlined" style="font-size:24px;font-variation-settings:'FILL' 1">home</span>
+            <span class="text-[10px] font-bold uppercase tracking-widest">Home</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">water_drop</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">Zones</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">event</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">Schedule</span>
+          </a>
+          <a class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-ink-3">
+            <span class="material-symbols-outlined" style="font-size:24px">history</span>
+            <span class="text-[10px] font-semibold uppercase tracking-widest">History</span>
+          </a>
+        </div>
+        <div class="h-7"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Design rationale -->
+<div class="max-w-2xl mt-12 bg-white rounded-2xl p-8 shadow-md border border-line">
+  <h2 class="headline text-xl font-bold text-ink mb-4">What's different from the current screen</h2>
+  <div class="space-y-3 text-sm text-ink-2 leading-relaxed">
+    <p><strong class="text-ink">One status banner answers the only question that matters first.</strong> "Everything healthy" / "Running now" / "Controller offline" — colour-coded so a glance from the ute window is enough. No need to scan four vitals tiles to add up the answer.</p>
+    <p><strong class="text-ink">Bottom nav has 4 destinations, not 5+ behind a More button.</strong> Home / Zones / Schedule / History. Pressure becomes a card on Home (it's a vital, not a destination). Admin and device-detail screens move to a top-right menu. Tap targets are 56px including label, comfortable with work gloves.</p>
+    <p><strong class="text-ink">Live elapsed/remaining replaces "—:—".</strong> The current zone card shows <code class="bg-line px-1 rounded">--:--</code> when running. Customers want to know how long until it stops.</p>
+    <p><strong class="text-ink">"Stop all zones" is one tap and red.</strong> When something's wrong, this is the most important action. It currently lives behind a small bordered button at the top-right.</p>
+    <p><strong class="text-ink">Problem state has actionable next steps.</strong> "What to check" + "Message Sandy Soil" on the same screen the alert appears. Less context-switching.</p>
+    <p><strong class="text-ink">Terminology: just "Zones".</strong> Not Valves, not Outputs, not Controller. Pick one word and use it everywhere.</p>
+  </div>
+</div>
+
+</body>
+</html>

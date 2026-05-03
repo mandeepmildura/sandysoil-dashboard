@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sandy Soil v2 — Admin Contractor View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#0e1f1a', 'ink-2': '#3b4a44', 'ink-3': '#7a8580',
+          'green-1': '#0d4d20', 'green-2': '#1f7a37', 'green-3': '#e8f3eb',
+          warn: '#c25700', 'warn-2': '#fdf2e6',
+          danger: '#a8281e', 'danger-2': '#fce8e6',
+          line: '#e4e9e6', surface: '#fafbfa', card: '#ffffff'
+        },
+        fontFamily: { headline: ['Manrope','sans-serif'], body: ['Inter','sans-serif'] }
+      }
+    }
+  }
+</script>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #fafbfa; }
+  h1, h2, h3, .headline { font-family: 'Manrope', sans-serif; }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+</style>
+</head>
+<body class="text-ink">
+
+<div class="bg-ink text-white px-6 py-3 text-xs">
+  <strong class="font-bold">Sandy Soil v2 — Admin / Contractor view</strong> · For Mandeep · One screen to manage every customer · Inspired by Hunter Hydrawise's contractor dashboard
+</div>
+
+<div class="flex min-h-screen">
+<!-- Sidebar (collapsed-ish; reuse design) -->
+<aside class="w-60 bg-ink text-white shrink-0 flex flex-col">
+  <div class="px-5 py-5 border-b border-white/10 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-lg bg-green-2 flex items-center justify-center">
+      <span class="material-symbols-outlined text-white" style="font-size:18px">grass</span>
+    </div>
+    <div>
+      <p class="headline font-bold text-sm">Sandy Soil</p>
+      <p class="text-[10px] text-white/50">Admin mode</p>
+    </div>
+  </div>
+  <nav class="flex-1 px-2 mt-4 space-y-0.5">
+    <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/60 hover:bg-white/5 hover:text-white"><span class="material-symbols-outlined" style="font-size:20px">home</span><span class="text-sm">Home</span></a>
+    <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/10 text-white"><span class="material-symbols-outlined" style="font-size:20px;font-variation-settings:'FILL' 1">groups</span><span class="text-sm font-semibold">All customers</span></a>
+    <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/60 hover:bg-white/5 hover:text-white"><span class="material-symbols-outlined" style="font-size:20px">developer_board</span><span class="text-sm">Devices</span></a>
+    <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/60 hover:bg-white/5 hover:text-white"><span class="material-symbols-outlined" style="font-size:20px">memory</span><span class="text-sm">Firmware</span></a>
+    <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/60 hover:bg-white/5 hover:text-white"><span class="material-symbols-outlined" style="font-size:20px">notifications</span><span class="text-sm flex-1">All alerts</span><span class="px-1.5 h-4 rounded-full bg-danger text-white text-[9px] font-bold flex items-center">3</span></a>
+  </nav>
+</aside>
+
+<main class="flex-1 px-10 py-8">
+
+  <div class="flex items-end justify-between mb-7">
+    <div>
+      <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-3 mb-1.5">Service dashboard</p>
+      <h1 class="headline text-3xl font-extrabold text-ink leading-tight">All customers</h1>
+      <p class="text-sm text-ink-3 mt-1">12 farms · 14 devices · 2 alerts active</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <input type="text" placeholder="Search customers, devices, chip IDs…" class="w-72 pl-9 pr-3 py-2 rounded-lg bg-card border border-line text-sm" />
+        <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-ink-3" style="font-size:18px">search</span>
+      </div>
+      <button class="px-4 py-2 rounded-lg bg-green-1 text-white text-sm font-bold flex items-center gap-1.5">
+        <span class="material-symbols-outlined" style="font-size:18px">add</span>
+        Add customer
+      </button>
+    </div>
+  </div>
+
+  <!-- Stat row -->
+  <div class="grid grid-cols-4 gap-4 mb-7">
+    <div class="bg-card rounded-xl border border-line p-5">
+      <p class="text-[10px] font-bold uppercase tracking-widest text-ink-3">Total customers</p>
+      <p class="headline text-3xl font-extrabold text-ink mt-2">12</p>
+      <p class="text-[11px] text-green-2 mt-1">+2 this month</p>
+    </div>
+    <div class="bg-card rounded-xl border border-line p-5">
+      <p class="text-[10px] font-bold uppercase tracking-widest text-ink-3">Devices online</p>
+      <p class="headline text-3xl font-extrabold text-ink mt-2">11<span class="text-base font-semibold text-ink-3"> / 14</span></p>
+      <p class="text-[11px] text-warn mt-1">3 offline ≥ 30 min</p>
+    </div>
+    <div class="bg-card rounded-xl border border-line p-5">
+      <p class="text-[10px] font-bold uppercase tracking-widest text-ink-3">Active alerts</p>
+      <p class="headline text-3xl font-extrabold text-ink mt-2">2 <span class="text-base font-semibold text-ink-3">total</span></p>
+      <p class="text-[11px] text-danger mt-1">1 critical</p>
+    </div>
+    <div class="bg-card rounded-xl border border-line p-5">
+      <p class="text-[10px] font-bold uppercase tracking-widest text-ink-3">Schedules today</p>
+      <p class="headline text-3xl font-extrabold text-ink mt-2">37</p>
+      <p class="text-[11px] text-ink-3 mt-1">across 12 farms</p>
+    </div>
+  </div>
+
+  <!-- Unclaimed device banner (kept from current) -->
+  <div class="rounded-xl bg-warn-2 border border-warn/30 p-4 mb-7 flex items-start gap-3">
+    <span class="material-symbols-outlined text-warn mt-0.5" style="font-size:20px">priority_high</span>
+    <div class="flex-1">
+      <p class="text-sm font-bold text-ink">1 unclaimed device on the broker</p>
+      <p class="text-xs text-ink-2 mt-0.5">Chip <code class="bg-card px-1.5 py-0.5 rounded text-[11px]">8cbfea03002c</code> has been publishing on <code class="bg-card px-1.5 py-0.5 rounded text-[11px]">farm/8cbfea03002c/status</code> for 12 minutes. Not yet linked to a farm.</p>
+    </div>
+    <button class="px-3 py-1.5 rounded-lg bg-warn text-white text-xs font-bold whitespace-nowrap">Assign to farm</button>
+  </div>
+
+  <!-- Customer table -->
+  <div class="bg-card rounded-2xl border border-line overflow-hidden">
+    <div class="px-6 py-4 border-b border-line flex items-center justify-between">
+      <h2 class="headline text-lg font-bold text-ink">Customers</h2>
+      <div class="flex gap-1">
+        <button class="px-3 py-1.5 rounded-lg bg-green-3 text-green-1 text-[11px] font-bold uppercase tracking-widest">All</button>
+        <button class="px-3 py-1.5 rounded-lg text-ink-3 text-[11px] font-semibold uppercase tracking-widest hover:bg-line">Healthy</button>
+        <button class="px-3 py-1.5 rounded-lg text-ink-3 text-[11px] font-semibold uppercase tracking-widest hover:bg-line">Has alerts</button>
+        <button class="px-3 py-1.5 rounded-lg text-ink-3 text-[11px] font-semibold uppercase tracking-widest hover:bg-line">Offline</button>
+      </div>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-[10px] uppercase tracking-widest text-ink-3 bg-surface">
+        <tr>
+          <th class="text-left px-6 py-3 font-bold">Customer · farm</th>
+          <th class="text-left px-3 py-3 font-bold">Status</th>
+          <th class="text-left px-3 py-3 font-bold">Pressure</th>
+          <th class="text-left px-3 py-3 font-bold">Last seen</th>
+          <th class="text-left px-3 py-3 font-bold">Today's runs</th>
+          <th class="text-left px-3 py-3 font-bold">Firmware</th>
+          <th class="text-right px-6 py-3 font-bold"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line">
+
+        <!-- Healthy row -->
+        <tr class="hover:bg-surface/50 cursor-pointer">
+          <td class="px-6 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-green-2 text-white flex items-center justify-center text-[11px] font-bold shrink-0">SA</div>
+              <div>
+                <p class="font-bold text-ink">Sandy Soil Farm</p>
+                <p class="text-[11px] text-ink-3">Mildura · mandeep@freshoz.com</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-3 py-3">
+            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-3 text-green-1 text-[10px] font-bold uppercase tracking-wider">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-2 animate-pulse"></span>Healthy
+            </span>
+          </td>
+          <td class="px-3 py-3 text-ink">35 PSI</td>
+          <td class="px-3 py-3 text-ink-3 text-[12px]">2 min ago</td>
+          <td class="px-3 py-3 text-ink">3 of 4</td>
+          <td class="px-3 py-3"><span class="text-[11px] font-bold text-green-1 bg-green-3 px-2 py-0.5 rounded-full">v2.4.1</span></td>
+          <td class="px-6 py-3 text-right"><span class="material-symbols-outlined text-ink-3" style="font-size:18px">chevron_right</span></td>
+        </tr>
+
+        <!-- Critical alert row -->
+        <tr class="hover:bg-surface/50 cursor-pointer bg-danger-2/30">
+          <td class="px-6 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-danger text-white flex items-center justify-center text-[11px] font-bold shrink-0">RV</div>
+              <div>
+                <p class="font-bold text-ink">River View Vines</p>
+                <p class="text-[11px] text-ink-3">Red Cliffs · sam@riverview.com.au</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-3 py-3">
+            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-danger text-white text-[10px] font-bold uppercase tracking-wider">
+              <span class="material-symbols-outlined" style="font-size:12px">priority_high</span>Offline
+            </span>
+          </td>
+          <td class="px-3 py-3 text-ink-3">—</td>
+          <td class="px-3 py-3 text-danger font-semibold text-[12px]">42 min ago</td>
+          <td class="px-3 py-3 text-warn font-semibold">0 of 3 missed</td>
+          <td class="px-3 py-3"><span class="text-[11px] font-bold text-warn bg-warn-2 px-2 py-0.5 rounded-full">v2.3.0</span></td>
+          <td class="px-6 py-3 text-right"><span class="material-symbols-outlined text-ink-3" style="font-size:18px">chevron_right</span></td>
+        </tr>
+
+        <!-- Warning row -->
+        <tr class="hover:bg-surface/50 cursor-pointer">
+          <td class="px-6 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-warn text-white flex items-center justify-center text-[11px] font-bold shrink-0">MC</div>
+              <div>
+                <p class="font-bold text-ink">Mungo Citrus</p>
+                <p class="text-[11px] text-ink-3">Wentworth · jenny@mungo.farm</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-3 py-3">
+            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-warn-2 text-warn text-[10px] font-bold uppercase tracking-wider">
+              <span class="w-1.5 h-1.5 rounded-full bg-warn"></span>Warning
+            </span>
+          </td>
+          <td class="px-3 py-3 text-ink">28 PSI</td>
+          <td class="px-3 py-3 text-ink-3 text-[12px]">just now</td>
+          <td class="px-3 py-3 text-ink">2 of 5</td>
+          <td class="px-3 py-3"><span class="text-[11px] font-bold text-green-1 bg-green-3 px-2 py-0.5 rounded-full">v2.4.1</span></td>
+          <td class="px-6 py-3 text-right"><span class="material-symbols-outlined text-ink-3" style="font-size:18px">chevron_right</span></td>
+        </tr>
+
+        <!-- More healthy rows -->
+        <tr class="hover:bg-surface/50 cursor-pointer">
+          <td class="px-6 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-green-2 text-white flex items-center justify-center text-[11px] font-bold shrink-0">DA</div>
+              <div>
+                <p class="font-bold text-ink">Darling Almonds</p>
+                <p class="text-[11px] text-ink-3">Robinvale · ops@darling-almonds.com</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-3 py-3">
+            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-3 text-green-1 text-[10px] font-bold uppercase tracking-wider">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-2 animate-pulse"></span>Healthy
+            </span>
+          </td>
+          <td class="px-3 py-3 text-ink">42 PSI</td>
+          <td class="px-3 py-3 text-ink-3 text-[12px]">just now</td>
+          <td class="px-3 py-3 text-ink">5 of 5</td>
+          <td class="px-3 py-3"><span class="text-[11px] font-bold text-green-1 bg-green-3 px-2 py-0.5 rounded-full">v2.4.1</span></td>
+          <td class="px-6 py-3 text-right"><span class="material-symbols-outlined text-ink-3" style="font-size:18px">chevron_right</span></td>
+        </tr>
+
+        <tr class="hover:bg-surface/50 cursor-pointer">
+          <td class="px-6 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-green-2 text-white flex items-center justify-center text-[11px] font-bold shrink-0">BO</div>
+              <div>
+                <p class="font-bold text-ink">Buronga Orchards</p>
+                <p class="text-[11px] text-ink-3">Buronga · mark@buronga.com.au</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-3 py-3">
+            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-3 text-green-1 text-[10px] font-bold uppercase tracking-wider">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-2 animate-pulse"></span>Healthy
+            </span>
+          </td>
+          <td class="px-3 py-3 text-ink">37 PSI</td>
+          <td class="px-3 py-3 text-ink-3 text-[12px]">1 min ago</td>
+          <td class="px-3 py-3 text-ink">2 of 2</td>
+          <td class="px-3 py-3"><span class="text-[11px] font-bold text-green-1 bg-green-3 px-2 py-0.5 rounded-full">v2.4.1</span></td>
+          <td class="px-6 py-3 text-right"><span class="material-symbols-outlined text-ink-3" style="font-size:18px">chevron_right</span></td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Why this view -->
+  <div class="mt-10 max-w-3xl bg-card rounded-2xl border border-line p-6">
+    <h3 class="headline text-base font-bold text-ink mb-3">Why this view</h3>
+    <p class="text-sm text-ink-2 leading-relaxed">When you have 5+ customers, "tabs across farms / devices / customers" stops scaling. The contractor view collapses everything into one scannable table where you can see every customer's health at a glance — pressure, last-seen, scheduled-vs-actual runs, firmware version. Hunter Hydrawise calls this the Contractor Dashboard; Stripe calls it Connect; Shopify calls it Partner Dashboard. Same idea: one row per customer, sort/filter, click to drill into their farm.</p>
+    <p class="text-sm text-ink-2 leading-relaxed mt-3">The status pill (Healthy / Warning / Offline) is the most important column — it's how you triage which customer to call back first. Same colour system as the customer-facing dashboard so terminology stays consistent across personas.</p>
+  </div>
+
+</main>
+</div>
+
+</body>
+</html>

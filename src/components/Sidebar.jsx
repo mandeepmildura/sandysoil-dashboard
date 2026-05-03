@@ -1,14 +1,17 @@
-import { NavLink } from 'react-router-dom'
+import { useMemo } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLatestSupplyPsi } from '../hooks/useLatestSupplyPsi'
+import { useMyDevice } from '../hooks/useMyDevice'
+import { topicsForPrefix } from '../lib/topics'
 import { KCS_DEVICES } from '../config/devices'
 import { isAdmin } from '../lib/role'
 
 const mainNav = [
-  { to: '/',         label: 'Dashboard', icon: DashIcon },
-  { to: '/zones',    label: 'Controller', icon: LayersIcon },
+  { to: '/',         label: 'Home',      icon: DashIcon },
+  { to: '/zones',    label: 'Zones',     icon: LayersIcon },
   { to: '/calendar', label: 'Schedule',  icon: CalIcon },
   { to: '/pressure', label: 'Pressure',  icon: SpeedIcon },
 ]
@@ -18,8 +21,11 @@ const adminNav  = { to: '/admin',  label: 'Admin',  icon: SettingsIcon }
 
 export default function Sidebar({ session }) {
   const admin = isAdmin(session)
-  const { data } = useLiveTelemetry(['farm/irrigation1/status'])
-  const irr = data['farm/irrigation1/status'] ?? {}
+  const navigate = useNavigate()
+  const { mqttPrefix } = useMyDevice()
+  const t = useMemo(() => topicsForPrefix(mqttPrefix), [mqttPrefix])
+  const { data } = useLiveTelemetry([t.status])
+  const irr = data[t.status] ?? {}
   const online = irr.online ?? false
 
   const { alerts } = useAlerts()
@@ -81,12 +87,21 @@ export default function Sidebar({ session }) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold text-white truncate leading-tight">{userEmail}</p>
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="text-white/40 hover:text-white/70 text-[11px] font-body transition-colors"
-            >
-              Sign out
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/account')}
+                className="text-white/40 hover:text-white/70 text-[11px] font-body transition-colors"
+              >
+                Account
+              </button>
+              <span className="text-white/20 text-[11px]">·</span>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="text-white/40 hover:text-white/70 text-[11px] font-body transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       </div>

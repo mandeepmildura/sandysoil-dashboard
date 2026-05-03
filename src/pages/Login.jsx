@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
@@ -168,6 +169,14 @@ export default function Login() {
                   className="w-full bg-[#f3f3f3] rounded-lg px-4 py-3 text-sm font-body text-[#1a1c1c] outline-none focus:bg-white focus:ring-2 focus:ring-[#0d631b]/20 transition-all border border-transparent focus:border-[#0d631b]/30"
                   placeholder="••••••••"
                 />
+              </div>
+            )}
+
+            {!isSignUp && (
+              <div className="text-right -mt-2">
+                <Link to="/forgot-password" className="text-xs text-[#0d631b] font-semibold hover:underline font-body">
+                  Forgot password?
+                </Link>
               </div>
             )}
 

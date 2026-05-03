@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { usePressureHistory } from '../hooks/usePressureHistory'
+import { useMyDevice } from '../hooks/useMyDevice'
+import { topicsForPrefix } from '../lib/topics'
 import SupplyPressurePanel from '../components/SupplyPressurePanel'
 
 const TIME_RANGES = [
@@ -28,8 +30,10 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 export default function PressureAnalysis() {
+  const { mqttPrefix } = useMyDevice()
+  const t = useMemo(() => topicsForPrefix(mqttPrefix), [mqttPrefix])
   const { data: live, connected } = useLiveTelemetry([
-    'farm/irrigation1/status',
+    t.status,
     'farm/filter1/pressure',
     'farm/filter1/backwash/state',
   ])
@@ -38,7 +42,7 @@ export default function PressureAnalysis() {
   const [historyHours, setHistoryHours] = useState(1)
   const { data: history, loading, reload: reloadHistory } = usePressureHistory(historyHours)
 
-  const irr      = live['farm/irrigation1/status']      ?? {}
+  const irr      = live[t.status]                       ?? {}
   const pressure = live['farm/filter1/pressure']        ?? {}
   const backwash = live['farm/filter1/backwash/state']  ?? {}
 

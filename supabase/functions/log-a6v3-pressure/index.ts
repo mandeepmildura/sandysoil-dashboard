@@ -24,8 +24,15 @@ import {
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const MQTT_HOST = Deno.env.get('MQTT_HOST') ?? 'eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud'
-const MQTT_USER = Deno.env.get('MQTT_USER') ?? 'farmcontrol-web'
-const MQTT_PASS = Deno.env.get('MQTT_PASS') ?? 'Zayan@09022022'
+const MQTT_USER = Deno.env.get('MQTT_USER')
+const MQTT_PASS = Deno.env.get('MQTT_PASS')
+
+// Fail fast if secrets are missing. Previously these had hard-coded production
+// fallbacks committed to source — a serious credential leak. Set them via:
+//   supabase secrets set MQTT_USER=... MQTT_PASS=... --project-ref <ref>
+if (!MQTT_USER || !MQTT_PASS) {
+  throw new Error('MQTT_USER and MQTT_PASS must be set as Edge Function secrets')
+}
 
 const A6V3_STATE_TOPIC = 'A6v3/8CBFEA03002C/STATE'
 const A6V3_SET_TOPIC   = 'A6v3/8CBFEA03002C/SET'

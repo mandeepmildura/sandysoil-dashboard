@@ -3,6 +3,7 @@ import StatusChip from '../components/StatusChip'
 import PageHeader from '../components/PageHeader'
 import { btnPrimary, btnPrimaryStyle, btnSecondary } from '../components/ui'
 import { supabase } from '../lib/supabase'
+import { useMyDevice } from '../hooks/useMyDevice'
 import { zoneOn, a6v3ZoneOn } from '../lib/commands'
 import {
   dbDayToCalIdx,
@@ -18,7 +19,7 @@ const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
 const COLORS = ['#0d631b', '#2e7d32', '#00639a', '#6a4c93', '#c0392b', '#d35400', '#16a085', '#8e44ad']
 
 // ── Event detail modal ──────────────────────────────────────────────────────
-function EventModal({ event, onClose }) {
+function EventModal({ event, onClose, mqttPrefix, myDeviceId }) {
   const p = event.program
   const [running, setRunning] = useState(false)
 
@@ -35,15 +36,16 @@ function EventModal({ event, onClose }) {
         if (z.device === 'a6v3') {
           await a6v3ZoneOn(z.zone_num, dur)
           a6v3OffSteps.push({
-            group_id:     p.id,
-            step_type:    'off',
-            device:       'a6v3',
-            zone_num:     z.zone_num,
-            duration_min: null,
-            fire_at:      new Date(Date.now() + dur * 60_000).toISOString(),
+            group_id:        p.id,
+            step_type:       'off',
+            device:          'a6v3',
+            zone_num:        z.zone_num,
+            duration_min:    null,
+            fire_at:         new Date(Date.now() + dur * 60_000).toISOString(),
+            mqtt_base_topic: mqttPrefix,
           })
         } else {
-          await zoneOn(z.zone_num, dur)
+          await zoneOn(z.zone_num, dur, 'manual', { prefix: mqttPrefix, device: myDeviceId })
         }
       }
       if (a6v3OffSteps.length > 0) {
@@ -215,14 +217,14 @@ function AddScheduleModal({ onClose, onSaved }) {
 }
 
 // ── Run zone modal ──────────────────────────────────────────────────────────
-function RunZoneModal({ onClose }) {
+function RunZoneModal({ onClose, mqttPrefix, myDeviceId }) {
   const [zone, setZone]         = useState(1)
   const [duration, setDuration] = useState(30)
   const [running, setRunning]   = useState(false)
 
   async function run() {
     setRunning(true)
-    try { await zoneOn(zone, duration) } catch (e) { console.error(e) }
+    try { await zoneOn(zone, duration, 'manual', { prefix: mqttPrefix, device: myDeviceId }) } catch (e) { console.error(e) }
     onClose()
   }
 
@@ -276,6 +278,8 @@ function EventBlock({ event, onClick }) {
 
 // ── Main component ──────────────────────────────────────────────────────────
 export default function Calendar() {
+  const { device: myDevice, mqttPrefix } = useMyDevice()
+  const myDeviceId = myDevice?.device_id ?? 'irrigation1'
   const [view, setView]               = useState('week')
   const [selectedDay, setSelectedDay] = useState(new Date())
   const [showAddModal, setShowAddModal] = useState(false)
@@ -538,8 +542,8 @@ export default function Calendar() {
       </div>
 
       {showAddModal    && <AddScheduleModal onClose={() => setShowAddModal(false)} onSaved={onSaved} />}
-      {showRunModal    && <RunZoneModal onClose={() => setShowRunModal(false)} />}
-      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
+      {showRunModal    && <RunZoneModal onClose={() => setShowRunModal(false)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} />}
+      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} />}
     </div>
   )
 }

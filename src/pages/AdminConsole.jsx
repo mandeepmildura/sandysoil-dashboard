@@ -23,7 +23,7 @@ export default function AdminConsole() {
     setFarmsLoading(true)
     const { data, error } = await supabase
       .from('farms')
-      .select('id, name, location, contact_name, contact_email, contact_phone, notes')
+      .select('id, name, location, contact_name, contact_email, contact_phone, notes, owner_id, status')
       .order('created_at')
     if (!error && data) setFarms(data)
     setFarmsLoading(false)
@@ -253,14 +253,16 @@ export default function AdminConsole() {
 
       <VitalsStrip vitals={VITALS} />
 
-      {/* Multi-tenant upgrade reminder — fires when crossing 5 customer farms */}
-      {farms.length >= 5 && (
+      {/* Multi-tenant upgrade reminder — fires from the 2nd customer onward.
+          Per-customer broker creds need to be in place before any new
+          customer comes online (see docs/CRITICAL-FIXES-CHECKLIST.md step 4). */}
+      {farms.length >= 2 && (
         <div className="mb-6 px-5 py-4 rounded-xl bg-orange-50 border border-orange-200 flex items-start gap-3">
           <span className="material-symbols-outlined text-orange-700 mt-0.5">priority_high</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-orange-900">You have {farms.length} customers — time to upgrade MQTT isolation</p>
+            <p className="text-sm font-bold text-orange-900">You have {farms.length} customers — per-customer MQTT credentials must be in place</p>
             <p className="text-xs text-orange-800 mt-1">
-              At this scale, switch from "unique topic per unit" to per-customer MQTT credentials so each customer's broker access is enforced by HiveMQ, not just the dashboard. See the multi-tenancy upgrade guide.
+              The bundled HiveMQ user is shared across all customers. Without per-customer credentials + ACLs, any customer can read or control any other customer's device. See docs/CRITICAL-FIXES-CHECKLIST.md.
             </p>
           </div>
         </div>
@@ -698,7 +700,10 @@ export default function AdminConsole() {
                             className="bg-[#f3f3f3] rounded px-2 py-1 text-xs"
                           >
                             <option value="">Link to farm…</option>
-                            {farms.filter(f => !f.owner_id_dummy).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            {/* Only show farms not yet owned by anyone — `owner_id_dummy`
+                                was a typo for `owner_id` that silently broke this filter,
+                                showing all farms (including ones already linked). */}
+                            {farms.filter(f => !f.owner_id).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                           </select>
                         ) : (
                           <span className="text-[10px] text-[#40493d]/50">linked</span>

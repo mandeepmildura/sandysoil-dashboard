@@ -1,21 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import PageHeader from '../components/PageHeader'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
 import { useAuth } from '../hooks/useAuth'
+import { useMyDevice } from '../hooks/useMyDevice'
+import { topicsForPrefix } from '../lib/topics'
 import { fmtRelative as fmtTime } from '../lib/format'
 import { isAdmin } from '../lib/role'
 
 export default function Alerts() {
   const { session } = useAuth()
   const admin = isAdmin(session)
+  const { mqttPrefix } = useMyDevice()
+  const t = useMemo(() => topicsForPrefix(mqttPrefix), [mqttPrefix])
   const { alerts: dbAlerts, loading, acknowledge, dismiss } = useAlerts()
   const { data: live } = useLiveTelemetry(
     admin
-      ? ['farm/irrigation1/status', 'A6v3/8CBFEA03002C/STATE', 'B16M/CCBA97071FD8/STATE']
-      : ['farm/irrigation1/status']
+      ? [t.status, 'A6v3/8CBFEA03002C/STATE', 'B16M/CCBA97071FD8/STATE']
+      : [t.status]
   )
 
   const [localAlerts, setLocalAlerts] = useState([])
@@ -49,7 +53,7 @@ export default function Alerts() {
     return true
   })
 
-  const irr  = live['farm/irrigation1/status']  ?? null
+  const irr  = live[t.status]                   ?? null
   const a6v3 = live['A6v3/8CBFEA03002C/STATE']  ?? null
   const b16m = live['B16M/CCBA97071FD8/STATE']   ?? null
 
