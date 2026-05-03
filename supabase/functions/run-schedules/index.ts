@@ -7,10 +7,14 @@
  *  2. Walks the automation steps (on / delay / off) and calculates fire_at
  *     for each actionable step using cumulative delay offsets
  *  3. Inserts pending steps into program_queue
- *  4. The run-program-queue function fires steps when their fire_at arrives
+ *  4. Calls runQueue() inline so any step due in the current minute fires
+ *     immediately. Future steps (e.g. an OFF after a 2 h delay) are picked
+ *     up by the next pg_cron tick of run-program-queue.
  *
- * This two-step approach supports long delays (e.g. 2 h between ON and OFF)
- * that would exceed a single edge function invocation window.
+ * The previous version used an HTTP fetch to run-program-queue as a "kick"
+ * after queueing. That call wasn't reliably draining the queue inside the
+ * same minute, so schedules would land on the device ~1 minute late. Inline
+ * execution removes the indirection.
  *
  * Setup:
  *  supabase functions deploy run-schedules
@@ -48,17 +52,27 @@
  *  );
  *
  * Required Edge Function secrets:
- *   SUPABASE_URL            — auto-set
+ *   SUPABASE_URL              — auto-set
  *   SUPABASE_SERVICE_ROLE_KEY — auto-set
- *   TIMEZONE                — IANA name, e.g. "Australia/Melbourne"
+ *   MQTT_USER, MQTT_PASS      — set via `supabase secrets set ...`
+ *   TIMEZONE                  — IANA name, e.g. "Australia/Melbourne"
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { expandSteps, type Step } from './lib/expandSteps.ts'
+import { pickDueSchedules } from './lib/pickDue.ts'
+import { runQueue } from '../_shared/runQueue.ts'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'Australia/Melbourne'
+const MQTT_HOST            = Deno.env.get('MQTT_HOST') ?? 'eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud'
+const MQTT_USER            = Deno.env.get('MQTT_USER')
+const MQTT_PASS            = Deno.env.get('MQTT_PASS')
+
+if (!MQTT_USER || !MQTT_PASS) {
+  throw new Error('MQTT_USER and MQTT_PASS must be set as Edge Function secrets')
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -69,18 +83,16 @@ function localTimeParts() {
     timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
   })
   const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
-  const hhmm = `${parts.hour.padStart(2, '0')}:${parts.minute.padStart(2, '0')}`
+  // en-AU + hour12:false on some ICU builds returns "24" for midnight; normalise to "00"
+  const hh   = parts.hour === '24' ? '00' : parts.hour.padStart(2, '0')
+  const hhmm = `${hh}:${parts.minute.padStart(2, '0')}`
   const dow  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(parts.weekday)
   return { hhmm, dow }
 }
 
-function currentHHMM(): string { return localTimeParts().hhmm }
-function currentDOW():  number { return localTimeParts().dow }
-
 Deno.serve(async (_req) => {
   try {
-    const now = currentHHMM()
-    const dow = currentDOW()
+    const { hhmm: now, dow } = localTimeParts()
 
     console.log(`[run-schedules] checking at ${now} DOW=${dow} (tz=${TIMEZONE})`)
 
@@ -89,7 +101,12 @@ Deno.serve(async (_req) => {
       timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(new Date())
 
-    const { data: schedules, error: schedErr } = await supabase
+    // Fetch every enabled schedule and minute-match in JS. The previous
+    // implementation used `start_time >= 'HH:MM:00' AND start_time < 'HH:MM:59'`
+    // which both excluded the HH:MM:59 second and was fragile against any
+    // schedule stored with sub-second precision. Schedule counts stay small
+    // (one row per program), so the cost is negligible.
+    const { data: allSchedules, error: schedErr } = await supabase
       .from('group_schedules')
       .select(`
         id,
@@ -117,15 +134,9 @@ Deno.serve(async (_req) => {
         )
       `)
       .eq('enabled', true)
-      .filter('start_time', 'gte', `${now}:00`)
-      .filter('start_time', 'lt',  `${now}:59`)
     if (schedErr) throw schedErr
 
-    const due = (schedules ?? []).filter(s =>
-      s.run_once_date
-        ? s.run_once_date === todayLocal
-        : Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
-    )
+    const due = pickDueSchedules(allSchedules ?? [], now, dow, todayLocal)
 
     const results: string[] = []
 
@@ -190,31 +201,31 @@ Deno.serve(async (_req) => {
       }
     }
 
-    // Kick the queue executor right now so steps fire immediately rather than waiting
-    // for the next minute boundary. Avoids the 1-minute lag between "scheduled" and
-    // "MQTT command actually published".
-    if (results.length > 0) {
-      try {
-        await fetch(`${SUPABASE_URL}/functions/v1/run-program-queue`, {
-          method:  'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-          },
-          body: '{}',
-        })
-      } catch (kickErr) {
-        // Non-fatal — pg_cron will pick it up on the next minute as a fallback.
-        console.warn('[run-schedules] queue-kick failed (will retry next minute):', kickErr)
-      }
+    // Fire any steps that are due right now (immediate ON steps for the
+    // schedules we just queued, plus anything overdue from a previous run).
+    // Inline call — no HTTP fetch — so this runs in the same minute as the
+    // scheduled time instead of waiting for the next pg_cron tick.
+    let firedNow: string[] = []
+    try {
+      const result = await runQueue({
+        supabase,
+        mqttHost: MQTT_HOST,
+        mqttUser: MQTT_USER!,
+        mqttPass: MQTT_PASS!,
+      })
+      firedNow = result.fired
+    } catch (queueErr) {
+      // Non-fatal — pg_cron will retry next minute. Log and let the schedule
+      // queueing succeed so it isn't lost.
+      console.warn('[run-schedules] inline queue drain failed (will retry next minute):', queueErr)
     }
 
     return new Response(
-      JSON.stringify({ ok: true, time: now, dow, queued: results }),
+      JSON.stringify({ ok: true, time: now, dow, queued: results, fired: firedNow }),
       { headers: { 'Content-Type': 'application/json' } }
-    )  } catch (err) {
+    )
+  } catch (err) {
     console.error('[run-schedules] error:', err)
     return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })
-
