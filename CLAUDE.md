@@ -171,5 +171,75 @@ VITE_MQTT_USER=your-mqtt-user
 VITE_MQTT_PASS=your-mqtt-password
 ```
 
-## Git Branch Convention
-Claude works on branches named `claude/*` which are auto-merged into main via GitHub Actions.
+## Working on this codebase
+
+### Branch hygiene
+- Start each new task from a fresh branch off `main`:
+  `git checkout main && git pull && git checkout -b claude/<description>`
+- One branch per coherent change. Don't pile unrelated work onto an existing branch
+  (the 2026-05-04 outage was caused partly by `claude/audit-2026-05` mixing security
+  audit, multi-tenancy, LMW integration, and password reset on one branch — when
+  things broke, there was no clean rollback).
+- ⚠ `claude/*` branches auto-merge to main via GitHub Actions. **Never push
+  half-finished work to a `claude/*` branch.** For interim/WIP saves, push to a
+  personal branch like `mandeep/wip-<topic>` that the auto-merge workflow does
+  not touch.
+
+### Commit + push frequency
+- Commit at every "this works" moment, not every "this is done" moment.
+- WIP commits are fine and expected. Don't optimize for clean git log; optimize
+  for never losing work.
+- Always push before ending a coding session — even mid-task.
+- Use the `wip` shell alias (one keystroke: stages everything, commits with a
+  timestamp message, pushes, creating upstream if needed).
+
+### Source-of-truth discipline
+- Production state must be reproducible from `main`. If something is deployed
+  (Edge Function code, migration, role config), the source must be committed
+  to git first.
+- Never apply a Supabase migration that doesn't exist as a file in
+  `supabase/migrations/`. If a migration exists in production but not as a
+  file (e.g. `drop_drivermate_schema_after_prod_migration` was applied directly),
+  reverse-engineer the file and commit it before doing anything else.
+- If deployed code differs from what's in git, that's a fire. Fix the
+  discrepancy before any other work.
+
+### Multi-Supabase safety
+- This repo's `.env.local` points to ONE Supabase project: **`lecssjvuskqemjzvjimo`**
+  (Sandy Soil PROD — has paying customers).
+- Driver Mate uses a DIFFERENT Supabase project (`aikjhswwmluxzejfsdrw`) in a
+  DIFFERENT repo. The MCP and tooling configured here can ONLY see Sandy Soil.
+- Before any DB write or migration, confirm the project ID is `lecssjvuskqemjzvjimo`.
+  Say it out loud if needed. Wrong-project mistakes have asymmetric blast radius:
+  Sandy Soil has customers, Driver Mate doesn't (yet).
+
+### Pre-stop checklist
+Before ending any coding session:
+1. `git status` — anything modified or untracked?
+2. `wip` if so.
+3. Branch is right (not `main`, not stale, not piling onto a `claude/*` branch
+   you shouldn't be on)?
+4. Anything deployed today that isn't in a committed file? Add the file, commit, push.
+
+### Production reliability mindset
+- This system controls real irrigation pumps for paying customers. Silent
+  failures cost crops. The 2026-05-04 outage went undetected for ~36 hours
+  because schedule failures had no alerting — that gap is what the alerting
+  follow-up task is for.
+- When working on `run-schedules` / `run-program-queue` / any Edge Function on
+  the cron path, error handling must be **loud, not silent**. Log the actual
+  error (don't let it stringify to `"[object Object]"`), and surface it where
+  a human will see (device_alerts, push, external monitor).
+- After deploying anything that touches the schedule path, watch logs for
+  10 minutes before walking away.
+
+### Diagnostic shortcuts (for when things break again)
+- Edge Functions all 500ing → check `net._http_response` for the actual response
+  body (status_code + content). The HTTP-level logs only show status codes; the
+  response body is where the real error lives.
+- PGRST002 "Could not query the database for the schema cache" → check
+  `pg_roles.rolconfig` for `authenticator` and verify `pgrst.db_schemas` only
+  references schemas that actually exist.
+- Schedules silently not firing → query `program_queue` first. Empty = upstream
+  (`run-schedules`) is broken. Populated but `fired_at` is null = downstream
+  (`run-program-queue` or MQTT) is broken.
