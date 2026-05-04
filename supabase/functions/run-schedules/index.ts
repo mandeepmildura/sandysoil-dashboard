@@ -1,95 +1,49 @@
 /**
  * Sandy Soil Automations — Scheduled Program Runner
  * Supabase Edge Function — invoked every minute via pg_cron
- *
- * What it does:
- *  1. Finds group_schedules that are enabled and due to run right now
- *  2. Walks the automation steps (on / delay / off) and calculates fire_at
- *     for each actionable step using cumulative delay offsets
- *  3. Inserts pending steps into program_queue
- *  4. The run-program-queue function fires steps when their fire_at arrives
- *
- * This two-step approach supports long delays (e.g. 2 h between ON and OFF)
- * that would exceed a single edge function invocation window.
- *
- * Setup:
- *  supabase functions deploy run-schedules
- *
- *  Then in Supabase SQL Editor, enable pg_cron and schedule both functions:
- *
- *  SELECT cron.schedule(
- *    'run-irrigation-schedules',
- *    '* * * * *',
- *    $$
- *      SELECT net.http_post(
- *        url     := 'https://YOUR_PROJECT.supabase.co/functions/v1/run-schedules',
- *        headers := jsonb_build_object(
- *          'Content-Type',  'application/json',
- *          'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY'
- *        ),
- *        body    := '{}'::jsonb
- *      );
- *    $$
- *  );
- *
- *  SELECT cron.schedule(
- *    'run-program-queue',
- *    '* * * * *',
- *    $$
- *      SELECT net.http_post(
- *        url     := 'https://YOUR_PROJECT.supabase.co/functions/v1/run-program-queue',
- *        headers := jsonb_build_object(
- *          'Content-Type',  'application/json',
- *          'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY'
- *        ),
- *        body    := '{}'::jsonb
- *      );
- *    $$
- *  );
- *
- * Required Edge Function secrets:
- *   SUPABASE_URL            — auto-set
- *   SUPABASE_SERVICE_ROLE_KEY — auto-set
- *   TIMEZONE                — IANA name, e.g. "Australia/Melbourne"
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { expandSteps, type Step } from './lib/expandSteps.ts'
+import { pickDueSchedules } from './lib/pickDue.ts'
+import { runQueue } from '../_shared/runQueue.ts'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'Australia/Melbourne'
+const MQTT_HOST            = Deno.env.get('MQTT_HOST') ?? 'eb65c13ec8ab480a9c8492778fdddda8.s1.eu.hivemq.cloud'
+const MQTT_USER            = Deno.env.get('MQTT_USER')
+const MQTT_PASS            = Deno.env.get('MQTT_PASS')
+
+if (!MQTT_USER || !MQTT_PASS) {
+  throw new Error('MQTT_USER and MQTT_PASS must be set as Edge Function secrets')
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-// Get local time parts using the IANA timezone (handles DST automatically)
 function localTimeParts() {
   const now = new Date()
   const fmt = new Intl.DateTimeFormat('en-AU', {
     timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
   })
   const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
-  const hhmm = `${parts.hour.padStart(2, '0')}:${parts.minute.padStart(2, '0')}`
+  const hh   = parts.hour === '24' ? '00' : parts.hour.padStart(2, '0')
+  const hhmm = `${hh}:${parts.minute.padStart(2, '0')}`
   const dow  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(parts.weekday)
   return { hhmm, dow }
 }
 
-function currentHHMM(): string { return localTimeParts().hhmm }
-function currentDOW():  number { return localTimeParts().dow }
-
 Deno.serve(async (_req) => {
   try {
-    const now = currentHHMM()
-    const dow = currentDOW()
+    const { hhmm: now, dow } = localTimeParts()
 
     console.log(`[run-schedules] checking at ${now} DOW=${dow} (tz=${TIMEZONE})`)
 
-    // Today's date in local timezone (YYYY-MM-DD)
     const todayLocal = new Intl.DateTimeFormat('en-CA', {
       timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(new Date())
 
-    const { data: schedules, error: schedErr } = await supabase
+    const { data: allSchedules, error: schedErr } = await supabase
       .from('group_schedules')
       .select(`
         id,
@@ -117,15 +71,9 @@ Deno.serve(async (_req) => {
         )
       `)
       .eq('enabled', true)
-      .filter('start_time', 'gte', `${now}:00`)
-      .filter('start_time', 'lt',  `${now}:59`)
     if (schedErr) throw schedErr
 
-    const due = (schedules ?? []).filter(s =>
-      s.run_once_date
-        ? s.run_once_date === todayLocal
-        : Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
-    )
+    const due = pickDueSchedules(allSchedules ?? [], now, dow, todayLocal)
 
     const results: string[] = []
 
@@ -140,16 +88,11 @@ Deno.serve(async (_req) => {
 
       if (!group) continue
 
-      // Resolve the device's MQTT prefix at queue time so the executor doesn't
-      // need to re-query devices later. Falls back to the legacy
-      // irrigation controller for any zone_groups row not yet linked to a device.
       const mqttBaseTopic = group.devices?.mqtt_topic_base
         ?? (group.devices?.device_id ? `farm/${group.devices.device_id.toLowerCase()}` : 'farm/irrigation1')
 
       console.log(`[run-schedules] queuing "${group.name}" → ${mqttBaseTopic} (${(group.zone_group_members ?? []).length} steps)`)
 
-      // Dedup: skip if this group already has unfired steps queued in the last 2 minutes
-      // (guards against pg_cron calling us twice in the same minute)
       const dedupSince = new Date(Date.now() - 2 * 60_000).toISOString()
       const { data: existing } = await supabase
         .from('program_queue')
@@ -164,8 +107,6 @@ Deno.serve(async (_req) => {
         continue
       }
 
-      // Base time is now — the function runs at the correct minute,
-      // so Date.now() is the right fire_at for immediate steps.
       const queueRows = expandSteps(
         group.id,
         group.run_mode,
@@ -182,7 +123,6 @@ Deno.serve(async (_req) => {
         results.push(`${group.name} → no actionable steps`)
       }
 
-      // Disable once-only schedules after firing
       if (sched.run_once_date) {
         await supabase.from('group_schedules')
           .update({ enabled: false, run_once_date: null })
@@ -190,31 +130,35 @@ Deno.serve(async (_req) => {
       }
     }
 
-    // Kick the queue executor right now so steps fire immediately rather than waiting
-    // for the next minute boundary. Avoids the 1-minute lag between "scheduled" and
-    // "MQTT command actually published".
-    if (results.length > 0) {
-      try {
-        await fetch(`${SUPABASE_URL}/functions/v1/run-program-queue`, {
-          method:  'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-          },
-          body: '{}',
-        })
-      } catch (kickErr) {
-        // Non-fatal — pg_cron will pick it up on the next minute as a fallback.
-        console.warn('[run-schedules] queue-kick failed (will retry next minute):', kickErr)
-      }
+    let firedNow: string[] = []
+    try {
+      const result = await runQueue({
+        supabase,
+        mqttHost: MQTT_HOST,
+        mqttUser: MQTT_USER!,
+        mqttPass: MQTT_PASS!,
+      })
+      firedNow = result.fired
+    } catch (queueErr) {
+      const qmsg = queueErr instanceof Error
+        ? queueErr.stack ?? queueErr.message
+        : queueErr && typeof queueErr === 'object'
+          ? JSON.stringify(queueErr)
+          : String(queueErr)
+      console.warn('[run-schedules] inline queue drain failed (will retry next minute):', qmsg)
     }
 
     return new Response(
-      JSON.stringify({ ok: true, time: now, dow, queued: results }),
+      JSON.stringify({ ok: true, time: now, dow, queued: results, fired: firedNow }),
       { headers: { 'Content-Type': 'application/json' } }
-    )  } catch (err) {
-    console.error('[run-schedules] error:', err)
-    return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    )
+  } catch (err) {
+    const msg = err instanceof Error
+      ? err.stack ?? err.message
+      : err && typeof err === 'object'
+        ? JSON.stringify(err)
+        : String(err)
+    console.error('[run-schedules] error:', msg)
+    return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })
-

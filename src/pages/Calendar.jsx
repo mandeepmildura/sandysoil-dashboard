@@ -40,7 +40,7 @@ function EventModal({ event, onClose, mqttPrefix, myDeviceId }) {
             step_type:       'off',
             device:          'a6v3',
             zone_num:        z.zone_num,
-            duration_min:    null,
+            duration_min:    dur,
             fire_at:         new Date(Date.now() + dur * 60_000).toISOString(),
             mqtt_base_topic: mqttPrefix,
           })
