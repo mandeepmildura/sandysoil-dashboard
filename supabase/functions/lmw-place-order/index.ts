@@ -208,7 +208,17 @@ async function placeOrder(args: PlaceArgs): Promise<PlaceResult> {
   params.set(map.hours,     String(args.hours))
   params.set(map.flow,      String(args.flow_lps))
   params.set(map.shift,     String(args.shift_no))
-  if (map.submit) params.set(map.submit, 'Submit')
+
+  // Submit detection: prefer the actual <button>/<input type=submit>
+  // discovered on the page; fall back to the conventional "Submit=Submit"
+  // pair that classic ASP code typically gates on.
+  if (form.submitButtons.length > 0) {
+    for (const btn of form.submitButtons) {
+      params.set(btn.name, btn.value || 'Submit')
+    }
+  } else {
+    params.set(map.submit ?? 'Submit', 'Submit')
+  }
 
   const postRes = await lmwPost(session, form.action, params)
   const respHtml = postRes.body
@@ -228,7 +238,9 @@ async function placeOrder(args: PlaceArgs): Promise<PlaceResult> {
     `action=${form.action}`,
     `hidden=[${Object.keys(form.hidden).join(',')}]`,
     `fields=[${form.fieldNames.join(',')}]`,
+    `submitBtns=${JSON.stringify(form.submitButtons)}`,
     `picked=${JSON.stringify(map)}`,
+    `posted=${params.toString()}`,
     `httpStatus=${postRes.status}`,
   ].join(' ')
 
@@ -246,7 +258,12 @@ async function placeOrder(args: PlaceArgs): Promise<PlaceResult> {
 // Form parsing helpers
 // ─────────────────────────────────────────────────────────────
 
-type ParsedForm = { action: string; hidden: Record<string, string>; fieldNames: string[] }
+type ParsedForm = {
+  action: string
+  hidden: Record<string, string>
+  fieldNames: string[]
+  submitButtons: { name: string; value: string }[]
+}
 
 function parseForm(html: string): ParsedForm | null {
   // Find the form whose action mentions the order page
@@ -263,6 +280,7 @@ function parseForm(html: string): ParsedForm | null {
 
   const hidden: Record<string, string> = {}
   const fieldNames: string[] = []
+  const submitButtons: { name: string; value: string }[] = []
 
   const inputRe = /<input\b([^>]*)>/gi
   let m: RegExpExecArray | null
@@ -270,8 +288,11 @@ function parseForm(html: string): ParsedForm | null {
     const attrs = parseAttrs(m[1])
     if (!attrs.name) continue
     fieldNames.push(attrs.name)
-    if ((attrs.type ?? 'text').toLowerCase() === 'hidden') {
+    const type = (attrs.type ?? 'text').toLowerCase()
+    if (type === 'hidden') {
       hidden[attrs.name] = attrs.value ?? ''
+    } else if (type === 'submit' || type === 'image' || type === 'button') {
+      submitButtons.push({ name: attrs.name, value: attrs.value ?? '' })
     }
   }
   // Selects (e.g. shift) — capture name so we know it exists
@@ -280,8 +301,22 @@ function parseForm(html: string): ParsedForm | null {
     const attrs = parseAttrs(m[1])
     if (attrs.name) fieldNames.push(attrs.name)
   }
+  // <button> elements — common in modern Bootstrap forms; default type
+  // is "submit" when omitted, so include unless explicitly type="button".
+  const buttonRe = /<button\b([^>]*)>([\s\S]*?)<\/button>/gi
+  while ((m = buttonRe.exec(body)) !== null) {
+    const attrs = parseAttrs(m[1])
+    const innerText = stripTags(m[2]).trim()
+    const type = (attrs.type ?? 'submit').toLowerCase()
+    if (type === 'button') continue
+    fieldNames.push(`button:${attrs.name ?? ''}=${attrs.value ?? innerText}`)
+    submitButtons.push({
+      name:  attrs.name  ?? 'Submit',
+      value: attrs.value ?? innerText ?? 'Submit',
+    })
+  }
 
-  return { action, hidden, fieldNames }
+  return { action, hidden, fieldNames, submitButtons }
 }
 
 function parseAttrs(s: string): Record<string, string> {
@@ -331,13 +366,15 @@ function stripTags(s: string): string {
 
 /**
  * Pull a window centred on the order form so the booking log captures
- * the structurally-relevant HTML (form + inputs + selects) rather than
- * the page header.
+ * the structurally-relevant HTML (form + inputs + selects + buttons)
+ * rather than the page header or an unrelated form.
  */
 function extractFormRegion(html: string): string | null {
   const m =
-    html.match(/<form[\s\S]{0,25000}?<\/form>/i) ??
-    html.match(/Place\s+An?\s*Order[\s\S]{0,25000}/i)
+    html.match(/<form[^>]*action="[^"]*OrderWater[^"]*"[^>]*>[\s\S]{0,25000}?<\/form>/i) ??
+    html.match(/<form[^>]*action="[^"]*SRWA_[^"]*"[^>]*>[\s\S]{0,25000}?<\/form>/i) ??
+    html.match(/Place\s+(?:An?\s*Order|Your\s+New\s+Orders)[\s\S]{0,25000}/i) ??
+    html.match(/<form[\s\S]{0,25000}?<\/form>/i)
   return m ? m[0].slice(0, 25000) : null
 }
 
