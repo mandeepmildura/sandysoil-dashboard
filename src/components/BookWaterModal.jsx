@@ -13,7 +13,7 @@ export default function BookWaterModal({ open, onClose, onPlaced, available_ml }
   const { placeOrder, submitting, error } = useLmwBooking()
 
   const [startDate, setStartDate] = useState('')
-  const [startTime, setStartTime] = useState('07:00')
+  const [startHour, setStartHour] = useState(7)
   const [hours, setHours]         = useState(12)
   const [flowLps, setFlowLps]     = useState(15)
   const [shift, setShift]         = useState(1)
@@ -40,7 +40,7 @@ export default function BookWaterModal({ open, onClose, onPlaced, available_ml }
   async function handleSubmit(e) {
     e.preventDefault()
     try {
-      const start_at_local = `${startDate}T${startTime}:00`
+      const start_at_local = `${startDate}T${String(startHour).padStart(2, '0')}:00:00`
       const result = await placeOrder({
         start_at_local,
         hours: Number(hours),
@@ -74,7 +74,7 @@ export default function BookWaterModal({ open, onClose, onPlaced, available_ml }
             ×
           </button>
         </div>
-        <p className="text-xs text-[#717975] mb-5">Times are in Australia/Melbourne.</p>
+        <p className="text-xs text-[#717975] mb-5">Australia/Melbourne · orders start on the hour · flow 4–139&nbsp;L/s.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -88,14 +88,16 @@ export default function BookWaterModal({ open, onClose, onPlaced, available_ml }
                 className="w-full border border-[#d8ddda] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#46a358]"
               />
             </Field>
-            <Field label="Start time">
-              <input
-                type="time"
-                required
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
+            <Field label="Start hour">
+              <select
+                value={startHour}
+                onChange={e => setStartHour(Number(e.target.value))}
                 className="w-full border border-[#d8ddda] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#46a358]"
-              />
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                ))}
+              </select>
             </Field>
           </div>
 
@@ -112,7 +114,7 @@ export default function BookWaterModal({ open, onClose, onPlaced, available_ml }
             <Field label="Flow rate (L/s)">
               <input
                 type="number"
-                min="1" max="200" step="1" required
+                min="4" max="139" step="1" required
                 value={flowLps}
                 onChange={e => setFlowLps(e.target.value)}
                 className="w-full border border-[#d8ddda] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#46a358]"
