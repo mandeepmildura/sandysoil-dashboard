@@ -85,6 +85,32 @@ export async function lmwGet(session: LmwSession, path: string): Promise<string>
   return html
 }
 
+/**
+ * POST a form-encoded body to an LMW page using the session cookie.
+ * Returns both status and HTML so callers (e.g. lmw-place-order) can
+ * inspect the confirmation page for receipt numbers or error banners.
+ */
+export async function lmwPost(
+  session: LmwSession,
+  path: string,
+  params: URLSearchParams,
+): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie':       session.cookie,
+    },
+    body: params.toString(),
+  })
+  const body = await res.text()
+  if (body.includes('Please log in again')) {
+    throw new Error(`LMW session expired during POST ${path}`)
+  }
+  return { status: res.status, body }
+}
+
 // ─────── cookie helpers ───────────────────────────────────────
 
 /** Extract `name=value` pairs from Set-Cookie headers, joined with `; ` */
