@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Card from '../components/Card'
 import PageHeader from '../components/PageHeader'
+import BookWaterModal from '../components/BookWaterModal'
 import { useLmwAllocation } from '../hooks/useLmwAllocation'
 import { useLmwOrders } from '../hooks/useLmwOrders'
 import { useLmwMeterReadings } from '../hooks/useLmwMeterReadings'
@@ -22,9 +23,10 @@ const fmtDateOnly = (s) => new Date(s).toLocaleDateString('en-AU', { timeZone: T
  * "Book missing windows" CTAs and direct order management here.
  */
 export default function Water() {
-  const { allocation, loading: allocLoading } = useLmwAllocation()
-  const { orders, loading: ordersLoading } = useLmwOrders()
+  const { allocation, loading: allocLoading, reload: reloadAllocation } = useLmwAllocation()
+  const { orders, loading: ordersLoading, reload: reloadOrders } = useLmwOrders()
   const { readings, loading: readingsLoading, totalAct, totalEst } = useLmwMeterReadings({ days: 365 })
+  const [bookOpen, setBookOpen] = useState(false)
 
   const lastSync = allocation?.snapshot_at
   const period1Pct = useMemo(() => {
@@ -34,10 +36,26 @@ export default function Water() {
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-7xl">
-      <PageHeader
-        eyebrow="Lower Murray Water"
-        title="Water"
-        subtitle={lastSync ? `Last synced ${fmtDate(lastSync)}` : 'Awaiting first sync'}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <PageHeader
+          eyebrow="Lower Murray Water"
+          title="Water"
+          subtitle={lastSync ? `Last synced ${fmtDate(lastSync)}` : 'Awaiting first sync'}
+        />
+        <button
+          type="button"
+          onClick={() => setBookOpen(true)}
+          className="px-4 py-2.5 rounded-md bg-gradient-to-r from-[#0d631b] to-[#46a358] text-white text-sm font-bold shadow-sm hover:opacity-90"
+        >
+          Book water
+        </button>
+      </div>
+
+      <BookWaterModal
+        open={bookOpen}
+        onClose={() => setBookOpen(false)}
+        onPlaced={() => { reloadOrders(); reloadAllocation() }}
+        available_ml={allocation?.available_ml}
       />
 
       {/* ── Allocation ─────────────────────────────────────── */}
