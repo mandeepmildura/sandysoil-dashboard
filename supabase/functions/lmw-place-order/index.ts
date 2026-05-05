@@ -198,11 +198,12 @@ async function placeOrder(args: PlaceArgs): Promise<PlaceResult> {
   if (!dt) return { ok: false, error: `Invalid start_at_local: ${args.start_at_local}` }
 
   const map = pickFieldMap(form.fieldNames)
-  // LMW form: "Start Date(s)/Time(s)/Hours/Flow(s)/Shift Number(s)" — multi-row
-  // form. Each field name carries a row index (e.g. Date1/Time1/...). The
-  // first row is enough for a single order. Time is the hour only (0-23);
-  // existing orders in the system are always on the hour.
-  params.set(map.startDate, `${pad(dt.day)}/${pad(dt.month)}/${dt.year}`)
+  // LMW order form fields (confirmed via diagnostic):
+  //   st_day0..9, st_hour0..9, length0..9, amount0..9, shift0..9
+  // The form is a 10-row grid; the first row (index 0) is enough for a
+  // single order. Date is the day-of-month digit only — the availability
+  // table at the top of the page fixes the month.
+  params.set(map.startDate, String(dt.day))
   params.set(map.startTime, String(dt.hour))
   params.set(map.hours,     String(args.hours))
   params.set(map.flow,      String(args.flow_lps))
@@ -311,13 +312,16 @@ function pickFieldMap(fieldNames: string[]): {
     return ''
   }
 
+  // Predicates listed in priority order: known-good LMW names first, then
+  // generic ASP fallbacks so this still works if a future page revision
+  // renames or restyles the form.
   return {
-    startDate: find(s => s === 'date' || s === 'startdate' || s === 'stdate' || s.endsWith('date')) || 'Date1',
-    startTime: find(s => s === 'time' || s === 'starttime' || s === 'sttime' || s.endsWith('time')) || 'Time1',
-    hours:     find(s => s === 'hours' || s === 'hour' || s === 'hrs' || s === 'duration')          || 'Hours1',
-    flow:      find(s => s === 'flow' || s === 'lps' || s === 'rate' || s.startsWith('flow'))       || 'Flow1',
-    shift:     find(s => s === 'shift' || s.startsWith('shift'))                                    || 'Shift1',
-    submit:    find(s => s === 'submit' || s === 'place' || s === 'order' || s.startsWith('btn'))   || null,
+    startDate: find(s => s === 'st_day'  || s === 'date'  || s === 'startdate' || s === 'stdate' || s.endsWith('date')) || 'st_day0',
+    startTime: find(s => s === 'st_hour' || s === 'time'  || s === 'starttime' || s === 'sttime' || s.endsWith('time')) || 'st_hour0',
+    hours:     find(s => s === 'length'  || s === 'hours' || s === 'hour'      || s === 'hrs'    || s === 'duration')   || 'length0',
+    flow:      find(s => s === 'amount'  || s === 'flow'  || s === 'lps'       || s === 'rate'   || s.startsWith('flow')) || 'amount0',
+    shift:     find(s => s === 'shift'   || s.startsWith('shift'))                                                       || 'shift0',
+    submit:    find(s => s === 'submit'  || s === 'place' || s === 'order'     || s.startsWith('btn'))                   || null,
   }
 }
 
