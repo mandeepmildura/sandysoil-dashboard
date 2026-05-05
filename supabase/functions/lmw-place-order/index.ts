@@ -198,12 +198,16 @@ async function placeOrder(args: PlaceArgs): Promise<PlaceResult> {
   if (!dt) return { ok: false, error: `Invalid start_at_local: ${args.start_at_local}` }
 
   const map = pickFieldMap(form.fieldNames)
+  // LMW form: "Start Date(s)/Time(s)/Hours/Flow(s)/Shift Number(s)" — multi-row
+  // form. Each field name carries a row index (e.g. Date1/Time1/...). The
+  // first row is enough for a single order. Time is the hour only (0-23);
+  // existing orders in the system are always on the hour.
   params.set(map.startDate, `${pad(dt.day)}/${pad(dt.month)}/${dt.year}`)
-  params.set(map.startTime, `${pad(dt.hour)}:${pad(dt.minute)}`)
+  params.set(map.startTime, String(dt.hour))
   params.set(map.hours,     String(args.hours))
   params.set(map.flow,      String(args.flow_lps))
   params.set(map.shift,     String(args.shift_no))
-  if (map.submit) params.set(map.submit, 'Place Order')
+  if (map.submit) params.set(map.submit, 'Submit')
 
   const postRes = await lmwPost(session, form.action, params)
   const respHtml = postRes.body
@@ -287,24 +291,33 @@ function parseAttrs(s: string): Record<string, string> {
   return out
 }
 
-/** Map of *visible* form field names → keys we recognise. Adjust here if LMW renames a field. */
+/**
+ * Map *visible* form field names → keys we recognise. The LMW form is a
+ * multi-row "Place Your New Orders Here" grid, so each name typically
+ * carries a row index (Date1, Time1, Hours1, Flow1, Shift1) or an
+ * array suffix (Date[], Date[1]). Match either.
+ */
 function pickFieldMap(fieldNames: string[]): {
   startDate: string; startTime: string; hours: string; flow: string; shift: string; submit: string | null
 } {
-  const find = (...candidates: RegExp[]) => {
-    for (const c of candidates) {
-      const hit = fieldNames.find(n => c.test(n))
+  // Lowercase + strip array brackets / numeric suffix once, for easy matching
+  const norm = (n: string) => n.toLowerCase().replace(/\[\d*\]$/, '').replace(/\d+$/, '')
+
+  const find = (...predicates: ((stem: string) => boolean)[]) => {
+    for (const p of predicates) {
+      const hit = fieldNames.find(n => p(norm(n)))
       if (hit) return hit
     }
     return ''
   }
+
   return {
-    startDate: find(/^date$/i, /start.*date/i, /^startdate$/i, /^stdate$/i)  || 'StartDate',
-    startTime: find(/^time$/i, /start.*time/i, /^starttime$/i, /^sttime$/i)  || 'StartTime',
-    hours:     find(/^hours?$/i, /duration/i, /^hrs$/i)                      || 'Hours',
-    flow:      find(/^flow/i, /lps/i, /rate/i)                               || 'Flow',
-    shift:     find(/^shift/i)                                               || 'Shift',
-    submit:    find(/^(submit|place|order|btn)/i) || null,
+    startDate: find(s => s === 'date' || s === 'startdate' || s === 'stdate' || s.endsWith('date')) || 'Date1',
+    startTime: find(s => s === 'time' || s === 'starttime' || s === 'sttime' || s.endsWith('time')) || 'Time1',
+    hours:     find(s => s === 'hours' || s === 'hour' || s === 'hrs' || s === 'duration')          || 'Hours1',
+    flow:      find(s => s === 'flow' || s === 'lps' || s === 'rate' || s.startsWith('flow'))       || 'Flow1',
+    shift:     find(s => s === 'shift' || s.startsWith('shift'))                                    || 'Shift1',
+    submit:    find(s => s === 'submit' || s === 'place' || s === 'order' || s.startsWith('btn'))   || null,
   }
 }
 
