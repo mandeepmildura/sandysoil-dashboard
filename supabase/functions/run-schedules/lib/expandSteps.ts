@@ -71,7 +71,7 @@ export function expandSteps(
         step_type:    'off',
         device,
         zone_num:     step.zone_num,
-        duration_min: null,
+        duration_min: step.duration_min ?? 0,
         fire_at:      new Date(offAtMs).toISOString(),
         mqtt_base_topic: mqttBaseTopic,
       })
