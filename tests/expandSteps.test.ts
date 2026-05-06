@@ -67,7 +67,7 @@ describe('expandSteps', () => {
     ], BASE)
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({ step_type: 'on',  device: 'a6v3', zone_num: 3 })
-    expect(rows[1]).toMatchObject({ step_type: 'off', device: 'a6v3', zone_num: 3, duration_min: null })
+    expect(rows[1]).toMatchObject({ step_type: 'off', device: 'a6v3', zone_num: 3, duration_min: 12 })
     expect(rows[1].fire_at).toBe(new Date(BASE + 12 * 60_000).toISOString())
   })
 
