@@ -48,7 +48,7 @@ Why it slipped through:
 | # | What | Where | Status |
 |---|---|---|---|
 | 1 | `run-schedules` redeployed (v22) using `import { expandSteps } from './lib/expandSteps.ts'`. Single source of truth restored. | Edge Function `run-schedules` v22 | DONE |
-| 2 | `expandSteps.ts:74` — A6v3 `off` row's `duration_min` set to parent on-step value (was `null`, would have failed `program_queue.duration_min` NOT NULL). | `supabase/functions/run-schedules/lib/expandSteps.ts` | DONE — PR #19, merged in `955254f` |
+| 2 | `expandSteps.ts:74` — A6v3 `off` row's `duration_min` set to parent on-step value (was `null`). The column is nullable (`duration_min integer` — no NOT NULL constraint) so the null would not have failed the insert; the real reason this matters is that `run-program-queue` and the watchdog need `duration_min` on the `off` row to know how long the zone was intended to run. | `supabase/functions/run-schedules/lib/expandSteps.ts` | DONE — PR #19, merged in `955254f` |
 | 3 | `tests/expandSteps.test.ts` — assertion updated to match #2. 14/14 tests passing. | `tests/expandSteps.test.ts` | DONE |
 | 4 | New Edge Function `a6v3-runaway-watchdog` — every minute, force-off any A6v3 zone running past `A6V3_MAX_RUNTIME_MIN` (default 90 min), close the `zone_history` row, raise a fault alert. Defense-in-depth, independent of scheduler. | `supabase/functions/a6v3-runaway-watchdog/index.ts` | DONE — branch `claude/a6v3-runaway-watchdog`, pg_cron jobid 16 active |
 
