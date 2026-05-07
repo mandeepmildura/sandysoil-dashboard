@@ -172,4 +172,4 @@ VITE_MQTT_PASS=your-mqtt-password
 ```
 
 ## Git Branch Convention
-Claude works on branches named `claude/*` which are auto-merged into main via GitHub Actions.
+Claude works on branches named `claude/*`. These branches run CI tests automatically via GitHub Actions but **do not auto-merge** — a manual PR review is required before merging to main.
