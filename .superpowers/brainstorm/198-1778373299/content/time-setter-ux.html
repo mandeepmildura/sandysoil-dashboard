@@ -1,0 +1,87 @@
+<h2>How will you set program start times?</h2>
+<p class="subtitle">Two options — pick the one that fits how you actually work.</p>
+
+<div class="options">
+
+  <div class="option selected" data-choice="time-picker" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Time picker in program settings (recommended to start)</h3>
+      <p>When you create or edit a program (e.g., "Avocados"), you type the start time and pick the days. The Calendar page then shows all programs as colour-coded blocks on a timeline so you can see overlaps at a glance — but scheduling is done via inputs, not dragging.</p>
+      <div style="margin-top:0.75rem;background:#f8faf9;border-radius:8px;padding:0.75rem;font-size:0.78rem;color:#3b4a44">
+        <p style="font-weight:700;color:#0d4d20;margin-bottom:0.4rem">What you'd see:</p>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap">
+          <div style="background:white;border:1px solid #e4e9e6;border-radius:6px;padding:0.6rem 0.8rem;min-width:180px">
+            <p style="font-size:0.7rem;font-weight:700;color:#7a8580;margin-bottom:0.4rem">AVOCADOS PROGRAM</p>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">
+              <span style="font-size:0.7rem;color:#7a8580;width:60px">Start time</span>
+              <span style="background:#f0f4f1;border-radius:4px;padding:2px 8px;font-size:0.8rem;font-weight:600">04:00</span>
+            </div>
+            <div style="display:flex;gap:4px;margin-top:0.4rem">
+              <span style="background:#0d4d20;color:white;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">M</span>
+              <span style="background:#0d4d20;color:white;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">W</span>
+              <span style="background:#0d4d20;color:white;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">F</span>
+              <span style="background:#e4e9e6;color:#7a8580;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">T</span>
+              <span style="background:#e4e9e6;color:#7a8580;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">S</span>
+            </div>
+          </div>
+          <div style="background:white;border:1px solid #e4e9e6;border-radius:6px;padding:0.6rem 0.8rem;min-width:180px">
+            <p style="font-size:0.7rem;font-weight:700;color:#7a8580;margin-bottom:0.4rem">CITRUS PROGRAM</p>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">
+              <span style="font-size:0.7rem;color:#7a8580;width:60px">Start time</span>
+              <span style="background:#f0f4f1;border-radius:4px;padding:2px 8px;font-size:0.8rem;font-weight:600">06:00</span>
+            </div>
+            <div style="display:flex;gap:4px;margin-top:0.4rem">
+              <span style="background:#0d4d20;color:white;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">M</span>
+              <span style="background:#0d4d20;color:white;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">W</span>
+              <span style="background:#0d4d20;color:white;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">F</span>
+              <span style="background:#e4e9e6;color:#7a8580;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">T</span>
+              <span style="background:#e4e9e6;color:#7a8580;border-radius:4px;padding:2px 6px;font-size:0.65rem;font-weight:700">S</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:0.75rem;color:#5a756b;margin-top:0.6rem">✓ Build in one session · no extra libraries · works on mobile</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="drag" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Drag-to-place on a day timeline</h3>
+      <p>The Calendar page shows an hourly day view. You drag a program block left/right to set its start time. Duration is shown by block width — zone cards inside show per-zone time allocation. Like Google Calendar, but for irrigation programs.</p>
+      <div style="margin-top:0.75rem;background:#f8faf9;border-radius:8px;padding:0.75rem">
+        <!-- Mini timeline mockup -->
+        <p style="font-size:0.7rem;font-weight:700;color:#7a8580;margin-bottom:0.5rem">DAY VIEW — drag blocks to reschedule</p>
+        <div style="position:relative;background:white;border-radius:6px;border:1px solid #e4e9e6;padding:0.5rem;overflow:hidden">
+          <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:#7a8580;margin-bottom:6px;padding:0 2px">
+            <span>2am</span><span>4am</span><span>6am</span><span>8am</span><span>10am</span>
+          </div>
+          <div style="position:relative;height:24px;background:#f8faf9;border-radius:4px;margin-bottom:4px">
+            <div style="position:absolute;left:16.6%;width:16.6%;height:100%;background:linear-gradient(90deg,#0d4d20,#1f7a37);border-radius:4px;display:flex;align-items:center;padding:0 6px;cursor:grab">
+              <span style="font-size:0.6rem;color:white;font-weight:700;white-space:nowrap">PUMP ↔</span>
+            </div>
+          </div>
+          <div style="position:relative;height:24px;background:#f8faf9;border-radius:4px;margin-bottom:4px">
+            <div style="position:absolute;left:16.6%;width:8.3%;height:100%;background:#2e7d32;border-radius:4px;display:flex;align-items:center;padding:0 6px;cursor:grab">
+              <span style="font-size:0.6rem;color:white;font-weight:700;white-space:nowrap">AVOCADOS ↔</span>
+            </div>
+          </div>
+          <div style="position:relative;height:24px;background:#f8faf9;border-radius:4px">
+            <div style="position:absolute;left:24.9%;width:8.3%;height:100%;background:#0277bd;border-radius:4px;display:flex;align-items:center;padding:0 6px;cursor:grab">
+              <span style="font-size:0.6rem;color:white;font-weight:700;white-space:nowrap">CITRUS ↔</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:0.75rem;color:#5a756b;margin-top:0.6rem">⚠ Needs extra drag library or custom pointer events · complex on touch/mobile · 2–3× build time</p>
+    </div>
+  </div>
+
+</div>
+
+<div style="background:#fff8e1;border:1px solid #f0d060;border-radius:10px;padding:1rem;margin-top:1.5rem;font-size:0.8rem;color:#5a4a00">
+  <strong>My suggestion:</strong> Ship A now — time picker with a visual day-timeline on the Calendar page so you can <em>see</em> all your programs laid out. Dragging (B) can be added later once the scheduling model is solid. The hard part is the DB + scheduler logic, not the time input widget.
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Which fits better? Let me know in the terminal.</p>

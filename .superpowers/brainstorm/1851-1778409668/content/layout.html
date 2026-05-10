@@ -1,0 +1,26 @@
+<h2>A6v3 Pressure Graph — Layout</h2>
+<p class="subtitle">Currently the graph is 160px tall, hidden behind a toggle inside the CH1 Pressure card. Which direction should we take it?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Compact — stay in the card</h3>
+      <p>Keep the graph embedded in the CH1 Pressure card, but taller (240px), visible by default, with better styling — reference lines, improved tooltip, Min/Max/Avg stats strip below.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Prominent — full-width panel</h3>
+      <p>Promote the graph to a full-width card below the relay grid (like PressureAnalysis). Gauge stays in the sidebar, graph gets its own section with a header, time-range pills, and stats row.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Split — gauge + graph side by side</h3>
+      <p>The CH1 card becomes wider: gauge on the left, graph on the right in a two-column layout. Stats strip at the bottom of the card.</p>
+    </div>
+  </div>
+</div>

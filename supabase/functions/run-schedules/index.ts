@@ -123,8 +123,8 @@ Deno.serve(async (_req) => {
           name,
           run_mode,
           duration_min,
-          farm_devices (
-            mqtt_base_topic,
+          devices (
+            mqtt_topic_base,
             device_id,
             pump_zone_num
           ),
@@ -158,7 +158,7 @@ Deno.serve(async (_req) => {
         run_mode: string
         duration_min: number | null
         zone_group_members: Step[]
-        farm_devices: { mqtt_base_topic: string | null, device_id: string, pump_zone_num: number | null } | null
+        devices: { mqtt_topic_base: string | null, device_id: string, pump_zone_num: number | null } | null
       } | null
 
       if (!group) continue
@@ -166,8 +166,8 @@ Deno.serve(async (_req) => {
       // Resolve the device's MQTT prefix at queue time so the executor doesn't
       // need to re-query devices later. Falls back to the legacy
       // irrigation controller for any zone_groups row not yet linked to a device.
-      const mqttBaseTopic = group.farm_devices?.mqtt_base_topic
-        ?? (group.farm_devices?.device_id ? `farm/${group.farm_devices.device_id.toLowerCase()}` : 'farm/irrigation1')
+      const mqttBaseTopic = group.devices?.mqtt_topic_base
+        ?? (group.devices?.device_id ? `farm/${group.devices.device_id.toLowerCase()}` : 'farm/irrigation1')
 
       console.log(`[run-schedules] queuing "${group.name}" → ${mqttBaseTopic} (${(group.zone_group_members ?? []).length} steps)`)
 
@@ -189,7 +189,7 @@ Deno.serve(async (_req) => {
 
       // Base time is now — the function runs at the correct minute,
       // so Date.now() is the right fire_at for immediate steps.
-      const pumpZoneNum: number | null = group.farm_devices?.pump_zone_num ?? null
+      const pumpZoneNum: number | null = group.devices?.pump_zone_num ?? null
       const programDurationMin: number = group.duration_min ?? 30
 
       // Back-to-back detection: if another due program ends within 2 min of this one starting,

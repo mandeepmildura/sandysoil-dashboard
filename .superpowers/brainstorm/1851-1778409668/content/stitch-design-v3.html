@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Dashboard Panel</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "error": "#ba1a1a",
+                "secondary": "#00639a",
+                "on-primary-container": "#8bdd86",
+                "on-secondary-fixed": "#001d32",
+                "primary-container": "#0d631b",
+                "on-tertiary-fixed": "#0d1e24",
+                "inverse-on-surface": "#f1f1f1",
+                "surface-variant": "#e2e2e2",
+                "on-tertiary-container": "#bbccd6",
+                "on-secondary-container": "#004f7c",
+                "on-tertiary": "#ffffff",
+                "surface-container-low": "#f3f3f3",
+                "surface-container-high": "#e8e8e8",
+                "surface-container": "#eeeeee",
+                "surface-container-highest": "#e2e2e2",
+                "surface-container-lowest": "#ffffff",
+                "tertiary-fixed": "#d4e5ef",
+                "primary-fixed": "#a3f69c",
+                "on-error-container": "#93000a",
+                "primary-fixed-dim": "#88d982",
+                "surface-bright": "#f9f9f9",
+                "secondary-fixed": "#cee5ff",
+                "surface-tint": "#1b6d24",
+                "outline": "#707a6c",
+                "on-tertiary-fixed-variant": "#394951",
+                "on-secondary": "#ffffff",
+                "tertiary-fixed-dim": "#b8c9d2",
+                "surface": "#f9f9f9",
+                "tertiary-container": "#47575f",
+                "on-primary-fixed-variant": "#005312",
+                "outline-variant": "#bfcaba",
+                "on-error": "#ffffff",
+                "secondary-fixed-dim": "#96ccff",
+                "primary": "#00490e",
+                "on-surface": "#1a1c1c",
+                "inverse-primary": "#88d982",
+                "on-background": "#1a1c1c",
+                "on-primary": "#ffffff",
+                "error-container": "#ffdad6",
+                "inverse-surface": "#2f3131",
+                "surface-dim": "#dadada",
+                "tertiary": "#304047",
+                "secondary-container": "#7ec1fe",
+                "on-surface-variant": "#40493d",
+                "background": "#f9f9f9",
+                "on-primary-fixed": "#002203",
+                "on-secondary-fixed-variant": "#004a75"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {},
+        "fontFamily": {
+                "headline": [
+                        "Manrope"
+                ],
+                "display": [
+                        "Manrope"
+                ],
+                "body": [
+                        "Inter"
+                ],
+                "label": [
+                        "Inter"
+                ]
+        },
+        "fontSize": {}
+},
+    },
+  }
+</script>
+<style>
+  body { font-family: 'Inter', sans-serif; background-color: #f3f3f3; }
+  h1, h2, h3, h4, h5, h6, .font-headline, .font-display { font-family: 'Manrope', sans-serif; }
+</style>
+</head>
+<body class="p-8 flex justify-center bg-surface-container-low min-h-screen items-start">
+<div class="w-full max-w-5xl bg-surface-container-lowest rounded-xl p-6 relative overflow-hidden">
+<div class="absolute top-0 left-0 w-full h-[3px] bg-primary"></div>
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+<div class="flex items-center gap-4">
+<h2 class="font-headline text-2xl font-bold text-on-surface">CH1 Pressure History</h2>
+<div class="bg-primary-container text-on-primary-container text-sm font-semibold px-3 py-1 rounded-full shadow-[0_0_12px_rgba(13,99,27,0.3)] flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-on-primary-container animate-pulse"></span>
+          42.3 PSI live
+        </div>
+</div>
+<div class="flex bg-surface-container-low rounded-lg p-1">
+<button class="px-4 py-1.5 text-sm font-medium text-on-surface-variant rounded-md hover:bg-surface-container-lowest transition-colors">1h</button>
+<button class="px-4 py-1.5 text-sm font-medium bg-surface-container-lowest text-primary shadow-sm rounded-md transition-colors">6h</button>
+<button class="px-4 py-1.5 text-sm font-medium text-on-surface-variant rounded-md hover:bg-surface-container-lowest transition-colors">24h</button>
+<button class="px-4 py-1.5 text-sm font-medium text-on-surface-variant rounded-md hover:bg-surface-container-lowest transition-colors">7d</button>
+<button class="px-4 py-1.5 text-sm font-medium text-on-surface-variant rounded-md hover:bg-surface-container-lowest transition-colors">Custom</button>
+</div>
+</div>
+<div class="relative h-[240px] w-full mb-8">
+<div class="absolute inset-0 flex flex-col justify-between z-0">
+<div class="border-b border-surface-variant/50 w-full h-0"></div>
+<div class="border-b border-surface-variant/50 w-full h-0"></div>
+<div class="border-b border-surface-variant/50 w-full h-0"></div>
+<div class="border-b border-surface-variant/50 w-full h-0"></div>
+<div class="border-b border-surface-variant/50 w-full h-0"></div>
+</div>
+<div class="absolute top-[20%] left-0 w-full z-10 border-t-2 border-dashed border-error">
+<span class="absolute right-0 -top-6 text-xs font-bold text-error bg-surface-container-lowest px-1">High alert 69 PSI</span>
+</div>
+<svg class="w-full h-full relative z-20" preserveaspectratio="none" viewbox="0 0 1000 240">
+<defs>
+<lineargradient id="line-gradient" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#0d631b" stop-opacity="0.2"></stop>
+<stop offset="100%" stop-color="#0d631b" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+<path d="M0,240 L0,150 C50,130 100,160 150,140 C200,120 250,180 300,150 C350,120 400,100 450,130 C500,160 550,200 600,170 C650,140 700,90 750,110 C800,130 850,150 900,120 C950,90 1000,140 1000,140 L1000,240 Z" fill="url(#line-gradient)"></path>
+<path d="M0,150 C50,130 100,160 150,140 C200,120 250,180 300,150 C350,120 400,100 450,130 C500,160 550,200 600,170 C650,140 700,90 750,110 C800,130 850,150 900,120 C950,90 1000,140 1000,140" fill="none" stroke="#0d631b" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+<div class="absolute bottom-0 left-0 w-full flex justify-between text-xs text-on-surface-variant mt-2 translate-y-6">
+<span>00:00</span>
+<span>01:00</span>
+<span>02:00</span>
+<span>03:00</span>
+<span>04:00</span>
+<span>05:00</span>
+<span>06:00</span>
+</div>
+</div>
+<div class="mt-12 bg-surface-container-low rounded-xl p-6 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-surface-variant">
+<div class="flex-1 flex flex-col items-center justify-center py-4 md:py-0">
+<span class="text-sm font-medium text-on-surface-variant mb-1">Min</span>
+<span class="font-headline text-2xl font-bold text-on-surface">38.2 PSI</span>
+</div>
+<div class="flex-1 flex flex-col items-center justify-center py-4 md:py-0">
+<span class="text-sm font-medium text-on-surface-variant mb-1">Max</span>
+<span class="font-headline text-2xl font-bold text-on-surface">52.1 PSI</span>
+</div>
+<div class="flex-1 flex flex-col items-center justify-center py-4 md:py-0">
+<span class="text-sm font-medium text-on-surface-variant mb-1">Avg</span>
+<span class="font-headline text-2xl font-bold text-on-surface">44.7 PSI</span>
+</div>
+</div>
+</div>
+</body></html>

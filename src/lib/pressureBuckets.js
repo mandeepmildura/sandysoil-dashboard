@@ -81,3 +81,20 @@ export function bucketA6v3(rows, multiDay) {
     .sort((a, b) => a._ts - b._ts)
     .map(b => ({ time: b.time, psi: avg(b.psi) }))
 }
+
+/**
+ * Compute min, max, avg PSI from bucketed A6v3 history rows.
+ * Returns null when there is no valid data.
+ *
+ * @param {Array<{psi: number|null}>} data
+ * @returns {{ min: number, max: number, avg: number } | null}
+ */
+export function computePressureStats(data) {
+  const vals = data.map(d => d.psi).filter(v => v != null)
+  if (!vals.length) return null
+  return {
+    min: Math.min(...vals),
+    max: Math.max(...vals),
+    avg: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10,
+  }
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import StatusChip from '../components/StatusChip'
 import PageHeader from '../components/PageHeader'
+import ProgramBuilder from '../components/ProgramBuilder'
 import { btnPrimary, btnPrimaryStyle, btnSecondary } from '../components/ui'
 import { supabase } from '../lib/supabase'
 import { useMyDevice } from '../hooks/useMyDevice'
@@ -21,7 +22,7 @@ const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
 const COLORS = ['#0d631b', '#2e7d32', '#00639a', '#6a4c93', '#c0392b', '#d35400', '#16a085', '#8e44ad']
 
 // ── Event detail modal ──────────────────────────────────────────────────────
-function EventModal({ event, onClose, mqttPrefix, myDeviceId, onReload }) {
+function EventModal({ event, onClose, mqttPrefix, myDeviceId, onReload, onEdit }) {
   const p = event.program
   const [running, setRunning] = useState(false)
 
@@ -132,6 +133,14 @@ function EventModal({ event, onClose, mqttPrefix, myDeviceId, onReload }) {
 
         {p.schedule?.id && (
           <div style={{ display: 'flex', gap: 8, marginTop: '0.75rem' }}>
+            {onEdit && (
+              <button
+                onClick={() => { onEdit(p); onClose() }}
+                style={{ background: '#e8f4ea', color: '#0d4d20', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Edit
+              </button>
+            )}
             <button
               onClick={async () => {
                 if (!window.confirm('Delete this schedule? This cannot be undone.')) return
@@ -156,112 +165,6 @@ function EventModal({ event, onClose, mqttPrefix, myDeviceId, onReload }) {
             </button>
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-// ── Add schedule modal ──────────────────────────────────────────────────────
-function AddScheduleModal({ onClose, onSaved }) {
-  const [groups, setGroups]               = useState([])
-  const [selectedGroupId, setSelectedGroupId] = useState('')
-  const [days, setDays]                   = useState([false,false,false,false,false,false,false])
-  const [startTime, setStartTime]         = useState('06:00')
-  const [saving, setSaving]               = useState(false)
-  const [error, setError]                 = useState(null)
-
-  useEffect(() => {
-    supabase
-      .from('zone_groups')
-      .select('id, name, zone_group_members(device, zone_num, duration_min)')
-      .order('name')
-      .then(({ data }) => {
-        const list = data ?? []
-        setGroups(list)
-        if (list.length) setSelectedGroupId(list[0].id)
-      })
-  }, [])
-
-  function toggleDay(i) { setDays(prev => prev.map((v, j) => j === i ? !v : v)) }
-
-  function deviceHint(group) {
-    const devices = [...new Set((group.zone_group_members ?? []).map(m => m.device ?? 'irrigation1'))]
-    return devices.join(', ')
-  }
-
-  async function save() {
-    if (!selectedGroupId)    { setError('Select a group'); return }
-    if (!days.some(Boolean)) { setError('Select at least one day'); return }
-    setSaving(true); setError(null)
-    try {
-      const selectedGroup = groups.find(g => g.id === selectedGroupId)
-      // Two day-numbering systems in play:
-      //   Calendar buttons: Mon=0 … Sat=5, Sun=6  (DAY_NAMES array order)
-      //   DB / JS getDay(): Sun=0, Mon=1 … Sat=6
-      // Map button index → DB value: Sun (i=6) → 0, all others → i+1
-      const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
-      const { data: { session } } = await supabase.auth.getSession()
-      const { error: e } = await supabase.from('group_schedules').insert({
-        group_id: selectedGroupId,
-        label: selectedGroup.name,
-        days_of_week: dow,
-        start_time: startTime,
-        enabled: true,
-        customer_id: session?.user?.id,
-      })
-      if (e) throw e
-      onSaved(); onClose()
-    } catch (err) {
-      setError(err.message ?? 'Save failed')
-    } finally { setSaving(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
-        <h2 className="font-headline font-bold text-lg text-[#1a1c1c] mb-4">Add Schedule</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-1">Group</label>
-            {groups.length === 0 ? (
-              <p className="text-xs text-[#40493d] italic">No groups found. Create a group in the Irrigation or A6v3 page first.</p>
-            ) : (
-              <select value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}
-                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
-                {groups.map(g => (
-                  <option key={g.id} value={g.id}>{g.name} ({deviceHint(g)})</option>
-                ))}
-              </select>
-            )}
-          </div>
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-2">Days</label>
-            <div className="flex gap-1.5">
-              {DAY_NAMES.map((d, i) => (
-                <button key={i} type="button" onClick={() => toggleDay(i)}
-                  className={`w-8 h-8 rounded-full text-xs font-semibold transition-colors ${days[i] ? 'bg-[#0d631b] text-white' : 'bg-[#f3f3f3] text-[#40493d]'}`}>
-                  {d[0]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-1">Start Time</label>
-            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
-          </div>
-          {error && <p className="text-xs text-[#ba1a1a]">{error}</p>}
-          <div className="flex gap-3 pt-1">
-            <button onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d] hover:bg-[#e8e8e8] transition-colors">
-              Cancel
-            </button>
-            <button onClick={save} disabled={saving || groups.length === 0}
-              className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity">
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -333,7 +236,8 @@ export default function Calendar() {
   const myDeviceId = myDevice?.device_id ?? 'irrigation1'
   const [view, setView]               = useState('week')
   const [selectedDay, setSelectedDay] = useState(new Date())
-  const [showAddModal, setShowAddModal] = useState(false)
+  const [showProgramBuilder, setShowProgramBuilder] = useState(false)
+  const [editingProgram, setEditingProgram]         = useState(null)
   const [showRunModal, setShowRunModal] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [saved, setSaved]             = useState(false)
@@ -359,7 +263,7 @@ export default function Calendar() {
     async function load() {
       setLoading(true)
       const [groupsRes, membersRes, schedulesRes] = await Promise.all([
-        supabase.from('zone_groups').select('id, name, run_mode'),
+        supabase.from('zone_groups').select('id, name, run_mode, duration_min'),
         supabase.from('zone_group_members').select('group_id, zone_num, duration_min, sort_order, device').order('sort_order'),
         supabase.from('group_schedules').select('id, group_id, label, days_of_week, start_time, enabled'),
       ])
@@ -613,11 +517,11 @@ export default function Calendar() {
           </div>
 
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => setShowProgramBuilder(true)}
             className={`w-full ${btnPrimary}`}
             style={btnPrimaryStyle}
           >
-            + Add Schedule
+            + New Program
           </button>
           <button onClick={() => setShowRunModal(true)} className={`w-full ${btnSecondary}`}>
             Run Zone Now
@@ -625,9 +529,28 @@ export default function Calendar() {
         </div>
       </div>
 
-      {showAddModal    && <AddScheduleModal onClose={() => setShowAddModal(false)} onSaved={onSaved} />}
+      {(showProgramBuilder || editingProgram) && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => { setShowProgramBuilder(false); setEditingProgram(null) }}>
+          <div className="bg-white rounded-2xl shadow-xl overflow-y-auto max-h-[90vh]"
+            onClick={e => e.stopPropagation()}>
+            <ProgramBuilder
+              pumpZoneNum={myDevice?.pump_zone_num ?? null}
+              existingSchedules={programs.filter(p => p.schedule).map(p => ({
+                group_id: p.id,
+                start_time: p.schedule.start_time,
+                days_of_week: p.schedule.days_of_week,
+                zone_groups: { duration_min: p.duration_min ?? 30 },
+              }))}
+              onSave={() => { setShowProgramBuilder(false); setEditingProgram(null); onSaved() }}
+              onCancel={() => { setShowProgramBuilder(false); setEditingProgram(null) }}
+              editProgram={editingProgram}
+            />
+          </div>
+        </div>
+      )}
       {showRunModal    && <RunZoneModal onClose={() => setShowRunModal(false)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} />}
-      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} onReload={reload} />}
+      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} onReload={reload} onEdit={(prog) => { setSelectedEvent(null); setEditingProgram(prog) }} />}
     </div>
   )
 }

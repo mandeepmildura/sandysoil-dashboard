@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CH1 Pressure History</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-variant": "#e2e2e2",
+                      "on-tertiary": "#ffffff",
+                      "tertiary-container": "#47575f",
+                      "surface-bright": "#f9f9f9",
+                      "inverse-primary": "#88d982",
+                      "on-error": "#ffffff",
+                      "surface": "#f9f9f9",
+                      "on-primary-fixed-variant": "#005312",
+                      "on-secondary-fixed": "#001d32",
+                      "surface-container": "#eeeeee",
+                      "surface-container-high": "#e8e8e8",
+                      "secondary-container": "#7ec1fe",
+                      "surface-container-highest": "#e2e2e2",
+                      "secondary": "#00639a",
+                      "secondary-fixed": "#cee5ff",
+                      "surface-tint": "#1b6d24",
+                      "on-surface-variant": "#40493d",
+                      "on-secondary": "#ffffff",
+                      "tertiary-fixed-dim": "#b8c9d2",
+                      "tertiary-fixed": "#d4e5ef",
+                      "primary-container": "#0d631b",
+                      "on-primary-fixed": "#002203",
+                      "background": "#f9f9f9",
+                      "error-container": "#ffdad6",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary-container": "#bbccd6",
+                      "tertiary": "#304047",
+                      "on-tertiary-fixed-variant": "#394951",
+                      "on-secondary-container": "#004f7c",
+                      "surface-container-low": "#f3f3f3",
+                      "outline-variant": "#bfcaba",
+                      "primary-fixed-dim": "#88d982",
+                      "surface-dim": "#dadada",
+                      "on-surface": "#1a1c1c",
+                      "error": "#ba1a1a",
+                      "outline": "#707a6c",
+                      "on-secondary-fixed-variant": "#004a75",
+                      "on-tertiary-fixed": "#0d1e24",
+                      "on-background": "#1a1c1c",
+                      "on-primary": "#ffffff",
+                      "on-error-container": "#93000a",
+                      "primary-fixed": "#a3f69c",
+                      "on-primary-container": "#8bdd86",
+                      "primary": "#00490e",
+                      "secondary-fixed-dim": "#96ccff",
+                      "inverse-surface": "#2f3131",
+                      "inverse-on-surface": "#f1f1f1"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "2xl": "1rem",
+                      "full": "9999px"
+              },
+              "spacing": {},
+              "fontFamily": {
+                      "headline": [
+                              "Manrope"
+                      ],
+                      "display": [
+                              "Manrope"
+                      ],
+                      "body": [
+                              "Inter"
+                      ],
+                      "label": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {}
+      },
+          },
+        }
+      </script>
+<style>
+        .custom-shadow {
+            box-shadow: 0px 4px 12px rgba(26, 28, 28, 0.06);
+        }
+        .chart-gradient {
+            background: linear-gradient(180deg, rgba(13, 99, 27, 0.15) 0%, rgba(13, 99, 27, 0) 100%);
+        }
+      </style>
+</head>
+<body class="bg-surface font-body text-on-surface flex items-center justify-center min-h-screen p-8">
+<!-- Card Container -->
+<div class="bg-surface-container-lowest rounded-2xl w-full max-w-4xl custom-shadow overflow-hidden relative">
+<!-- Top Accent Bar -->
+<div class="h-[3px] w-full bg-primary-container absolute top-0 left-0 z-10"></div>
+<!-- Header Section -->
+<div class="px-5 py-4 flex items-center justify-between mt-[3px]">
+<!-- Left: Title & Badge -->
+<div class="flex items-center gap-3">
+<h2 class="font-headline font-bold text-[18px] text-on-surface">CH1 Pressure History</h2>
+<div class="bg-[#e8f5e9] px-3 py-1 rounded-full flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></div>
+<span class="font-headline font-bold text-[13px] text-primary-container">42.3 PSI</span>
+</div>
+</div>
+<!-- Right: Segmented Control -->
+<div class="bg-surface-container-low p-1 rounded-lg flex items-center">
+<button class="px-3 py-1 rounded-md text-[11px] font-headline font-bold text-on-surface-variant hover:text-on-surface transition-colors">1h</button>
+<button class="px-3 py-1 rounded-md text-[11px] font-headline font-bold text-on-surface bg-surface-container-lowest shadow-sm">6h</button>
+<button class="px-3 py-1 rounded-md text-[11px] font-headline font-bold text-on-surface-variant hover:text-on-surface transition-colors">24h</button>
+<button class="px-3 py-1 rounded-md text-[11px] font-headline font-bold text-on-surface-variant hover:text-on-surface transition-colors">7d</button>
+<button class="px-3 py-1 rounded-md text-[11px] font-headline font-bold text-on-surface-variant hover:text-on-surface transition-colors">Custom</button>
+</div>
+</div>
+<!-- Chart Section (Simulated) -->
+<div class="h-[260px] px-5 pb-5 pt-2 relative w-full flex flex-col justify-end">
+<!-- Grid Lines -->
+<div class="absolute top-0 left-5 right-5 bottom-8 flex flex-col justify-between z-0">
+<div class="w-full h-px bg-[#f2f4f3]"></div>
+<div class="w-full h-px bg-[#f2f4f3]"></div>
+<div class="w-full h-px bg-[#f2f4f3]"></div>
+<div class="w-full h-px bg-[#f2f4f3]"></div>
+</div>
+<!-- Alert Line -->
+<div class="absolute top-[30px] left-5 right-5 border-t-[1.5px] border-dashed border-error z-10 flex items-start">
+<div class="bg-surface-container-lowest px-2 py-0.5 mt-[-10px] ml-4 flex items-center gap-1 rounded border border-surface-container-high">
+<span class="material-symbols-outlined text-[14px] text-error">warning</span>
+<span class="font-body text-[10px] text-error font-medium">High alert (69 PSI)</span>
+</div>
+</div>
+<!-- SVG Chart Line & Fill -->
+<div class="absolute top-0 left-5 right-5 bottom-8 z-20 overflow-hidden">
+<!-- SVG path representing the curve -->
+<svg class="w-full h-full" height="100%" preserveaspectratio="none" viewbox="0 0 1000 200" width="100%">
+<defs>
+<lineargradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#0d631b" stop-opacity="0.15"></stop>
+<stop offset="100%" stop-color="#0d631b" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+<!-- Fill -->
+<path d="M0,180 C100,180 150,120 200,140 C250,160 300,150 400,80 C500,10 550,50 600,60 C650,70 700,160 800,140 C900,120 950,90 1000,95 L1000,200 L0,200 Z" fill="url(#chartFill)"></path>
+<!-- Line -->
+<path d="M0,180 C100,180 150,120 200,140 C250,160 300,150 400,80 C500,10 550,50 600,60 C650,70 700,160 800,140 C900,120 950,90 1000,95" fill="none" stroke="#0d631b" stroke-linecap="round" stroke-width="2.5"></path>
+</svg>
+</div>
+<!-- X-Axis Labels -->
+<div class="flex justify-between items-center text-[10px] font-body text-[#717975] mt-2 relative z-30">
+<span>08:00</span>
+<span>09:00</span>
+<span>10:00</span>
+<span>11:00</span>
+<span>12:00</span>
+<span>13:00</span>
+<span>14:00</span>
+</div>
+</div>
+<!-- Stats Strip -->
+<div class="bg-surface-container-low px-8 py-5 grid grid-cols-3 gap-4 border-t border-surface-container">
+<!-- MIN -->
+<div class="flex flex-col gap-1">
+<span class="font-body font-semibold text-[10px] text-[#717975] uppercase tracking-wider">Min</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline font-extrabold text-[24px] text-on-surface leading-none">38.2</span>
+<span class="font-body text-[11px] text-[#717975]">PSI</span>
+</div>
+</div>
+<!-- MAX -->
+<div class="flex flex-col gap-1">
+<span class="font-body font-semibold text-[10px] text-[#717975] uppercase tracking-wider">Max</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline font-extrabold text-[24px] text-on-surface leading-none">56.7</span>
+<span class="font-body text-[11px] text-[#717975]">PSI</span>
+</div>
+</div>
+<!-- AVG -->
+<div class="flex flex-col gap-1">
+<span class="font-body font-semibold text-[10px] text-[#717975] uppercase tracking-wider">Avg</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline font-extrabold text-[24px] text-on-surface leading-none">44.1</span>
+<span class="font-body text-[11px] text-[#717975]">PSI</span>
+</div>
+</div>
+</div>
+</div>
+</body></html>

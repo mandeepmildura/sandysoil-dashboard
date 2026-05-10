@@ -1,0 +1,110 @@
+<h2>Program builder — create / edit a program</h2>
+<p class="subtitle">Two layout options. Which feels more natural on your phone?</p>
+
+<div class="options">
+
+  <div class="option selected" data-choice="single-scroll" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Single scrollable form (recommended)</h3>
+      <p>Everything on one screen — name, zones, duration, schedule. Tap Save when done. Simple, fast for a farmer who knows what they want.</p>
+
+      <!-- Mockup -->
+      <div style="background:#f8faf9;border-radius:10px;padding:1rem;margin-top:0.75rem;max-width:320px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <span style="font-size:0.85rem;font-weight:700;color:#0d4d20">New Program</span>
+          <span style="font-size:0.75rem;color:#7a8580;cursor:pointer">✕ Cancel</span>
+        </div>
+
+        <!-- Name -->
+        <div style="margin-bottom:0.85rem">
+          <label style="font-size:0.65rem;font-weight:700;color:#7a8580;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:0.3rem">Program name</label>
+          <div style="background:white;border:1.5px solid #0d4d20;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.85rem;color:#1a2e22">Avocados Morning</div>
+        </div>
+
+        <!-- Zones -->
+        <div style="margin-bottom:0.85rem">
+          <label style="font-size:0.65rem;font-weight:700;color:#7a8580;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:0.3rem">Zones (run together)</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <div style="background:#0d4d20;color:white;border-radius:6px;padding:5px 10px;font-size:0.75rem;font-weight:700;display:flex;align-items:center;gap:4px">
+              <span>✓</span> Zone 2
+            </div>
+            <div style="background:#0d4d20;color:white;border-radius:6px;padding:5px 10px;font-size:0.75rem;font-weight:700;display:flex;align-items:center;gap:4px">
+              <span>✓</span> Zone 3
+            </div>
+            <div style="background:white;border:1.5px solid #e4e9e6;color:#7a8580;border-radius:6px;padding:5px 10px;font-size:0.75rem;font-weight:700">
+              Zone 4
+            </div>
+            <div style="background:white;border:1.5px solid #e4e9e6;color:#7a8580;border-radius:6px;padding:5px 10px;font-size:0.75rem;font-weight:700">
+              Zone 5
+            </div>
+            <div style="background:white;border:1.5px solid #e4e9e6;color:#7a8580;border-radius:6px;padding:5px 10px;font-size:0.75rem;font-weight:700">
+              Zone 6
+            </div>
+          </div>
+          <p style="font-size:0.6rem;color:#7a8580;margin-top:0.3rem">Zone 1 (Pump) runs automatically</p>
+        </div>
+
+        <!-- Duration -->
+        <div style="margin-bottom:0.85rem">
+          <label style="font-size:0.65rem;font-weight:700;color:#7a8580;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:0.3rem">Duration (all zones)</label>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <div style="background:white;border:1.5px solid #0d4d20;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.85rem;color:#1a2e22;width:60px;text-align:center">120</div>
+            <span style="font-size:0.8rem;color:#7a8580">minutes</span>
+            <span style="font-size:0.7rem;color:#7a8580;margin-left:auto">= 2 hours</span>
+          </div>
+        </div>
+
+        <!-- Schedule -->
+        <div style="margin-bottom:1rem">
+          <label style="font-size:0.65rem;font-weight:700;color:#7a8580;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:0.3rem">Schedule</label>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
+            <div style="background:white;border:1.5px solid #0d4d20;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.85rem;color:#1a2e22;width:70px;text-align:center">04:00</div>
+            <span style="font-size:0.8rem;color:#7a8580">start time</span>
+          </div>
+          <div style="display:flex;gap:5px;margin-top:0.3rem">
+            <div style="background:#0d4d20;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700">M</div>
+            <div style="background:#e4e9e6;color:#7a8580;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700">T</div>
+            <div style="background:#0d4d20;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700">W</div>
+            <div style="background:#e4e9e6;color:#7a8580;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700">T</div>
+            <div style="background:#0d4d20;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700">F</div>
+            <div style="background:#e4e9e6;color:#7a8580;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700">S</div>
+            <div style="background:#e4e9e6;color:#7a8580;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700">S</div>
+          </div>
+        </div>
+
+        <button style="width:100%;background:#0d4d20;color:white;border:none;border-radius:8px;padding:0.65rem;font-size:0.85rem;font-weight:700;cursor:pointer">Save Program</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="stepped" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>3-step wizard</h3>
+      <p>Step 1: Name + zones. Step 2: Duration. Step 3: Schedule. A progress bar at the top shows where you are. Better if the form feels overwhelming on small screens.</p>
+      <div style="background:#f8faf9;border-radius:10px;padding:1rem;margin-top:0.75rem;max-width:320px">
+        <div style="display:flex;gap:4px;margin-bottom:1rem">
+          <div style="flex:1;height:3px;background:#0d4d20;border-radius:2px"></div>
+          <div style="flex:1;height:3px;background:#0d4d20;border-radius:2px"></div>
+          <div style="flex:1;height:3px;background:#e4e9e6;border-radius:2px"></div>
+        </div>
+        <p style="font-size:0.65rem;font-weight:700;color:#7a8580;text-transform:uppercase;margin-bottom:0.5rem">Step 2 of 3 — Duration</p>
+        <p style="font-size:0.8rem;color:#3b4a44;margin-bottom:0.75rem">How long should <strong>Avocados Morning</strong> run?</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div style="background:#e4e9e6;border-radius:8px;padding:8px 14px;font-size:0.8rem;font-weight:600;color:#3b4a44">30 min</div>
+          <div style="background:#e4e9e6;border-radius:8px;padding:8px 14px;font-size:0.8rem;font-weight:600;color:#3b4a44">1 hour</div>
+          <div style="background:#0d4d20;border-radius:8px;padding:8px 14px;font-size:0.8rem;font-weight:600;color:white">2 hours</div>
+          <div style="background:#e4e9e6;border-radius:8px;padding:8px 14px;font-size:0.8rem;font-weight:600;color:#3b4a44">Custom…</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:1rem">
+          <button style="background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:0.5rem 1rem;font-size:0.8rem;color:#7a8580;cursor:pointer">← Back</button>
+          <button style="background:#0d4d20;color:white;border:none;border-radius:8px;padding:0.5rem 1rem;font-size:0.8rem;font-weight:700;cursor:pointer">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Which layout works for you? Tell me in the terminal — and let me know if anything in the form fields looks wrong.</p>

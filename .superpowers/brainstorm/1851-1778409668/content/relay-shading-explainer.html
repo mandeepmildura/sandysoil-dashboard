@@ -1,0 +1,66 @@
+<h2>What is relay-on shading?</h2>
+<p class="subtitle">It's vertical bands drawn on the pressure chart showing when a relay was active.</p>
+
+<div class="mockup">
+  <div class="mockup-header">CH1 Pressure History — with relay-on shading</div>
+  <div class="mockup-body">
+    <div style="position:relative; height:220px; background:#fff; border-radius:8px; padding:16px 8px 8px 8px; font-family:sans-serif;">
+
+      <!-- Y axis labels -->
+      <div style="position:absolute;left:4px;top:16px;font-size:9px;color:#717975;">80</div>
+      <div style="position:absolute;left:4px;top:66px;font-size:9px;color:#717975;">60</div>
+      <div style="position:absolute;left:4px;top:116px;font-size:9px;color:#717975;">40</div>
+      <div style="position:absolute;left:4px;top:166px;font-size:9px;color:#717975;">20</div>
+
+      <!-- Chart area -->
+      <div style="position:absolute;left:28px;right:8px;top:16px;bottom:24px;">
+
+        <!-- Relay-on shaded bands -->
+        <div style="position:absolute;left:8%;width:14%;top:0;bottom:0;background:rgba(13,99,27,0.08);border-left:1.5px dashed rgba(13,99,27,0.35);border-right:1.5px dashed rgba(13,99,27,0.35);">
+          <span style="position:absolute;top:4px;left:4px;font-size:8px;color:#0d631b;font-weight:700;">R2 on</span>
+        </div>
+        <div style="position:absolute;left:38%;width:18%;top:0;bottom:0;background:rgba(13,99,27,0.08);border-left:1.5px dashed rgba(13,99,27,0.35);border-right:1.5px dashed rgba(13,99,27,0.35);">
+          <span style="position:absolute;top:4px;left:4px;font-size:8px;color:#0d631b;font-weight:700;">R1+R3 on</span>
+        </div>
+        <div style="position:absolute;left:72%;width:12%;top:0;bottom:0;background:rgba(13,99,27,0.08);border-left:1.5px dashed rgba(13,99,27,0.35);border-right:1.5px dashed rgba(13,99,27,0.35);">
+          <span style="position:absolute;top:4px;left:4px;font-size:8px;color:#0d631b;font-weight:700;">R2 on</span>
+        </div>
+
+        <!-- High threshold line -->
+        <div style="position:absolute;left:0;right:0;top:14%;border-top:1.5px dashed #ba1a1a;">
+          <span style="position:absolute;right:4px;top:-13px;font-size:8px;color:#ba1a1a;font-weight:700;">High 69 PSI</span>
+        </div>
+
+        <!-- Grid lines -->
+        <div style="position:absolute;left:0;right:0;top:25%;border-top:1px solid #f2f4f3;"></div>
+        <div style="position:absolute;left:0;right:0;top:50%;border-top:1px solid #f2f4f3;"></div>
+        <div style="position:absolute;left:0;right:0;top:75%;border-top:1px solid #f2f4f3;"></div>
+
+        <!-- Pressure line (SVG) -->
+        <svg style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;" preserveAspectRatio="none" viewBox="0 0 100 100">
+          <polyline
+            points="0,45 5,44 8,43 10,48 14,55 22,57 28,50 35,46 38,44 42,52 48,58 52,60 56,54 58,47 65,44 70,43 72,47 76,55 80,57 84,52 88,46 92,44 100,43"
+            fill="none" stroke="#00639a" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>
+
+      </div>
+
+      <!-- X axis labels -->
+      <div style="position:absolute;bottom:4px;left:32px;right:8px;display:flex;justify-content:space-between;font-size:9px;color:#717975;">
+        <span>06:00</span><span>07:00</span><span>08:00</span><span>09:00</span><span>10:00</span><span>11:00</span>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;font-size:11px;">
+      <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:rgba(13,99,27,0.12);border:1.5px dashed rgba(13,99,27,0.5);border-radius:2px;"></span> Relay active window</span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:24px;border-top:2px dashed #ba1a1a;"></span> High threshold</span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:24px;border-top:2.5px solid #00639a;"></span> CH1 pressure</span>
+    </div>
+
+    <div style="margin-top:16px;padding:12px;background:#f8faf9;border-radius:8px;font-size:12px;color:#40493d;line-height:1.6;">
+      <strong style="color:#1a1c1c;">What it tells you:</strong> You can see that each time a relay opened, pressure dipped then recovered. The second run (R1+R3 together) caused a bigger drop — useful for spotting which combinations stress the system.
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Reply in the terminal — want this included?</p>

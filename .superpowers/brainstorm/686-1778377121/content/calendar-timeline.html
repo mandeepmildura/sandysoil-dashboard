@@ -1,0 +1,80 @@
+<h2>Calendar day-timeline</h2>
+<p class="subtitle">This sits at the top of the Calendar page — shows today's programs at a glance.</p>
+
+<div style="background:#f8faf9;border:1px solid #e4e9e6;border-radius:12px;padding:1.25rem;margin-bottom:1.5rem">
+
+  <!-- Time axis -->
+  <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:#7a8580;margin-bottom:8px;padding:0 0 0 72px">
+    <span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span>
+  </div>
+
+  <!-- Pump zone row -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+    <span style="font-size:0.6rem;font-weight:700;color:#7a8580;width:64px;flex-shrink:0;text-align:right">PUMP</span>
+    <div style="flex:1;background:#e4e9e6;border-radius:4px;height:20px;position:relative">
+      <!-- 4am–8am = 16.6%–33.3% of 24h -->
+      <div style="position:absolute;left:16.6%;width:16.7%;height:100%;background:linear-gradient(90deg,#0d4d20,#1a6b30);border-radius:4px;display:flex;align-items:center;padding:0 6px">
+        <span style="font-size:0.58rem;color:white;font-weight:700;white-space:nowrap">4am – 8am</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Avocados row -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+    <span style="font-size:0.6rem;font-weight:700;color:#7a8580;width:64px;flex-shrink:0;text-align:right">AVOCADOS</span>
+    <div style="flex:1;background:#e4e9e6;border-radius:4px;height:20px;position:relative">
+      <!-- 4am–6am = 16.6%–25% -->
+      <div style="position:absolute;left:16.6%;width:8.3%;height:100%;background:#2e7d32;border-radius:4px;display:flex;align-items:center;padding:0 6px">
+        <span style="font-size:0.58rem;color:white;font-weight:700;white-space:nowrap">4am – 6am</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Citrus row -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+    <span style="font-size:0.6rem;font-weight:700;color:#7a8580;width:64px;flex-shrink:0;text-align:right">CITRUS</span>
+    <div style="flex:1;background:#e4e9e6;border-radius:4px;height:20px;position:relative">
+      <!-- 6am–8am = 25%–33.3% -->
+      <div style="position:absolute;left:24.9%;width:8.3%;height:100%;background:#0277bd;border-radius:4px;display:flex;align-items:center;padding:0 6px">
+        <span style="font-size:0.58rem;color:white;font-weight:700;white-space:nowrap">6am – 8am</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Now indicator -->
+  <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+    <span style="width:64px;flex-shrink:0"></span>
+    <div style="flex:1;position:relative;height:8px">
+      <!-- Current time ~10am = 41.6% -->
+      <div style="position:absolute;left:41.6%;width:2px;height:40px;background:#e53935;top:-32px;opacity:0.7"></div>
+      <div style="position:absolute;left:41.6%;transform:translateX(-50%);font-size:0.55rem;color:#e53935;font-weight:700;white-space:nowrap">now</div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div style="display:flex;gap:1rem;margin-top:1rem;padding-top:0.75rem;border-top:1px solid #e4e9e6;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:5px"><div style="width:12px;height:12px;background:linear-gradient(90deg,#0d4d20,#1a6b30);border-radius:3px"></div><span style="font-size:0.7rem;color:#5a756b">Pump zone</span></div>
+    <div style="display:flex;align-items:center;gap:5px"><div style="width:12px;height:12px;background:#2e7d32;border-radius:3px"></div><span style="font-size:0.7rem;color:#5a756b">Avocados Morning</span></div>
+    <div style="display:flex;align-items:center;gap:5px"><div style="width:12px;height:12px;background:#0277bd;border-radius:3px"></div><span style="font-size:0.7rem;color:#5a756b">Citrus Morning</span></div>
+  </div>
+</div>
+
+<div style="background:white;border:1px solid #e4e9e6;border-radius:10px;padding:1rem;margin-bottom:1rem">
+  <p style="font-size:0.7rem;font-weight:700;color:#0d4d20;margin-bottom:0.5rem">TAP A BLOCK TO SEE DETAILS</p>
+  <div style="background:#f8faf9;border-radius:8px;padding:0.75rem;font-size:0.78rem;color:#3b4a44">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem">
+      <strong>Avocados Morning</strong>
+      <div style="display:flex;gap:6px">
+        <span style="background:#fff3cd;color:#856404;border-radius:4px;padding:2px 8px;font-size:0.65rem;font-weight:700">PAUSE</span>
+        <span style="background:#fde8e8;color:#c0392b;border-radius:4px;padding:2px 8px;font-size:0.65rem;font-weight:700">DELETE</span>
+      </div>
+    </div>
+    <div style="color:#7a8580;font-size:0.72rem;line-height:1.6">
+      4:00am – 6:00am &nbsp;·&nbsp; 120 min &nbsp;·&nbsp; Mon Wed Fri<br>
+      Zones: 2, 3, 4 &nbsp;·&nbsp; Pump: Zone 1
+    </div>
+    <button style="margin-top:0.6rem;background:#0d4d20;color:white;border:none;border-radius:6px;padding:5px 14px;font-size:0.75rem;font-weight:700;cursor:pointer">▶ Run Now</button>
+  </div>
+</div>
+
+<p class="subtitle">Does this layout work? Anything you'd add or move?</p>
