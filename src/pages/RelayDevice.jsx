@@ -4,7 +4,7 @@
  *
  * Tabs: Relays / History / Groups
  * Optional sections (rendered only when deviceCfg has the relevant config):
- *   pressureConfig → PressurePanel (gauge, history graph, alerts)
+ *   pressureConfig → PressureGaugeCard (gauge + alerts) + PressureHistoryPanel (full-width chart)
  *   pollConfig     → DAC-toggle polling to force STATE responses
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
@@ -59,7 +59,6 @@ function PressureGaugeCard({ deviceCfg, live, anyRelayOn }) {
   }
   const smoothedAdc = Math.round(smoothedAdcRef.current ?? adcRaw)
   const psi = (smoothedAdc / 4095) * maxPsi
-  const color = gaugeColor(psi, maxPsi)
 
   useEffect(() => {
     if (!device) return
