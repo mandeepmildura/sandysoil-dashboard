@@ -107,49 +107,149 @@ Deno.serve(async (_req) => {
     if (fetchErr) throw fetchErr
 
     const rows = (runaways ?? []) as RunawayRow[]
-    if (rows.length === 0) {
-      return new Response(JSON.stringify({ ok: true, killed: [] }), {
-        headers: { 'Content-Type': 'application/json' },
+    let killed: number[] = []
+
+    if (rows.length > 0) {
+      console.log(`[a6v3-watchdog] ${rows.length} runaway relay(s):`,
+        rows.map(r => `zone${r.zone_num}@${r.started_at}`).join(', '))
+
+      // 1. MQTT off for each runaway zone (unique zones — defensive in case of
+      //    multiple open rows for the same zone)
+      const zones = Array.from(new Set(rows.map(r => r.zone_num)))
+      killed = zones
+      const messages = zones.map(z => ({
+        topic:   A6V3_SET_TOPIC,
+        payload: JSON.stringify({ [`output${z}`]: { value: false } }),
+      }))
+      await mqttPublishAll(messages)
+
+      // 2. Close the zone_history rows
+      const closedAt = new Date().toISOString()
+      const ids = rows.map(r => r.id)
+      const { error: closeErr } = await supabase
+        .from('zone_history')
+        .update({ ended_at: closedAt })
+        .in('id', ids)
+      if (closeErr) throw closeErr
+
+      // 3. One alert per runaway so the user sees zone-level detail
+      const alerts = rows.map(r => {
+        const ranForMin = Math.round((Date.now() - new Date(r.started_at).getTime()) / 60_000)
+        return {
+          severity:    'fault',
+          title:       `A6v3 runaway relay: zone ${r.zone_num}`,
+          description: `Relay ${r.zone_num} ran for ${ranForMin} min (cap ${MAX_RUNTIME_MIN} min) without an off command. Watchdog forced it off at ${closedAt}.`,
+          device:      'a6v3',
+          device_id:   '8CBFEA03002C',
+          acknowledged: false,
+        }
       })
+      await supabase.from('device_alerts').insert(alerts)
     }
 
-    console.log(`[a6v3-watchdog] ${rows.length} runaway relay(s):`,
-      rows.map(r => `zone${r.zone_num}@${r.started_at}`).join(', '))
+    // ── irrigation1 tiered alerts ─────────────────────────────────
+    const ALERT_THRESHOLD_1_MIN = parseInt(Deno.env.get('IRRIG_ALERT_MIN_1') ?? '180')
+    const ALERT_THRESHOLD_2_MIN = parseInt(Deno.env.get('IRRIG_ALERT_MIN_2') ?? '360')
 
-    // 1. MQTT off for each runaway zone (unique zones — defensive in case of
-    //    multiple open rows for the same zone)
-    const zones = Array.from(new Set(rows.map(r => r.zone_num)))
-    const messages = zones.map(z => ({
-      topic:   A6V3_SET_TOPIC,
-      payload: JSON.stringify({ [`output${z}`]: { value: false } }),
-    }))
-    await mqttPublishAll(messages)
-
-    // 2. Close the zone_history rows
-    const closedAt = new Date().toISOString()
-    const ids = rows.map(r => r.id)
-    const { error: closeErr } = await supabase
+    const { data: irrigOpen } = await supabase
       .from('zone_history')
-      .update({ ended_at: closedAt })
-      .in('id', ids)
-    if (closeErr) throw closeErr
+      .select('id, zone_num, started_at')
+      .eq('device', 'irrigation1')
+      .is('ended_at', null)
 
-    // 3. One alert per runaway so the user sees zone-level detail
-    const alerts = rows.map(r => {
-      const ranForMin = Math.round((Date.now() - new Date(r.started_at).getTime()) / 60_000)
-      return {
-        severity:    'fault',
-        title:       `A6v3 runaway relay: zone ${r.zone_num}`,
-        description: `Relay ${r.zone_num} ran for ${ranForMin} min (cap ${MAX_RUNTIME_MIN} min) without an off command. Watchdog forced it off at ${closedAt}.`,
-        device:      'a6v3',
-        device_id:   '8CBFEA03002C',
-        acknowledged: false,
+    for (const row of irrigOpen ?? []) {
+      const runMin = (Date.now() - new Date(row.started_at).getTime()) / 60_000
+
+      if (runMin >= ALERT_THRESHOLD_2_MIN) {
+        await supabase.from('device_alerts').insert({
+          severity: 'fault',
+          title: `irrigation1 Zone ${row.zone_num} running ${Math.round(runMin / 60)}h`,
+          description: `Zone ${row.zone_num} has been running ${Math.round(runMin)} minutes — check immediately.`,
+          device: 'irrigation1', device_id: '', acknowledged: false,
+        })
+      } else if (runMin >= ALERT_THRESHOLD_1_MIN) {
+        // Only raise once per session — check if a 3h alert already exists for this zone/session
+        const { data: existing } = await supabase
+          .from('device_alerts')
+          .select('id')
+          .eq('device', 'irrigation1')
+          .ilike('title', `%Zone ${row.zone_num}%`)
+          .gte('created_at', row.started_at)
+          .limit(1)
+        if (!existing?.length) {
+          await supabase.from('device_alerts').insert({
+            severity: 'fault',
+            title: `irrigation1 Zone ${row.zone_num} running ${ALERT_THRESHOLD_1_MIN / 60}h`,
+            description: `Zone ${row.zone_num} has been running ${Math.round(runMin)} minutes — is this intentional?`,
+            device: 'irrigation1', device_id: '', acknowledged: false,
+          })
+        }
       }
-    })
-    await supabase.from('device_alerts').insert(alerts)
+    }
+
+    // ── Low pressure alert (during active irrigation) ─────────────
+    const LOW_PSI_THRESHOLD = parseFloat(Deno.env.get('LOW_PSI_THRESHOLD') ?? '15')
+    const BURST_DROP_PSI    = parseFloat(Deno.env.get('BURST_DROP_PSI') ?? '20')
+    const BURST_WINDOW_SEC  = 30
+
+    // Only alert when irrigation is running
+    const { data: activeZones } = await supabase
+      .from('zone_history')
+      .select('id')
+      .eq('device', 'irrigation1')
+      .is('ended_at', null)
+      .limit(1)
+
+    if (activeZones?.length) {
+      const { data: latest } = await supabase
+        .from('pressure_log')
+        .select('psi, logged_at')
+        .eq('device', 'irrigation1')
+        .order('logged_at', { ascending: false })
+        .limit(1)
+
+      if (latest?.length) {
+        const psi = latest[0].psi
+
+        if (psi < LOW_PSI_THRESHOLD) {
+          const thirtyAgo = new Date(Date.now() - BURST_WINDOW_SEC * 1000).toISOString()
+          const { data: older } = await supabase
+            .from('pressure_log')
+            .select('psi')
+            .eq('device', 'irrigation1')
+            .lte('logged_at', thirtyAgo)
+            .order('logged_at', { ascending: false })
+            .limit(1)
+
+          const isBurst = older?.length && (older[0].psi - psi) >= BURST_DROP_PSI
+          const severity = isBurst ? 'fault' : 'warning'
+          const title = isBurst
+            ? `Possible burst pipe — pressure dropped ${Math.round(older![0].psi - psi)} PSI`
+            : `Low supply pressure: ${psi.toFixed(1)} PSI during irrigation`
+
+          // Deduplicate: don't raise the same alert within 5 minutes
+          const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString()
+          const { data: recent } = await supabase
+            .from('device_alerts')
+            .select('id')
+            .eq('device', 'irrigation1')
+            .ilike('title', '%pressure%')
+            .gte('created_at', fiveMinAgo)
+            .limit(1)
+
+          if (!recent?.length) {
+            await supabase.from('device_alerts').insert({
+              severity, title,
+              description: `Supply PSI: ${psi.toFixed(1)}. Threshold: ${LOW_PSI_THRESHOLD} PSI.`,
+              device: 'irrigation1', device_id: '', acknowledged: false,
+            })
+          }
+        }
+      }
+    }
 
     return new Response(
-      JSON.stringify({ ok: true, killed: zones, count: rows.length }),
+      JSON.stringify({ ok: true, killed, count: rows.length }),
       { headers: { 'Content-Type': 'application/json' } },
     )
   } catch (err) {
