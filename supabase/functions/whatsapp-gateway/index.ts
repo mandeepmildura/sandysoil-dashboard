@@ -17,14 +17,19 @@ async function getSettings(): Promise<Record<string, string>> {
   return Object.fromEntries((data ?? []).map(r => [r.key, r.value]))
 }
 
-async function sendTwilio(to: string, body: string, channel: string): Promise<void> {
+function normalizePhone(s: string): string {
+  return s.replace(/^whatsapp:/i, '').replace(/\s/g, '').trim()
+}
+
+async function sendTwilio(to: string, body: string, channel: string, fromOverride?: string): Promise<void> {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
     throw new Error('Twilio credentials not configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER secrets')
   }
+  const baseFrom = normalizePhone(fromOverride ?? TWILIO_FROM_NUMBER)
   const from = channel === 'sms'
-    ? TWILIO_FROM_NUMBER.replace('whatsapp:', '')
-    : TWILIO_FROM_NUMBER.startsWith('whatsapp:') ? TWILIO_FROM_NUMBER : `whatsapp:${TWILIO_FROM_NUMBER}`
-  const toFormatted = channel === 'sms' ? to : `whatsapp:${to.replace('whatsapp:', '')}`
+    ? baseFrom
+    : `whatsapp:${baseFrom}`
+  const toFormatted = channel === 'sms' ? normalizePhone(to) : `whatsapp:${normalizePhone(to)}`
 
   const res = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
@@ -49,16 +54,14 @@ Deno.serve(async (req) => {
   // Inbound Twilio webhook: POST /whatsapp-gateway/inbound
   if (req.method === 'POST' && url.pathname.endsWith('/inbound')) {
     const formData = await req.formData()
-    const from = formData.get('From')?.toString() ?? ''
-    const body = formData.get('Body')?.toString().trim().toUpperCase() ?? ''
+    const from      = formData.get('From')?.toString() ?? ''
+    const inboundTo = formData.get('To')?.toString() ?? ''
+    const body      = formData.get('Body')?.toString().trim().toUpperCase() ?? ''
+    console.log('[inbound] From:', from, 'To:', inboundTo, 'Body:', body, 'FROM_NUMBER:', TWILIO_FROM_NUMBER)
 
     const settings = await getSettings()
-    const alertPhone = (settings.alert_phone ?? '').replace(/\s/g, '')
-    const authorised = alertPhone && (
-      from.replace('whatsapp:', '') === alertPhone ||
-      from === alertPhone ||
-      from === `whatsapp:${alertPhone}`
-    )
+    const alertPhone = normalizePhone(settings.alert_phone ?? '')
+    const authorised = alertPhone && normalizePhone(from) === alertPhone
 
     if (!authorised) {
       console.warn(`[whatsapp-gateway] unauthorised sender: ${from}`)
@@ -89,9 +92,13 @@ Deno.serve(async (req) => {
       })
       reply = `Zone ${zoneNum} stop queued.`
     } else if (body === 'STATUS') {
+      const since24h = new Date(Date.now() - 24 * 60 * 60_000).toISOString()
       const { data: open } = await supabase
         .from('zone_history').select('zone_num, started_at')
         .eq('device', 'irrigation1').is('ended_at', null)
+        .gte('started_at', since24h)
+        .order('started_at', { ascending: false })
+        .limit(8)
       if (!open?.length) {
         reply = 'No zones currently running.'
       } else {
@@ -108,10 +115,14 @@ Deno.serve(async (req) => {
       reply = 'Alerts acknowledged.'
     }
 
-    return new Response(
-      `<?xml version="1.0"?><Response><Message>${reply}</Message></Response>`,
-      { headers: { 'Content-Type': 'text/xml' } }
-    )
+    try {
+      // Use inboundTo (the Twilio number that received this SMS) as the From for the reply.
+      // This guarantees the number format exactly matches what Twilio has registered.
+      await sendTwilio(from, reply, 'sms', inboundTo || undefined)
+    } catch (err) {
+      console.error('[whatsapp-gateway] inbound reply failed:', String(err))
+    }
+    return new Response('<?xml version="1.0"?><Response/>', { headers: { 'Content-Type': 'text/xml' } })
   }
 
   // Outbound alert: POST /whatsapp-gateway with JSON body { alert_id }
