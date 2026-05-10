@@ -95,6 +95,6 @@ export function computePressureStats(data) {
   return {
     min: Math.min(...vals),
     max: Math.max(...vals),
-    avg: vals.reduce((a, b) => a + b, 0) / vals.length,
+    avg: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10,
   }
 }

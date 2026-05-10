@@ -140,7 +140,7 @@ describe('computePressureStats', () => {
     const result = computePressureStats(data)
     expect(result.min).toBe(10)
     expect(result.max).toBe(30)
-    expect(result.avg).toBeCloseTo(20)
+    expect(result.avg).toBe(20)
   })
 
   it('ignores null psi entries', () => {
@@ -148,6 +148,6 @@ describe('computePressureStats', () => {
     const result = computePressureStats(data)
     expect(result.min).toBe(10)
     expect(result.max).toBe(30)
-    expect(result.avg).toBeCloseTo(20)
+    expect(result.avg).toBe(20)
   })
 })
