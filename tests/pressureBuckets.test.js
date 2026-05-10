@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bucketMultiSeries, bucketA6v3 } from '../src/lib/pressureBuckets'
+import { bucketMultiSeries, bucketA6v3, computePressureStats } from '../src/lib/pressureBuckets'
 
 // All test rows use a local TZ where hour/minute are unambiguous.
 // Use plain `YYYY-MM-DDTHH:MM:SS` strings (no Z) so the same wall-clock
@@ -123,5 +123,31 @@ describe('bucketA6v3', () => {
     const out = bucketA6v3(rows, false)
     expect(out).toHaveLength(1)
     expect(out[0].psi).toBeNull()
+  })
+})
+
+describe('computePressureStats', () => {
+  it('returns null for empty data', () => {
+    expect(computePressureStats([])).toBeNull()
+  })
+
+  it('returns null when all psi values are null', () => {
+    expect(computePressureStats([{ psi: null }, { psi: null }])).toBeNull()
+  })
+
+  it('computes min, max, avg from clean data', () => {
+    const data = [{ psi: 10 }, { psi: 20 }, { psi: 30 }]
+    const result = computePressureStats(data)
+    expect(result.min).toBe(10)
+    expect(result.max).toBe(30)
+    expect(result.avg).toBeCloseTo(20)
+  })
+
+  it('ignores null psi entries', () => {
+    const data = [{ psi: 10 }, { psi: null }, { psi: 30 }]
+    const result = computePressureStats(data)
+    expect(result.min).toBe(10)
+    expect(result.max).toBe(30)
+    expect(result.avg).toBeCloseTo(20)
   })
 })
