@@ -130,7 +130,7 @@ export default function AdminConsole() {
     setDevicesLoading(true)
     const { data, error } = await supabase
       .from('farm_devices')
-      .select('id, farm_id, device_id, model, type, firmware, last_seen, status, farms(name)')
+      .select('id, farm_id, device_id, model, type, firmware, last_seen, status, pump_zone_num, farms(name)')
       .order('farm_id')
     if (!error && data) {
       setDevices(data.map(d => ({ ...d, farm_name: d.farms?.name ?? '—' })))
@@ -211,6 +211,23 @@ export default function AdminConsole() {
     loadActivity()
   }, [])
 
+  // ── Alert Settings ───────────────────────────────────────────────────────
+  const [alertSettings, setAlertSettings] = useState({})
+
+  useEffect(() => {
+    supabase.from('admin_settings').select('key, value')
+      .then(({ data }) => {
+        if (data) setAlertSettings(Object.fromEntries(data.map(r => [r.key, r.value])))
+      })
+  }, [])
+
+  async function saveAlertSettings() {
+    const entries = Object.entries(alertSettings)
+    await Promise.all(entries.map(([key, value]) =>
+      supabase.from('admin_settings').upsert({ key, value, updated_at: new Date().toISOString() })
+    ))
+  }
+
   // ── Firmware OTA ─────────────────────────────────────────────────────────
   const { mqttPrefix } = useMyDevice()
   const { data: mqttData } = useLiveTelemetry([`${mqttPrefix}/status`, `${mqttPrefix}/ota/status`])
@@ -275,6 +292,7 @@ export default function AdminConsole() {
           { id: 'farms',     label: 'Farms' },
           { id: 'devices',   label: 'Customer Devices' },
           { id: 'customers', label: 'Customers' },
+          { id: 'alerts',    label: 'Alerts' },
         ].map(t => (
           <button
             key={t.id}
@@ -586,6 +604,29 @@ export default function AdminConsole() {
                           <td className="px-4 py-3">
                             <p className="text-xs font-semibold text-[#1a1c1c]">{d.model ?? '—'}</p>
                             <p className="text-[10px] text-[#40493d]">{d.type ?? '—'}</p>
+                            {/* Pump / Master Zone selector */}
+                            <div style={{ marginTop: '0.75rem' }}>
+                              <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.3rem' }}>
+                                Pump / Master Zone
+                              </label>
+                              <select
+                                value={d.pump_zone_num ?? ''}
+                                onChange={async (e) => {
+                                  const val = e.target.value ? parseInt(e.target.value) : null
+                                  await supabase.from('farm_devices').update({ pump_zone_num: val }).eq('id', d.id)
+                                  loadDevices()
+                                }}
+                                style={{ background: 'white', border: '1.5px solid #e4e9e6', borderRadius: 6, padding: '4px 8px', fontSize: '0.8rem' }}
+                              >
+                                <option value="">None</option>
+                                {[1,2,3,4,5,6,7,8].map(n => (
+                                  <option key={n} value={n}>Zone {n}</option>
+                                ))}
+                              </select>
+                              <span style={{ fontSize: '0.65rem', color: '#7a8580', marginLeft: '0.5rem' }}>
+                                Auto-runs with every irrigation program
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-xs text-[#40493d]">{d.firmware ?? '—'}</td>
                           <td className="px-4 py-3 text-xs text-[#40493d]">{fmtLastSeen(d.last_seen)}</td>
@@ -637,6 +678,42 @@ export default function AdminConsole() {
                 Refresh Device List
               </button>
             </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ── Alerts Tab ───────────────────────────────────────────────────────── */}
+      {activeTab === 'alerts' && (
+        <div>
+          <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '1rem' }}>WhatsApp / SMS Alerts</h3>
+          <div style={{ display: 'grid', gap: '0.75rem', maxWidth: 400 }}>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>Alert Phone Number</label>
+              <input
+                type="tel" placeholder="+61 4XX XXX XXX"
+                value={alertSettings.alert_phone ?? ''}
+                onChange={e => setAlertSettings(s => ({ ...s, alert_phone: e.target.value }))}
+                style={{ width: '100%', border: '1.5px solid #e4e9e6', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>Channel</label>
+              <select
+                value={alertSettings.alert_channel ?? 'whatsapp'}
+                onChange={e => setAlertSettings(s => ({ ...s, alert_channel: e.target.value }))}
+                style={{ border: '1.5px solid #e4e9e6', borderRadius: 6, padding: '6px 8px', fontSize: '0.8rem' }}
+              >
+                <option value="whatsapp">WhatsApp</option>
+                <option value="sms">SMS</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
+            <button
+              onClick={saveAlertSettings}
+              style={{ background: '#0d4d20', color: 'white', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+            >
+              Save Alert Settings
+            </button>
           </div>
         </div>
       )}
