@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
@@ -11,13 +12,35 @@ export default function Login() {
   const [error, setError]           = useState(null)
   const [success, setSuccess]       = useState(null)
 
+  function withTimeout(promise, ms = 15000) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), ms)
+      ),
+    ])
+  }
+
+  function friendlyError(e, fallback) {
+    if (e?.message === 'timeout') return "Can't reach the server. Please try again."
+    if (e?.message === 'Failed to fetch') return "Can't reach the server. Check your connection and try again."
+    return e?.message ?? fallback
+  }
+
   async function handleLogin(e) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setError(error.message)
-    setLoading(false)
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password })
+      )
+      if (error) setError(error.message)
+    } catch (err) {
+      setError(friendlyError(err, 'Sign in failed.'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleSignUp(e) {
@@ -31,26 +54,29 @@ export default function Login() {
 
     setLoading(true)
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { farm_name: farmName.trim() },
-        },
-      })
+      const { data, error: signUpError } = await withTimeout(
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { farm_name: farmName.trim() },
+          },
+        })
+      )
 
       if (signUpError) {
         setError(signUpError.message)
-        setLoading(false)
         return
       }
 
       // If signup succeeded and we have a session, also create the farm record
       if (data?.user) {
-        await supabase.from('farms').insert({
-          name: farmName.trim(),
-          owner_id: data.user.id,
-        })
+        await withTimeout(
+          supabase.from('farms').insert({
+            name: farmName.trim(),
+            owner_id: data.user.id,
+          })
+        )
       }
 
       setSuccess('Account created! Check your email to confirm, then sign in.')
@@ -58,10 +84,11 @@ export default function Login() {
       setPassword('')
       setConfirmPassword('')
       setFarmName('')
-    } catch (e) {
-      setError(e.message ?? 'Sign up failed. Please try again.')
+    } catch (err) {
+      setError(friendlyError(err, 'Sign up failed. Please try again.'))
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const isSignUp = mode === 'signup'
@@ -142,6 +169,14 @@ export default function Login() {
                   className="w-full bg-[#f3f3f3] rounded-lg px-4 py-3 text-sm font-body text-[#1a1c1c] outline-none focus:bg-white focus:ring-2 focus:ring-[#0d631b]/20 transition-all border border-transparent focus:border-[#0d631b]/30"
                   placeholder="••••••••"
                 />
+              </div>
+            )}
+
+            {!isSignUp && (
+              <div className="text-right -mt-2">
+                <Link to="/forgot-password" className="text-xs text-[#0d631b] font-semibold hover:underline font-body">
+                  Forgot password?
+                </Link>
               </div>
             )}
 

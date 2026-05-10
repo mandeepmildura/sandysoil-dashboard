@@ -1,28 +1,34 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import BottomNav from './components/BottomNav'
+import ErrorBoundary from './components/ErrorBoundary'
 import Login          from './pages/Login'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword  from './pages/ResetPassword'
+import Account        from './pages/Account'
 import Dashboard      from './pages/Dashboard'
 import Zones          from './pages/Zones'
 import ZoneDetail     from './pages/ZoneDetail'
 import ZoneHistory    from './pages/ZoneHistory'
 import Calendar       from './pages/Calendar'
-import ScheduleRules  from './pages/ScheduleRules'
-import Programs       from './pages/Programs'
 import PressureAnalysis from './pages/PressureAnalysis'
+import Water          from './pages/Water'
 import Alerts         from './pages/Alerts'
 import AdminConsole   from './pages/AdminConsole'
-import A6v3Controller from './pages/A6v3Controller'
+import RelayDevice    from './pages/RelayDevice'
 
 import PressureBar    from './components/PressureBar'
 import { useAuth }    from './hooks/useAuth'
+import { DeviceProvider } from './context/DeviceContext'
+import { KCS_DEVICES } from './config/devices'
+import { isAdmin } from './lib/role'
 
 export default function App() {
   const { session, loading } = useAuth()
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f9f9f9] flex items-center justify-center">
+      <div className="min-h-screen bg-[#f8faf9] flex items-center justify-center">
         <div className="flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-[#0d631b] animate-pulse" />
           <span className="text-sm font-body text-[#40493d]">Loading…</span>
@@ -32,30 +38,47 @@ export default function App() {
   }
 
   if (!session) {
-    return <Login />
+    return (
+      <Routes>
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password"  element={<ResetPassword />} />
+        <Route path="*"                element={<Login />} />
+      </Routes>
+    )
   }
 
+  const admin = isAdmin(session)
+
   return (
+    <ErrorBoundary>
+    <DeviceProvider>
     <div className="flex min-h-screen">
       <Sidebar session={session} />
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden pb-16 md:pb-0">
         <PressureBar />
+        <ErrorBoundary>
         <Routes>
-          <Route path="/"           element={<Dashboard />} />
-          <Route path="/zones"      element={<Zones />} />
-          <Route path="/history"    element={<ZoneHistory />} />
-          <Route path="/zones/:id"  element={<ZoneDetail />} />
-          <Route path="/calendar"   element={<Calendar />} />
-          <Route path="/rules"      element={<ScheduleRules />} />
-          <Route path="/programs"   element={<Programs />} />
-          <Route path="/pressure"   element={<PressureAnalysis />} />
-          <Route path="/alerts"     element={<Alerts />} />
-          <Route path="/a6v3"       element={<A6v3Controller />} />
-          <Route path="/admin"      element={<AdminConsole />} />
-          <Route path="*"           element={<Navigate to="/" replace />} />
+          <Route path="/"                element={<Dashboard />} />
+          <Route path="/zones"           element={<Zones />} />
+          <Route path="/history"         element={<ZoneHistory />} />
+          <Route path="/zones/:id"       element={<ZoneDetail />} />
+          <Route path="/calendar"        element={<Calendar />} />
+          <Route path="/pressure"        element={<PressureAnalysis />} />
+          <Route path="/water"           element={<Water />} />
+          <Route path="/alerts"          element={<Alerts />} />
+          <Route path="/account"         element={<Account />} />
+          <Route path="/reset-password"  element={<ResetPassword />} />
+          {admin && KCS_DEVICES.map(cfg => (
+            <Route key={cfg.id} path={cfg.path} element={<RelayDevice deviceCfg={cfg} />} />
+          ))}
+          {admin && <Route path="/admin" element={<AdminConsole />} />}
+          <Route path="*"                element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </main>
-      <BottomNav />
+      <BottomNav session={session} />
     </div>
+    </DeviceProvider>
+    </ErrorBoundary>
   )
 }

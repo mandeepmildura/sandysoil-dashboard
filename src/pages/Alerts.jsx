@@ -1,62 +1,73 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
+import PageHeader from '../components/PageHeader'
 import { useAlerts } from '../hooks/useAlerts'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
-
-const DEMO_ALERTS = [
-  { id: 1, severity: 'fault',   title: 'High Pressure Alert',     device: 'Irrigation Controller', created_at: new Date().toISOString(), description: 'Supply PSI exceeded 65 PSI. Zone 3 was active.',           acknowledged: false },
-  { id: 2, severity: 'fault',   title: 'Filter Fault',            device: 'Filter Station',        created_at: new Date().toISOString(), description: 'Backwash cycle failed to complete. Manual reset required.', acknowledged: false },
-  { id: 3, severity: 'warning', title: 'Zone 3 Runtime Exceeded', device: 'Irrigation Controller', created_at: new Date().toISOString(), description: 'Zone ran 45 min over scheduled time.',                      acknowledged: false },
-]
-
-function fmtTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const now = new Date()
-  const diffMin = Math.floor((now - d) / 60000)
-  if (diffMin < 2)  return 'Just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24)   return `${diffH}h ago`
-  return d.toLocaleDateString()
-}
+import { useAuth } from '../hooks/useAuth'
+import { useMyDevice } from '../hooks/useMyDevice'
+import { topicsForPrefix } from '../lib/topics'
+import { fmtRelative as fmtTime } from '../lib/format'
+import { isAdmin } from '../lib/role'
 
 export default function Alerts() {
+  const { session } = useAuth()
+  const admin = isAdmin(session)
+  const { mqttPrefix } = useMyDevice()
+  const t = useMemo(() => topicsForPrefix(mqttPrefix), [mqttPrefix])
   const { alerts: dbAlerts, loading, acknowledge, dismiss } = useAlerts()
-  const { data: live } = useLiveTelemetry(['farm/irrigation1/status', 'farm/filter1/pressure'])
+  const { data: live } = useLiveTelemetry(
+    admin
+      ? [t.status, 'A6v3/8CBFEA03002C/STATE', 'B16M/CCBA97071FD8/STATE']
+      : [t.status]
+  )
 
-  const [localAlerts, setLocalAlerts] = useState(DEMO_ALERTS)
+  const [localAlerts, setLocalAlerts] = useState([])
   const [usingDB, setUsingDB]         = useState(false)
   const [tab, setTab]                 = useState('All')
 
-  // Once DB load completes, switch to DB data if available
+  // Once DB load completes, switch to DB data.
+  // Customers see only alerts from their own irrigation controller,
+  // not A6v3 / B16M / scheduler / other admin-only devices.
   useEffect(() => {
     if (!loading) {
-      if (dbAlerts.length > 0) {
-        setLocalAlerts(dbAlerts)
-        setUsingDB(true)
-      }
+      const visible = admin
+        ? dbAlerts
+        : dbAlerts.filter(a => {
+            const dev = (a.device ?? '').toLowerCase()
+            return dev === '' || dev.includes('irrigation') || dev === 'irrigation1'
+          })
+      setLocalAlerts(visible)
+      setUsingDB(true)
     }
-  }, [loading, dbAlerts])
+  }, [loading, dbAlerts, admin])
 
-  const tabs = ['All', 'Critical', 'Warnings', 'Resolved']
+  const tabs = ['All', 'Critical', 'Warnings', 'Info', 'Resolved']
 
   const filtered = localAlerts.filter(a => {
-    if (tab === 'All')      return true
+    if (tab === 'All')      return !a.acknowledged
     if (tab === 'Critical') return a.severity === 'fault'   && !a.acknowledged
     if (tab === 'Warnings') return a.severity === 'warning' && !a.acknowledged
+    if (tab === 'Info')     return a.severity === 'info'    && !a.acknowledged
     if (tab === 'Resolved') return !!a.acknowledged
     return true
   })
 
-  const irr   = live['farm/irrigation1/status'] ?? null
-  const press = live['farm/filter1/pressure']   ?? null
+  const irr  = live[t.status]                   ?? null
+  const a6v3 = live['A6v3/8CBFEA03002C/STATE']  ?? null
+  const b16m = live['B16M/CCBA97071FD8/STATE']   ?? null
 
-  const DEVICES = [
-    { name: 'Irrigation Controller', model: 'KC868-A8v3', fw: irr?.fw ?? '—',  status: irr?.online ? 'online' : 'offline' },
-    { name: 'Filter Station',        model: 'ALR-V13',    fw: '—',              status: press ? 'online' : 'offline' },
-  ]
+  // Customer sees only their irrigation controller in System Health.
+  // A6v3 / B16M are admin-only relay devices.
+  const DEVICES = admin
+    ? [
+        { name: 'Irrigation Controller', model: 'SSA-V8 ESP32',   fw: irr?.fw  ?? '—', status: irr  ? 'online' : 'offline' },
+        { name: 'A6v3 Relay / Pressure', model: 'KC868-A6v3',     fw: '—',             status: a6v3 ? 'online' : 'offline' },
+        { name: 'B16M MOSFET Board',     model: 'KinCony B16M',   fw: '—',             status: b16m ? 'online' : 'offline' },
+      ]
+    : [
+        { name: 'Irrigation Controller', model: 'SSA-V8',         fw: irr?.fw  ?? '—', status: irr  ? 'online' : 'offline' },
+      ]
 
   async function handleAcknowledge(alert) {
     if (usingDB) {
@@ -73,16 +84,20 @@ export default function Alerts() {
   }
 
   return (
-    <div className="flex-1 p-6 bg-[#f9f9f9] overflow-auto">
-      <h1 className="font-headline font-bold text-2xl text-[#1a1c1c] mb-5">Alerts & Notifications</h1>
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <PageHeader
+        eyebrow="System Monitoring"
+        title="Alerts & Notifications"
+        subtitle="Faults, warnings and info from across all connected devices"
+      />
 
-      <div className="flex gap-1 mb-5">
+      <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full mb-6">
         {tabs.map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
-              tab === t ? 'bg-[#1a1c1c] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
+            className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+              tab === t ? 'bg-white shadow-sm text-[#17362e]' : 'text-[#717975] hover:text-[#17362e]'
             }`}
           >
             {t}
@@ -99,6 +114,7 @@ export default function Alerts() {
               <div className={`w-1 shrink-0 ${
                 a.severity === 'fault'   ? 'bg-[#ba1a1a]' :
                 a.severity === 'warning' ? 'bg-[#e65100]' :
+                a.severity === 'info'    ? 'bg-[#1565c0]' :
                 'bg-[#0d631b]'
               }`} />
               <div className="flex-1 p-4">

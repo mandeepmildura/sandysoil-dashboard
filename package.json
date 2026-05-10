@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "migrate": "node scripts/migrate.js",
     "deploy:functions": "npx supabase functions deploy run-schedules --project-ref lecssjvuskqemjzvjimo",
-    "filter-bridge": "node scripts/filter-bridge.js"
+    "filter-bridge": "node scripts/filter-bridge.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
@@ -23,10 +25,13 @@
     "serialport": "^13.0.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "happy-dom": "^20.9.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^4.1.5"
   }
 }

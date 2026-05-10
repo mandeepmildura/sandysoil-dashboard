@@ -1,52 +1,58 @@
 import { useState, useEffect, useCallback } from 'react'
 import StatusChip from '../components/StatusChip'
+import PageHeader from '../components/PageHeader'
+import { btnPrimary, btnPrimaryStyle, btnSecondary } from '../components/ui'
 import { supabase } from '../lib/supabase'
-import { zoneOn } from '../lib/commands'
-import { useZoneNames } from '../hooks/useZoneNames'
+import { useMyDevice } from '../hooks/useMyDevice'
+import { zoneOn, a6v3ZoneOn } from '../lib/commands'
+import {
+  dbDayToCalIdx,
+  getWeekMonday,
+  fmtTime,
+  fmtDuration,
+  fmtDays,
+  totalDuration,
+} from '../lib/calendar'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
 const COLORS = ['#0d631b', '#2e7d32', '#00639a', '#6a4c93', '#c0392b', '#d35400', '#16a085', '#8e44ad']
 
-function dbDayToCalIdx(d) { return d === 0 ? 6 : d - 1 }
-
-function getWeekMonday(date) {
-  const d = new Date(date)
-  const dow = d.getDay()
-  d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow))
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
-function fmtTime(t) { return t ? t.slice(0, 5) : '—' }
-
-function fmtDuration(min) {
-  if (min < 60) return `${min} min`
-  const h = Math.floor(min / 60), m = min % 60
-  return m ? `${h}h ${m}m` : `${h}h`
-}
-
-function fmtDays(days) {
-  if (!days?.length) return 'No days'
-  return days.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d] ?? d).join(', ')
-}
-
-function totalDuration(p) {
-  if (!p.zones.length) return 0
-  return p.run_mode === 'sequential'
-    ? p.zones.reduce((s, z) => s + z.duration_min, 0)
-    : Math.max(...p.zones.map(z => z.duration_min))
-}
-
 // ── Event detail modal ──────────────────────────────────────────────────────
-function EventModal({ event, onClose }) {
+function EventModal({ event, onClose, mqttPrefix, myDeviceId }) {
   const p = event.program
   const [running, setRunning] = useState(false)
 
   async function runNow() {
     if (!p.zones?.length) return
     setRunning(true)
-    try { await zoneOn(p.zones[0].zone_num, p.zones[0].duration_min) } catch (e) { console.error(e) }
+    try {
+      // A6v3 firmware has no auto-off timer, so for each A6v3 'on' we also
+      // queue an 'off' step in program_queue at now + duration. The
+      // run-program-queue cron job fires it. (irrigation1 auto-offs itself.)
+      const a6v3OffSteps = []
+      for (const z of p.zones) {
+        const dur = z.duration_min ?? 30
+        if (z.device === 'a6v3') {
+          await a6v3ZoneOn(z.zone_num, dur)
+          a6v3OffSteps.push({
+            group_id:        p.id,
+            step_type:       'off',
+            device:          'a6v3',
+            zone_num:        z.zone_num,
+            duration_min:    null,
+            fire_at:         new Date(Date.now() + dur * 60_000).toISOString(),
+            mqtt_base_topic: mqttPrefix,
+          })
+        } else {
+          await zoneOn(z.zone_num, dur, 'manual', { prefix: mqttPrefix, device: myDeviceId })
+        }
+      }
+      if (a6v3OffSteps.length > 0) {
+        const { error } = await supabase.from('program_queue').insert(a6v3OffSteps)
+        if (error) console.error('failed to queue a6v3 off step(s):', error)
+      }
+    } catch (e) { console.error(e) }
     setRunning(false)
     onClose()
   }
@@ -110,52 +116,49 @@ function EventModal({ event, onClose }) {
 
 // ── Add schedule modal ──────────────────────────────────────────────────────
 function AddScheduleModal({ onClose, onSaved }) {
-  const [label, setLabel]         = useState('')
-  const [device, setDevice]       = useState('irrigation1')
-  const [zoneNum, setZoneNum]     = useState(1)
-  const [days, setDays]           = useState([false,false,false,false,false,false,false])
-  const [startTime, setStartTime] = useState('06:00')
-  const [duration, setDuration]   = useState(30)
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState(null)
+  const [groups, setGroups]               = useState([])
+  const [selectedGroupId, setSelectedGroupId] = useState('')
+  const [days, setDays]                   = useState([false,false,false,false,false,false,false])
+  const [startTime, setStartTime]         = useState('06:00')
+  const [saving, setSaving]               = useState(false)
+  const [error, setError]                 = useState(null)
 
-  const { names: irrNames } = useZoneNames('irrigation1')
-  const { names: a6v3Names } = useZoneNames('a6v3')
-
-  const isA6v3    = device === 'a6v3'
-  const slotCount = isA6v3 ? 6 : 8
-  const names     = isA6v3 ? a6v3Names : irrNames
-  const slotLabel = isA6v3 ? 'Relay' : 'Zone'
-
-  function switchDevice(d) {
-    setDevice(d)
-    setZoneNum(1)
-  }
+  useEffect(() => {
+    supabase
+      .from('zone_groups')
+      .select('id, name, zone_group_members(device, zone_num, duration_min)')
+      .order('name')
+      .then(({ data }) => {
+        const list = data ?? []
+        setGroups(list)
+        if (list.length) setSelectedGroupId(list[0].id)
+      })
+  }, [])
 
   function toggleDay(i) { setDays(prev => prev.map((v, j) => j === i ? !v : v)) }
 
+  function deviceHint(group) {
+    const devices = [...new Set((group.zone_group_members ?? []).map(m => m.device ?? 'irrigation1'))]
+    return devices.join(', ')
+  }
+
   async function save() {
-    if (!label.trim())       { setError('Enter a schedule name'); return }
+    if (!selectedGroupId)    { setError('Select a group'); return }
     if (!days.some(Boolean)) { setError('Select at least one day'); return }
     setSaving(true); setError(null)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: group, error: e1 } = await supabase.from('zone_groups')
-        .insert({ name: label.trim(), run_mode: 'sequential', owner_id: user?.id, customer_id: user?.id })
-        .select('id').single()
-      if (e1) throw e1
-
-      const { error: e2 } = await supabase.from('zone_group_members').insert({
-        group_id: group.id, zone_num: zoneNum, duration_min: duration, sort_order: 0, device,
-      })
-      if (e2) throw e2
-
+      const selectedGroup = groups.find(g => g.id === selectedGroupId)
       const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
-      const { error: e3 } = await supabase.from('group_schedules').insert({
-        group_id: group.id, label: label.trim(),
-        days_of_week: dow, start_time: startTime, enabled: true, customer_id: user?.id,
+      const { data: { session } } = await supabase.auth.getSession()
+      const { error: e } = await supabase.from('group_schedules').insert({
+        group_id: selectedGroupId,
+        label: selectedGroup.name,
+        days_of_week: dow,
+        start_time: startTime,
+        enabled: true,
+        customer_id: session?.user?.id,
       })
-      if (e3) throw e3
+      if (e) throw e
       onSaved(); onClose()
     } catch (err) {
       setError(err.message ?? 'Save failed')
@@ -168,39 +171,17 @@ function AddScheduleModal({ onClose, onSaved }) {
         <h2 className="font-headline font-bold text-lg text-[#1a1c1c] mb-4">Add Schedule</h2>
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-body text-[#40493d] block mb-1">Schedule Name</label>
-            <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Morning Zone 1"
-              className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none" />
-          </div>
-          <div>
-            <label className="text-xs font-body text-[#40493d] block mb-2">Device</label>
-            <div className="flex rounded-lg overflow-hidden border border-[#e2e2e2]">
-              <button type="button" onClick={() => switchDevice('irrigation1')}
-                className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${!isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d] hover:bg-[#f3f3f3]'}`}>
-                Irrigation Zone
-              </button>
-              <button type="button" onClick={() => switchDevice('a6v3')}
-                className={`flex-1 py-1.5 text-xs font-semibold transition-colors border-l border-[#e2e2e2] ${isA6v3 ? 'bg-[#0d631b] text-white' : 'bg-white text-[#40493d] hover:bg-[#f3f3f3]'}`}>
-                A6v3 Relay
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-body text-[#40493d] block mb-1">{slotLabel}</label>
-              <select value={zoneNum} onChange={e => setZoneNum(Number(e.target.value))}
+            <label className="text-xs font-body text-[#40493d] block mb-1">Group</label>
+            {groups.length === 0 ? (
+              <p className="text-xs text-[#40493d] italic">No groups found. Create a group in the Irrigation or A6v3 page first.</p>
+            ) : (
+              <select value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}
                 className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none">
-                {Array.from({ length: slotCount }, (_, i) => i + 1).map(n => (
-                  <option key={n} value={n}>{names[n] ?? `${slotLabel} ${n}`}</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name} ({deviceHint(g)})</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="text-xs font-body text-[#40493d] block mb-1">Duration (min)</label>
-              <input type="number" min={5} max={120} value={duration}
-                onChange={e => setDuration(Number(e.target.value))}
-                className="w-full bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body outline-none" />
-            </div>
+            )}
           </div>
           <div>
             <label className="text-xs font-body text-[#40493d] block mb-2">Days</label>
@@ -224,7 +205,7 @@ function AddScheduleModal({ onClose, onSaved }) {
               className="flex-1 py-2.5 rounded-xl bg-[#f3f3f3] text-sm font-semibold text-[#40493d] hover:bg-[#e8e8e8] transition-colors">
               Cancel
             </button>
-            <button onClick={save} disabled={saving}
+            <button onClick={save} disabled={saving || groups.length === 0}
               className="flex-1 py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity">
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -236,14 +217,14 @@ function AddScheduleModal({ onClose, onSaved }) {
 }
 
 // ── Run zone modal ──────────────────────────────────────────────────────────
-function RunZoneModal({ onClose }) {
+function RunZoneModal({ onClose, mqttPrefix, myDeviceId }) {
   const [zone, setZone]         = useState(1)
   const [duration, setDuration] = useState(30)
   const [running, setRunning]   = useState(false)
 
   async function run() {
     setRunning(true)
-    try { await zoneOn(zone, duration) } catch (e) { console.error(e) }
+    try { await zoneOn(zone, duration, 'manual', { prefix: mqttPrefix, device: myDeviceId }) } catch (e) { console.error(e) }
     onClose()
   }
 
@@ -297,6 +278,8 @@ function EventBlock({ event, onClick }) {
 
 // ── Main component ──────────────────────────────────────────────────────────
 export default function Calendar() {
+  const { device: myDevice, mqttPrefix } = useMyDevice()
+  const myDeviceId = myDevice?.device_id ?? 'irrigation1'
   const [view, setView]               = useState('week')
   const [selectedDay, setSelectedDay] = useState(new Date())
   const [showAddModal, setShowAddModal] = useState(false)
@@ -391,22 +374,25 @@ export default function Calendar() {
     d.getFullYear() === today.getFullYear()
 
   return (
-    <div className="flex-1 p-4 md:p-6 bg-[#f9f9f9] overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-headline font-bold text-2xl text-[#1a1c1c]">Irrigation Calendar</h1>
-        <div className="flex items-center gap-1">
-          {['week', 'day'].map(v => (
-            <button key={v} onClick={() => {
-              setView(v)
-              if (v === 'day') setSelectedDay(today)
-            }}
-              className={`px-4 py-1.5 rounded-lg text-sm font-body font-medium transition-colors capitalize ${
-                view === v ? 'bg-[#0d631b] text-white' : 'text-[#40493d] hover:bg-[#f3f3f3]'
-              }`}>{v}</button>
-          ))}
-        </div>
-      </div>
+    <div className="flex-1 p-8 md:p-12 bg-[#f8faf9] overflow-auto min-h-screen">
+      <PageHeader
+        eyebrow="Scheduling"
+        title="Irrigation Calendar"
+        subtitle="Weekly and daily view of all programs"
+        actions={
+          <div className="inline-flex bg-[#f2f4f3] p-1 rounded-full">
+            {['week', 'day'].map(v => (
+              <button key={v} onClick={() => {
+                setView(v)
+                if (v === 'day') setSelectedDay(today)
+              }}
+                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all capitalize ${
+                  view === v ? 'bg-white shadow-sm text-[#17362e]' : 'text-[#717975] hover:text-[#17362e]'
+                }`}>{v}</button>
+            ))}
+          </div>
+        }
+      />
 
       {saved && (
         <div className="mb-4 px-4 py-3 bg-[#0d631b]/10 border border-[#0d631b]/20 rounded-xl text-sm text-[#0d631b] font-semibold">
@@ -542,20 +528,22 @@ export default function Calendar() {
             )}
           </div>
 
-          <button onClick={() => setShowAddModal(true)}
-            className="w-full gradient-primary text-white font-body font-semibold text-sm py-3 rounded-xl shadow-fab hover:opacity-90 transition-opacity">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className={`w-full ${btnPrimary}`}
+            style={btnPrimaryStyle}
+          >
             + Add Schedule
           </button>
-          <button onClick={() => setShowRunModal(true)}
-            className="w-full bg-[#e2e2e2] text-[#1a1c1c] font-body font-semibold text-sm py-3 rounded-xl hover:bg-[#e8e8e8] transition-colors">
+          <button onClick={() => setShowRunModal(true)} className={`w-full ${btnSecondary}`}>
             Run Zone Now
           </button>
         </div>
       </div>
 
       {showAddModal    && <AddScheduleModal onClose={() => setShowAddModal(false)} onSaved={onSaved} />}
-      {showRunModal    && <RunZoneModal onClose={() => setShowRunModal(false)} />}
-      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
+      {showRunModal    && <RunZoneModal onClose={() => setShowRunModal(false)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} />}
+      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} />}
     </div>
   )
 }

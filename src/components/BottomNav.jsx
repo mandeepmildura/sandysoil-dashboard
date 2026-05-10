@@ -1,24 +1,36 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAlerts } from '../hooks/useAlerts'
+import { KCS_DEVICES } from '../config/devices'
+import { isAdmin } from '../lib/role'
 
-const primary = [
+// Customer mobile nav: 4 destinations, no More menu. Pressure becomes a
+// card on Home. Admin nav (KCS devices, Admin Console) only appears when
+// signed in as admin and is rendered behind a More button below.
+const primaryCustomer = [
   { to: '/',         label: 'Home',     icon: <GridIcon /> },
   { to: '/zones',    label: 'Zones',    icon: <DropIcon /> },
-  { to: '/a6v3',     label: 'A6v3',     icon: <RelayIcon /> },
-  { to: '/programs', label: 'Programs', icon: <ListIcon /> },
+  { to: '/calendar', label: 'Schedule', icon: <CalIcon /> },
+  { to: '/alerts',   label: 'Alerts',   icon: <BellIcon />, badge: true },
 ]
 
-const overflow = [
-  { to: '/history',  label: 'History',    icon: <HistoryIcon /> },
-  { to: '/calendar', label: 'Schedule',   icon: <CalIcon /> },
-  { to: '/rules',    label: 'Rules',      icon: <RulesIcon /> },
-  { to: '/pressure', label: 'Pressure',   icon: <GaugeIcon /> },
-  { to: '/alerts',   label: 'Alerts',     icon: <BellIcon />, badge: true },
-  { to: '/admin',    label: 'Admin',      icon: <AdminIcon /> },
+const overflowCustomer = [
+  { to: '/water',    label: 'Water',    icon: <WaterIcon /> },
+  { to: '/account',  label: 'Account',  icon: <AccountIcon /> },
 ]
 
-export default function BottomNav() {
+const overflowAdmin = [
+  { to: '/water',    label: 'Water',    icon: <WaterIcon /> },
+  { to: '/pressure', label: 'Pressure', icon: <GaugeIcon /> },
+  ...KCS_DEVICES.map(d => ({ to: d.path, label: d.navLabel, icon: <RelayIcon /> })),
+  { to: '/admin',    label: 'Admin',    icon: <AdminIcon /> },
+  { to: '/account',  label: 'Account',  icon: <AccountIcon /> },
+]
+
+export default function BottomNav({ session }) {
+  const admin = isAdmin(session)
+  const primary = primaryCustomer
+  const overflow = admin ? overflowAdmin : overflowCustomer
   const { alerts } = useAlerts()
   const unreadCount = alerts.filter(a => !a.acknowledged).length
   const [open, setOpen] = useState(false)
@@ -42,7 +54,7 @@ export default function BottomNav() {
       {/* Slide-up "More" sheet */}
       <div className={`md:hidden fixed bottom-14 inset-x-0 z-50 bg-[#304047] rounded-t-2xl transition-transform duration-200 ${open ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="px-2 pt-3 pb-4">
-          <div className="w-8 h-1 bg-white/20 rounded-full mx-auto mb-4" />
+          <div className="w-8 h-1 bg-white/20 rounded-full mx-auto mb-3" />
           <div className="grid grid-cols-3 gap-1">
             {overflow.map(({ to, label, icon, badge }) => (
               <button
@@ -67,7 +79,7 @@ export default function BottomNav() {
 
       {/* Bottom bar */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#304047] border-t border-white/10 flex">
-        {primary.map(({ to, label, icon }) => (
+        {primary.map(({ to, label, icon, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -78,23 +90,25 @@ export default function BottomNav() {
               }`
             }
           >
-            <span className="w-5 h-5">{icon}</span>
+            <span className="w-5 h-5 relative">
+              {icon}
+              {badge && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </span>
             {label}
           </NavLink>
         ))}
 
-        {/* More button */}
+        {/* More button — all users */}
         <button
           onClick={() => setOpen(o => !o)}
-          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors relative ${open ? 'text-white' : 'text-white/50'}`}
+          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-body font-medium transition-colors ${open ? 'text-white' : 'text-white/50'}`}
         >
-          <span className="w-5 h-5 relative">
+          <span className="w-5 h-5">
             <MoreIcon />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
           </span>
           More
         </button>
@@ -157,6 +171,13 @@ function HistoryIcon() {
     </svg>
   )
 }
+function WaterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2.5c4 5 7 8 7 11.5a7 7 0 11-14 0c0-3.5 3-6.5 7-11.5z"/>
+    </svg>
+  )
+}
 function GaugeIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -177,6 +198,14 @@ function AdminIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+    </svg>
+  )
+}
+function AccountIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7.5" cy="15.5" r="3.5"/>
+      <path d="M11 15.5h9M16 12l3.5 3.5L16 19"/>
     </svg>
   )
 }

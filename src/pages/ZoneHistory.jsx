@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import {
+  localDateStr as toDateStr,
+  fmtDateLabel,
+  minutesFromMidnight,
+  timeStrToMinutes,
+  fmtDurMin as fmtDur,
+  pct,
+} from '../lib/format'
 
 const ZONES = [1, 2, 3, 4, 5, 6, 7, 8]
 const ZONE_META = {
@@ -23,50 +31,8 @@ function Icon({ name, className = '' }) {
   return <span className={`material-symbols-outlined ${className}`}>{name}</span>
 }
 
-function toDateStr(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const dy = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dy}`
-}
-
-function fmtDateLabel(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const yest = new Date(today)
-  yest.setDate(yest.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yest.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-function minutesFromMidnight(isoStr) {
-  const d = new Date(isoStr)
-  return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
-}
-
-function timeStrToMinutes(timeStr) {
-  const [h, m] = timeStr.split(':').map(Number)
-  return h * 60 + m
-}
-
-function fmtDur(min) {
-  if (!min || min < 1) return '< 1 min'
-  const rounded = Math.round(min)
-  if (rounded < 60) return `${rounded} min`
-  const h = Math.floor(rounded / 60)
-  const r = rounded % 60
-  return r > 0 ? `${h}h ${r}m` : `${h}h`
-}
-
 function fmtTime(isoStr) {
   return new Date(isoStr).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
-}
-
-function pct(numerator, denominator) {
-  if (!denominator) return 0
-  return Math.round((numerator / denominator) * 100)
 }
 
 export default function ZoneHistory() {
@@ -510,7 +476,7 @@ export default function ZoneHistory() {
                           </div>
                           <div>
                             <p className="text-sm font-bold text-[#17362e]">Zone {run.zone_num}</p>
-                            <p className="text-xs text-[#717975]">{fmtTime(run.started_at)} · {isRunning ? 'Running' : fmtDur(duration)}</p>
+                            <p className="text-xs text-[#717975]">{fmtTime(run.started_at)} ï¿½ {isRunning ? 'Running' : fmtDur(duration)}</p>
                           </div>
                         </div>
                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${palette.badge}`}>{source}</span>
@@ -541,7 +507,7 @@ export default function ZoneHistory() {
               {selected._type === 'schedule' ? (
                 <>
                   <DetailRow label="Program" value={selected.label ?? 'Program'} />
-                  <DetailRow label="Start time" value={selected.start_time?.slice(0, 5) ?? '—'} />
+                  <DetailRow label="Start time" value={selected.start_time?.slice(0, 5) ?? 'ï¿½'} />
                   <DetailRow label="Duration" value={fmtDur(selected.duration_min)} />
                   <DetailRow label="Zone label" value={ZONE_META[selected.zone_num]} />
                 </>

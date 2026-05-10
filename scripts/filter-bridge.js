@@ -33,9 +33,10 @@
  */
 
 import 'dotenv/config'
-import { SerialPort }      from 'serialport'
-import { ReadlineParser }  from '@serialport/parser-readline'
-import mqtt                from 'mqtt'
+import { SerialPort }                       from 'serialport'
+import { ReadlineParser }                   from '@serialport/parser-readline'
+import mqtt                                 from 'mqtt'
+import { createBackwashState, tickBackwash } from './lib/backwash.js'
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const SERIAL_PORT = process.env.FILTER_PORT || 'COM6'
@@ -59,29 +60,8 @@ if (!MQTT_HOST || !MQTT_USER || !MQTT_PASS || MQTT_PASS === 'your-mqtt-password'
 }
 
 // ── Backwash state machine ───────────────────────────────────────────────────
-const bw = { state: 'MONITORING', relay_on: false, triggered_at: null, last_complete_at: null }
-
-function tickBackwash(diffPsi, relayBit) {
-  const now = Date.now()
-
-  if (relayBit === 1 || diffPsi >= BACKWASH_TRIGGER_PSI) {
-    if (bw.state === 'MONITORING') { bw.state = 'TRIGGERED'; bw.triggered_at = now }
-    else if (bw.state === 'TRIGGERED') { bw.state = 'FLUSHING'; bw.relay_on = true }
-  } else {
-    if (bw.state === 'FLUSHING' || bw.state === 'TRIGGERED') {
-      bw.state = 'COMPLETE'; bw.relay_on = false; bw.last_complete_at = now
-    } else if (bw.state === 'COMPLETE') {
-      bw.state = 'MONITORING'
-    }
-  }
-
-  return {
-    state:   bw.state,
-    relay_on: bw.relay_on,
-    elapsed_sec:           bw.triggered_at     ? Math.round((now - bw.triggered_at)     / 1000) : 0,
-    last_complete_ago_sec: bw.last_complete_at  ? Math.round((now - bw.last_complete_at) / 1000) : null,
-  }
-}
+// Pure transition logic lives in ./lib/backwash.js for unit testability.
+const bw = createBackwashState()
 
 // ── MQTT ─────────────────────────────────────────────────────────────────────
 const mqttClient = mqtt.connect(`mqtts://${MQTT_HOST}:8883`, {
@@ -138,7 +118,7 @@ parser.on('data', raw => {
       outlet_psi:       Math.round(outlet * 10) / 10,
       differential_psi: Math.round(diff   * 10) / 10,
     }
-    const backwash = tickBackwash(diff, relayBit)
+    const backwash = tickBackwash(bw, diff, relayBit, BACKWASH_TRIGGER_PSI)
 
     pub('farm/filter1/pressure',      pressure)
     pub('farm/filter1/backwash/state', backwash)

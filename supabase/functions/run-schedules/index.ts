@@ -54,10 +54,11 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { expandSteps, type Step } from './lib/expandSteps.ts'
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'UTC'
+const TIMEZONE             = Deno.env.get('TIMEZONE') ?? 'Australia/Melbourne'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -65,8 +66,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 function localTimeParts() {
   const now = new Date()
   const fmt = new Intl.DateTimeFormat('en-AU', {
-    timeZone: TIMEZONE,
-    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
+    timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
   })
   const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
   const hhmm = `${parts.hour.padStart(2, '0')}:${parts.minute.padStart(2, '0')}`
@@ -77,21 +77,17 @@ function localTimeParts() {
 function currentHHMM(): string { return localTimeParts().hhmm }
 function currentDOW():  number { return localTimeParts().dow }
 
-type Step = {
-  zone_num:    number
-  duration_min: number | null
-  sort_order:  number
-  step_type:   string | null   // 'on' | 'off' | 'delay' — null treated as 'on'
-  delay_min:   number | null
-  device:      string | null   // 'irrigation1' | 'a6v3' — null treated as 'irrigation1'
-}
-
 Deno.serve(async (_req) => {
   try {
     const now = currentHHMM()
     const dow = currentDOW()
 
     console.log(`[run-schedules] checking at ${now} DOW=${dow} (tz=${TIMEZONE})`)
+
+    // Today's date in local timezone (YYYY-MM-DD)
+    const todayLocal = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date())
 
     const { data: schedules, error: schedErr } = await supabase
       .from('group_schedules')
@@ -101,10 +97,15 @@ Deno.serve(async (_req) => {
         label,
         days_of_week,
         start_time,
+        run_once_date,
         zone_groups (
           id,
           name,
           run_mode,
+          devices (
+            mqtt_topic_base,
+            device_id
+          ),
           zone_group_members (
             zone_num,
             duration_min,
@@ -118,14 +119,13 @@ Deno.serve(async (_req) => {
       .eq('enabled', true)
       .filter('start_time', 'gte', `${now}:00`)
       .filter('start_time', 'lt',  `${now}:59`)
-
     if (schedErr) throw schedErr
 
     const due = (schedules ?? []).filter(s =>
-      Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
+      s.run_once_date
+        ? s.run_once_date === todayLocal
+        : Array.isArray(s.days_of_week) && s.days_of_week.includes(dow)
     )
-
-    console.log(`[run-schedules] ${due.length} schedule(s) due`)
 
     const results: string[] = []
 
@@ -135,65 +135,44 @@ Deno.serve(async (_req) => {
         name: string
         run_mode: string
         zone_group_members: Step[]
+        devices: { mqtt_topic_base: string | null, device_id: string } | null
       } | null
 
       if (!group) continue
 
-      const steps = [...(group.zone_group_members ?? [])]
-        .sort((a, b) => a.sort_order - b.sort_order)
+      // Resolve the device's MQTT prefix at queue time so the executor doesn't
+      // need to re-query devices later. Falls back to the legacy
+      // irrigation controller for any zone_groups row not yet linked to a device.
+      const mqttBaseTopic = group.devices?.mqtt_topic_base
+        ?? (group.devices?.device_id ? `farm/${group.devices.device_id.toLowerCase()}` : 'farm/irrigation1')
 
-      console.log(`[run-schedules] queuing "${group.name}" (${steps.length} steps)`)
+      console.log(`[run-schedules] queuing "${group.name}" → ${mqttBaseTopic} (${(group.zone_group_members ?? []).length} steps)`)
 
-      // Parse schedule start time as a Date (today in local time → UTC)
-      const [sh, sm] = sched.start_time.split(':').map(Number)
-      const now_date = new Date()
-      // Build a Date for today at the schedule's local time
-      const localStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: TIMEZONE,
-        year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(now_date)
-      // localStr is "YYYY-MM-DD"; combine with schedule time in local TZ
-      const scheduleTime = new Date(
-        new Date(`${localStr}T${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}:00`)
-          .toLocaleString('en-US', { timeZone: TIMEZONE })
-          .replace(/(\d+)\/(\d+)\/(\d+),\s(\d+):(\d+):(\d+)\s(AM|PM)/, (_, mo, da, yr, h, mi, s, ap) => {
-            const hr = ap === 'PM' && +h < 12 ? +h + 12 : ap === 'AM' && +h === 12 ? 0 : +h
-            return `${yr}-${mo.padStart(2,'0')}-${da.padStart(2,'0')}T${String(hr).padStart(2,'0')}:${mi}:${s}`
-          })
-      )
-      // Fallback: just use UTC-based offset approximation if parsing fails
-      const baseMs = isNaN(scheduleTime.getTime()) ? Date.now() : scheduleTime.getTime()
-
-      // Walk steps, accumulating delay offset as a cursor
-      let cursorMs = baseMs
-      const queueRows: object[] = []
-
-      for (const step of steps) {
-        const stepType = step.step_type ?? 'on'
-
-        if (stepType === 'delay') {
-          cursorMs += (step.delay_min ?? 0) * 60_000
-          continue
-        }
-
-        // Actionable step: 'on' or 'off'
-        queueRows.push({
-          group_id:    group.id,
-          step_type:   stepType,
-          device:      step.device ?? 'irrigation1',
-          zone_num:    step.zone_num,
-          duration_min: step.duration_min,
-          fire_at:     new Date(cursorMs).toISOString(),
-        })
-
-        // For irrigation1 sequential 'on' steps: advance cursor by duration so the
-        // next step fires after this one completes (backwards-compatible behaviour)
-        if (stepType === 'on'
-            && (step.device ?? 'irrigation1') === 'irrigation1'
-            && group.run_mode === 'sequential') {
-          cursorMs += (step.duration_min ?? 0) * 60_000
-        }
+      // Dedup: skip if this group already has unfired steps queued in the last 2 minutes
+      // (guards against pg_cron calling us twice in the same minute)
+      const dedupSince = new Date(Date.now() - 2 * 60_000).toISOString()
+      const { data: existing } = await supabase
+        .from('program_queue')
+        .select('id')
+        .eq('group_id', group.id)
+        .is('fired_at', null)
+        .gte('created_at', dedupSince)
+        .limit(1)
+      if (existing?.length) {
+        console.log(`[run-schedules] "${group.name}" already queued — skipping duplicate`)
+        results.push(`${group.name} → skipped (duplicate)`)
+        continue
       }
+
+      // Base time is now — the function runs at the correct minute,
+      // so Date.now() is the right fire_at for immediate steps.
+      const queueRows = expandSteps(
+        group.id,
+        group.run_mode,
+        (group.zone_group_members ?? []) as Step[],
+        Date.now(),
+        mqttBaseTopic,
+      )
 
       if (queueRows.length > 0) {
         const { error: qErr } = await supabase.from('program_queue').insert(queueRows)
@@ -202,17 +181,40 @@ Deno.serve(async (_req) => {
       } else {
         results.push(`${group.name} → no actionable steps`)
       }
+
+      // Disable once-only schedules after firing
+      if (sched.run_once_date) {
+        await supabase.from('group_schedules')
+          .update({ enabled: false, run_once_date: null })
+          .eq('id', sched.id)
+      }
+    }
+
+    // Kick the queue executor right now so steps fire immediately rather than waiting
+    // for the next minute boundary. Avoids the 1-minute lag between "scheduled" and
+    // "MQTT command actually published".
+    if (results.length > 0) {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/run-program-queue`, {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          },
+          body: '{}',
+        })
+      } catch (kickErr) {
+        // Non-fatal — pg_cron will pick it up on the next minute as a fallback.
+        console.warn('[run-schedules] queue-kick failed (will retry next minute):', kickErr)
+      }
     }
 
     return new Response(
       JSON.stringify({ ok: true, time: now, dow, queued: results }),
       { headers: { 'Content-Type': 'application/json' } }
-    )
-  } catch (err) {
+    )  } catch (err) {
     console.error('[run-schedules] error:', err)
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })
+

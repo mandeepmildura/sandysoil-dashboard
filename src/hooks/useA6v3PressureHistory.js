@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { bucketA6v3 } from '../lib/pressureBuckets'
 
-export function useA6v3PressureHistory(hours = 24) {
+/**
+ * Fetches A6v3 CH1 pressure history for a given time range.
+ * @param {string} from  ISO string for range start
+ * @param {string} to    ISO string for range end
+ */
+export function useA6v3PressureHistory(from, to) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -10,34 +16,25 @@ export function useA6v3PressureHistory(hours = 24) {
   useEffect(() => {
     async function fetch() {
       setLoading(true)
-      const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+      const rangeMs = new Date(to).getTime() - new Date(from).getTime()
+      const multiDay = rangeMs > 24 * 60 * 60 * 1000
 
       const { data: rows, error } = await supabase
         .from('pressure_log')
         .select('ts, a6v3_ch1_psi')
         .not('a6v3_ch1_psi', 'is', null)
-        .gte('ts', since)
-        .order('ts', { ascending: true })
+        .gte('ts', from)
+        .lte('ts', to)
+        .order('ts', { ascending: false })
+        .limit(5000)
 
       if (!error && rows) {
-        const buckets = {}
-        for (const row of rows) {
-          const d = new Date(row.ts)
-          const mm = Math.floor(d.getMinutes() / 5) * 5
-          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
-          if (!buckets[key]) {
-            buckets[key] = { time: `${String(d.getHours()).padStart(2,'0')}:${String(mm).padStart(2,'0')}`, _ts: d.getTime(), psi: [] }
-          }
-          if (row.a6v3_ch1_psi != null) buckets[key].psi.push(parseFloat(row.a6v3_ch1_psi))
-        }
-        const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
-        const sorted = Object.values(buckets).sort((a, b) => a._ts - b._ts)
-        setData(sorted.map(b => ({ time: b.time, psi: avg(b.psi) })))
+        setData(bucketA6v3(rows, multiDay))
       }
       setLoading(false)
     }
     fetch()
-  }, [hours, refreshKey])
+  }, [from, to, refreshKey])
 
   return { data, loading, reload }
 }

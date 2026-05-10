@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { bucketMultiSeries } from '../lib/pressureBuckets'
 
 /**
- * Fetches the last `hours` hours of pressure_log data,
- * bucketed by the minute for charting.
+ * Fetches the last `hours` hours of pressure_log data, bucketed for charting.
+ * - Up to 24h: 5-minute buckets
+ * - 7D+: 1-hour buckets (keeps chart readable)
+ * Includes a6v3_ch1_psi alongside the irrigation sensor data.
  */
 export function usePressureHistory(hours = 24) {
   const [data, setData] = useState([])
@@ -16,39 +19,17 @@ export function usePressureHistory(hours = 24) {
       setLoading(true)
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
 
+      // Cap rows so long ranges can't pull unbounded history; bucketing
+      // downsamples to ≤288 points anyway, so 5000 raw rows is plenty.
       const { data: rows, error } = await supabase
         .from('pressure_log')
-        .select('ts, inlet_psi, outlet_psi, diff_psi, supply_psi, simulated')
+        .select('ts, inlet_psi, outlet_psi, diff_psi, supply_psi, a6v3_ch1_psi')
         .gte('ts', since)
-        .order('ts', { ascending: true })
+        .order('ts', { ascending: false })
+        .limit(5000)
 
       if (!error && rows) {
-        // Downsample — average values per 5-minute bucket for chart performance
-        const buckets = {}
-        for (const row of rows) {
-          const d = new Date(row.ts)
-          // Include date in key to avoid cross-day collisions
-          const mm = Math.floor(d.getMinutes() / 5) * 5
-          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
-          if (!buckets[key]) {
-            buckets[key] = { time: `${String(d.getHours()).padStart(2,'0')}:${String(mm).padStart(2,'0')}`, _ts: d.getTime(), inlet: [], outlet: [], diff: [], supply: [], simulated: false }
-          }
-          buckets[key].inlet.push(parseFloat(row.inlet_psi ?? 0))
-          buckets[key].outlet.push(parseFloat(row.outlet_psi ?? 0))
-          buckets[key].diff.push(parseFloat(row.diff_psi ?? 0))
-          if (row.supply_psi != null) buckets[key].supply.push(parseFloat(row.supply_psi))
-          if (row.simulated) buckets[key].simulated = true
-        }
-        const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0
-        const sorted = Object.values(buckets).sort((a, b) => a._ts - b._ts)
-        setData(sorted.map(b => ({
-          time:      b.time,
-          inlet:     avg(b.inlet),
-          outlet:    avg(b.outlet),
-          diff:      avg(b.diff),
-          supply:    b.supply.length ? avg(b.supply) : null,
-          simulated: b.simulated,
-        })))
+        setData(bucketMultiSeries(rows, hours))
       }
       setLoading(false)
     }
