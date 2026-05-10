@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
 import VitalsStrip from '../components/VitalsStrip'
 import { supabase } from '../lib/supabase'
 import { useLiveTelemetry } from '../hooks/useLiveTelemetry'
+import { useMyDevice } from '../hooks/useMyDevice'
 import { mqttPublish } from '../lib/mqttClient'
 import { fmtRelative as fmtLastSeen, fmtEvent } from '../lib/format'
 
@@ -211,9 +212,10 @@ export default function AdminConsole() {
   }, [])
 
   // ── Firmware OTA ─────────────────────────────────────────────────────────
-  const { data: mqttData } = useLiveTelemetry(['farm/irrigation1/status', 'farm/irrigation1/ota/status'])
-  const irr    = mqttData['farm/irrigation1/status']
-  const otaMsg = mqttData['farm/irrigation1/ota/status']
+  const { mqttPrefix } = useMyDevice()
+  const { data: mqttData } = useLiveTelemetry([`${mqttPrefix}/status`, `${mqttPrefix}/ota/status`])
+  const irr    = mqttData[`${mqttPrefix}/status`]
+  const otaMsg = mqttData[`${mqttPrefix}/ota/status`]
 
   const [otaState,  setOtaState]  = useState('idle')
   const [otaLatest, setOtaLatest] = useState(null)
@@ -228,8 +230,8 @@ export default function AdminConsole() {
     else if (['downloading','flashing'].includes(otaMsg.status)) setOtaState('updating')
   }, [otaMsg])
 
-  const checkFirmware   = () => { setOtaState('checking'); setOtaError(null); mqttPublish('farm/irrigation1/cmd/ota', { action: 'check' }) }
-  const pushFirmware    = () => { setOtaState('updating');  setOtaError(null); mqttPublish('farm/irrigation1/cmd/ota', { action: 'update' }) }
+  const checkFirmware   = () => { setOtaState('checking'); setOtaError(null); mqttPublish(`${mqttPrefix}/cmd/ota`, { action: 'check' }) }
+  const pushFirmware    = () => { setOtaState('updating');  setOtaError(null); mqttPublish(`${mqttPrefix}/cmd/ota`, { action: 'update' }) }
 
   // ── Vitals ────────────────────────────────────────────────────────────────
   const onlineFarms = farms.filter(f => f.status === 'online').length
@@ -308,9 +310,8 @@ export default function AdminConsole() {
                     <tr><td colSpan={5} className="px-5 py-6 text-sm text-[#40493d] text-center">No farms yet. Add one below.</td></tr>
                   )}
                   {farms.map((f, i) => (
-                    <>
+                    <Fragment key={f.id}>
                       <tr
-                        key={f.id}
                         className={`hover:bg-[#f9f9f9] transition-colors cursor-pointer ${i % 2 !== 0 ? 'bg-[#f3f3f3]/40' : ''}`}
                         onClick={() => setExpandedFarm(expandedFarm === f.id ? null : f.id)}
                       >
@@ -331,7 +332,7 @@ export default function AdminConsole() {
                         </td>
                       </tr>
                       {expandedFarm === f.id && (
-                        <tr key={`${f.id}-exp`} className="bg-[#f9f9f9]">
+                        <tr className="bg-[#f9f9f9]">
                           <td colSpan={5} className="px-5 py-3">
                             <div className="grid grid-cols-3 gap-4 text-xs text-[#40493d]">
                               <div><span className="font-semibold">Phone:</span> {f.contact_phone ?? '—'}</div>
@@ -341,7 +342,7 @@ export default function AdminConsole() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

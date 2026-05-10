@@ -3,12 +3,10 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vites
 import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react'
 
 // ── Mock commands ───────────────────────────────────────────────────────────
-const zoneOn     = vi.fn(() => Promise.resolve())
-const a6v3ZoneOn = vi.fn(() => Promise.resolve())
+const zoneOn = vi.fn(() => Promise.resolve())
 
 vi.mock('../src/lib/commands', () => ({
-  zoneOn:     (...args) => zoneOn(...args),
-  a6v3ZoneOn: (...args) => a6v3ZoneOn(...args),
+  zoneOn: (...args) => zoneOn(...args),
 }))
 
 // ── Mock supabase ──────────────────────────────────────────────────────────
@@ -100,7 +98,6 @@ afterAll(() => {
 beforeEach(() => {
   cleanup()
   zoneOn.mockClear()
-  a6v3ZoneOn.mockClear()
   for (const k of Object.keys(tableData)) delete tableData[k]
   inserts.length = 0
 })
@@ -151,7 +148,7 @@ describe('<Calendar />', () => {
     expect(screen.getByText(/sequential/i)).toBeTruthy()
   })
 
-  it('fires zoneOn for each irrigation1 zone when "Run Now" is clicked', async () => {
+  it('inserts sequential program_queue steps for irrigation zones when "Run Now" is clicked', async () => {
     tableData.zone_groups         = [IRR_GROUP]
     tableData.zone_group_members  = IRR_MEMBERS
     tableData.group_schedules     = [IRR_SCHEDULE]
@@ -162,15 +159,22 @@ describe('<Calendar />', () => {
     fireEvent.click(findSidebarButton('Morning Irrigation', '06:00'))
     fireEvent.click(await screen.findByRole('button', { name: /Run Now/i }))
 
-    await waitFor(() => expect(zoneOn).toHaveBeenCalledTimes(2))
-    // sort_order 0 = zone 1 with 15 min; sort_order 1 = zone 3 with 20 min
-    expect(zoneOn).toHaveBeenNthCalledWith(1, 1, 15, 'manual', { prefix: 'farm/irrigation1', device: 'irrigation1' })
-    expect(zoneOn).toHaveBeenNthCalledWith(2, 3, 20, 'manual', { prefix: 'farm/irrigation1', device: 'irrigation1' })
-    expect(a6v3ZoneOn).not.toHaveBeenCalled()
-    expect(inserts.filter(i => i.table === 'program_queue')).toHaveLength(0)
+    await waitFor(() => {
+      expect(inserts.filter(i => i.table === 'program_queue')).toHaveLength(2)
+    })
+
+    const rows = inserts.filter(i => i.table === 'program_queue')
+    // sort_order 0: zone 1, 15 min, fires immediately
+    expect(rows[0].row).toMatchObject({ group_id: 'g-irr', step_type: 'on', device: 'irrigation1', zone_num: 1, duration_min: 15 })
+    expect(new Date(rows[0].row.fire_at).getTime()).toBe(Date.now())
+    // sort_order 1: zone 3, 20 min, fires after zone 1 completes (15 min offset)
+    expect(rows[1].row).toMatchObject({ group_id: 'g-irr', step_type: 'on', device: 'irrigation1', zone_num: 3, duration_min: 20 })
+    expect(new Date(rows[1].row.fire_at).getTime()).toBe(Date.now() + 15 * 60_000)
+    // No direct MQTT calls — sequencing is handled by run-program-queue
+    expect(zoneOn).not.toHaveBeenCalled()
   })
 
-  it('fires a6v3ZoneOn AND queues an explicit off step for a6v3 zones', async () => {
+  it('inserts an on step and an explicit off step for a6v3 zones when "Run Now" is clicked', async () => {
     tableData.zone_groups         = [A6V3_GROUP]
     tableData.zone_group_members  = A6V3_MEMBERS
     tableData.group_schedules     = [A6V3_SCHEDULE]
@@ -182,22 +186,18 @@ describe('<Calendar />', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Run Now/i }))
 
     await waitFor(() => {
-      expect(a6v3ZoneOn).toHaveBeenCalledWith(2, 30)
+      expect(inserts.filter(i => i.table === 'program_queue')).toHaveLength(2)
     })
-    expect(zoneOn).not.toHaveBeenCalled()
 
-    // One off-step row should have been inserted into program_queue
-    const offRows = inserts.filter(i => i.table === 'program_queue')
-    expect(offRows).toHaveLength(1)
-    expect(offRows[0].row).toMatchObject({
-      group_id:  'g-a6v3',
-      step_type: 'off',
-      device:    'a6v3',
-      zone_num:  2,
-    })
-    // fire_at is now + 30 minutes
-    const fireAt = new Date(offRows[0].row.fire_at).getTime()
-    expect(fireAt).toBe(Date.now() + 30 * 60_000)
+    const rows = inserts.filter(i => i.table === 'program_queue')
+    // on step fires immediately
+    expect(rows[0].row).toMatchObject({ group_id: 'g-a6v3', step_type: 'on', device: 'a6v3', zone_num: 2, duration_min: 30 })
+    expect(new Date(rows[0].row.fire_at).getTime()).toBe(Date.now())
+    // off step fires after 30 min (A6v3 firmware has no auto-off)
+    expect(rows[1].row).toMatchObject({ group_id: 'g-a6v3', step_type: 'off', device: 'a6v3', zone_num: 2 })
+    expect(new Date(rows[1].row.fire_at).getTime()).toBe(Date.now() + 30 * 60_000)
+    // No direct MQTT calls
+    expect(zoneOn).not.toHaveBeenCalled()
   })
 
   it('opens Run Zone modal from the sidebar and fires zoneOn on Start', async () => {

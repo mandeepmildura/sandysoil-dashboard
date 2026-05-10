@@ -18,10 +18,12 @@ import {
   diffPsi as computeDiffPsi,
 } from '../lib/dashboard'
 
-const PRESSURE_TOPIC = 'farm/filter1/pressure'
-const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
-const B16M_TOPIC     = 'B16M/CCBA97071FD8/STATE'
-const A6V3_TOPIC     = 'A6v3/8CBFEA03002C/STATE'
+const PRESSURE_TOPIC         = 'farm/filter1/pressure'
+const BACKWASH_TOPIC         = 'farm/filter1/backwash/state'
+const B16M_TOPIC             = 'B16M/CCBA97071FD8/STATE'
+const A6V3_TOPIC             = 'A6v3/8CBFEA03002C/STATE'
+const BACKWASH_THRESHOLD_PSI = 8   // must match filter-bridge BACKWASH_TRIGGER_PSI
+const BACKWASH_SCALE_PSI     = 20  // bar max — threshold sits at 40% of scale
 
 // Severity / state palette — matches v2 design system
 const T = {
@@ -139,7 +141,7 @@ export default function Dashboard() {
   const inletPsi    = pressure?.inlet_psi ?? null
   const outletPsi   = pressure?.outlet_psi ?? null
   const diffPsi     = computeDiffPsi(pressure)
-  const diffPct     = (typeof diffPsi === 'number') ? Math.min(100, (diffPsi / 20) * 100) : 0
+  const diffPct     = (typeof diffPsi === 'number') ? Math.min(100, (diffPsi / BACKWASH_SCALE_PSI) * 100) : 0
 
   // ── Status banner state machine ──────────────────────────────
   // Priority: critical alerts > offline > running > healthy
@@ -499,7 +501,7 @@ function FilterCard({ inletPsi, outletPsi, diffPsi, diffPct }) {
         <div className="w-full h-1.5 rounded-full" style={{ background: '#fff' }}>
           <div className="h-full rounded-full transition-all" style={{ width: `${diffPct}%`, background: toneColor }} />
         </div>
-        <p className="text-[10px] mt-2" style={{ color: T.ink3 }}>Backwash threshold: 8 psi</p>
+        <p className="text-[10px] mt-2" style={{ color: T.ink3 }}>Backwash threshold: {BACKWASH_THRESHOLD_PSI} psi</p>
       </div>
       <button
         onClick={() => startBackwash().catch(console.error)}

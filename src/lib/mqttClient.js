@@ -69,6 +69,10 @@ async function fetchCreds() {
     throw new Error('No MQTT credentials available — sign in or set VITE_MQTT_* in dev')
   })()
 
+  // Clear the cache on rejection so the next call can retry instead of
+  // returning a permanently poisoned rejected Promise.
+  _credsPromise.catch(() => { _credsPromise = null })
+
   // Refresh creds periodically so a long-lived tab eventually rotates.
   setTimeout(() => { _credsPromise = null }, 50 * 60_000)
 

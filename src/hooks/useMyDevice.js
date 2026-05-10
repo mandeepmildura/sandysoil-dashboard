@@ -37,8 +37,16 @@ export function useMyDevice() {
           .eq('owner_id', user.id)
           .limit(1)
         if (qErr) throw qErr
-        const farm = rows?.[0] ?? null
-        const dev  = farm?.farm_devices?.[0] ?? null
+        const farm    = rows?.[0] ?? null
+        const devices = farm?.farm_devices ?? []
+        // Prefer a device explicitly typed as an irrigation controller; fall
+        // back to the first device if none matches (e.g. a newly provisioned farm
+        // with no type set yet).
+        const dev = devices.find(d =>
+          (d.type ?? '').toLowerCase().includes('irrigation') ||
+          (d.model ?? '').toLowerCase().includes('ssa') ||
+          (d.model ?? '').toLowerCase().includes('a8v')
+        ) ?? devices[0] ?? null
         if (!cancelled) {
           setDevice(dev ? { ...dev, farm_id: farm.id, farm_name: farm.name } : null)
           setLoading(false)

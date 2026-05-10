@@ -13,12 +13,14 @@ import { mqttMatch } from '../lib/mqttMatch'
 export function useLiveTelemetry(topics = []) {
   const { data: allData, connected } = useDeviceData()
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Collapse to a primitive so useMemo has a stable, value-comparable dep.
+  // Re-derive the list inside the memo — no closure over the array reference.
   const topicsKey = topics.join(',')
 
   const data = useMemo(() => {
+    const topicList = topicsKey ? topicsKey.split(',') : []
     const result = {}
-    for (const topic of topics) {
+    for (const topic of topicList) {
       if (topic.includes('+')) {
         for (const [t, payload] of Object.entries(allData)) {
           if (mqttMatch(topic, t)) result[t] = payload
@@ -28,7 +30,7 @@ export function useLiveTelemetry(topics = []) {
       }
     }
     return result
-  }, [allData, topicsKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allData, topicsKey])
 
   return { data, connected }
 }

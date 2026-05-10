@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import { btnPrimary, btnPrimaryStyle, btnSecondary } from '../components/ui'
 import { supabase } from '../lib/supabase'
 import { useMyDevice } from '../hooks/useMyDevice'
-import { zoneOn, a6v3ZoneOn } from '../lib/commands'
+import { zoneOn } from '../lib/commands'
 import {
   dbDayToCalIdx,
   getWeekMonday,
@@ -27,30 +27,48 @@ function EventModal({ event, onClose, mqttPrefix, myDeviceId }) {
     if (!p.zones?.length) return
     setRunning(true)
     try {
-      // A6v3 firmware has no auto-off timer, so for each A6v3 'on' we also
-      // queue an 'off' step in program_queue at now + duration. The
-      // run-program-queue cron job fires it. (irrigation1 auto-offs itself.)
-      const a6v3OffSteps = []
+      // Insert all steps into program_queue with sequential fire_at timestamps
+      // so run-program-queue executes them one at a time (no simultaneous zones).
+      // A6v3 needs an explicit 'off' step; irrigation firmware auto-offs itself.
+      const steps = []
+      let offset = 0
       for (const z of p.zones) {
-        const dur = z.duration_min ?? 30
-        if (z.device === 'a6v3') {
-          await a6v3ZoneOn(z.zone_num, dur)
-          a6v3OffSteps.push({
+        const dur    = z.duration_min ?? 30
+        const device = z.device ?? 'irrigation1'
+        const fireAt = new Date(Date.now() + offset).toISOString()
+        steps.push({
+          group_id:        p.id,
+          step_type:       'on',
+          device,
+          zone_num:        z.zone_num,
+          duration_min:    dur,
+          fire_at:         fireAt,
+          mqtt_base_topic: device === 'a6v3' ? null : mqttPrefix,
+        })
+        if (device === 'a6v3') {
+          steps.push({
             group_id:        p.id,
             step_type:       'off',
             device:          'a6v3',
             zone_num:        z.zone_num,
             duration_min:    null,
-            fire_at:         new Date(Date.now() + dur * 60_000).toISOString(),
-            mqtt_base_topic: mqttPrefix,
+            fire_at:         new Date(Date.now() + offset + dur * 60_000).toISOString(),
+            mqtt_base_topic: null,
           })
-        } else {
-          await zoneOn(z.zone_num, dur, 'manual', { prefix: mqttPrefix, device: myDeviceId })
         }
+        offset += (dur + (z.delay_min ?? 0)) * 60_000
       }
-      if (a6v3OffSteps.length > 0) {
-        const { error } = await supabase.from('program_queue').insert(a6v3OffSteps)
-        if (error) console.error('failed to queue a6v3 off step(s):', error)
+      const { error } = await supabase.from('program_queue').insert(steps)
+      if (error) throw error
+      // Kick run-program-queue immediately so the first zone fires now rather
+      // than waiting up to 1 minute for pg_cron. Fire-and-forget — cron catches
+      // it if this call fails.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/run-program-queue`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }).catch(e => console.warn('[runNow] run-program-queue kick failed:', e))
       }
     } catch (e) { console.error(e) }
     setRunning(false)
@@ -148,6 +166,10 @@ function AddScheduleModal({ onClose, onSaved }) {
     setSaving(true); setError(null)
     try {
       const selectedGroup = groups.find(g => g.id === selectedGroupId)
+      // Two day-numbering systems in play:
+      //   Calendar buttons: Mon=0 … Sat=5, Sun=6  (DAY_NAMES array order)
+      //   DB / JS getDay(): Sun=0, Mon=1 … Sat=6
+      // Map button index → DB value: Sun (i=6) → 0, all others → i+1
       const dow = days.map((on, i) => on ? (i === 6 ? 0 : i + 1) : null).filter(d => d !== null)
       const { data: { session } } = await supabase.auth.getSession()
       const { error: e } = await supabase.from('group_schedules').insert({
