@@ -1,0 +1,40 @@
+<h2>Which UI areas matter most?</h2>
+<p class="subtitle">Select all that you want to improve — I'll plan them together with the code fixes.</p>
+
+<div class="options" data-multiselect>
+
+  <div class="option" data-choice="chart" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Pressure chart</h3>
+      <p>Replace the plain bar sparkline with a real line chart — axis labels, hover tooltip showing PSI + time, current reading callout. ZoneDetail already uses Recharts so the library is already in the bundle.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="zone-cards" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Dashboard zone cards — duration picker</h3>
+      <p>Right now tapping a zone always fires a hardcoded 30 min run. Add an inline duration selector (15 / 30 / 60 / custom) to the card so the farmer picks duration before pressing start — without navigating away.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="calendar-delete" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Calendar — delete & pause schedules</h3>
+      <p>There's no way to delete a schedule in the Calendar view. The event modal shows "Run Now" and "Close" but no delete or pause button. Should match what the Zones page can do (pause toggle exists there).</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="status-banner" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Dashboard status banner — richer running state</h3>
+      <p>When zones are running, the banner says "2 zones watering" but doesn't name which zones or show per-zone countdowns. A compact running-zones strip would make it immediately clear what's active without scrolling to the zone grid.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Select one or more, then tell me your thoughts in the terminal.</p>

@@ -1,0 +1,89 @@
+<h2>Is this the scheduling model?</h2>
+<p class="subtitle">Tell me in the terminal if this is right or what needs adjusting.</p>
+
+<div style="background:#f8faf9;border:1px solid #e4e9e6;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem">
+  <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#7a8580;margin-bottom:1rem">Daily irrigation timeline — example day</p>
+
+  <!-- Timeline bar -->
+  <div style="position:relative;margin-bottom:2.5rem">
+    <div style="display:flex;height:2px;background:#e4e9e6;border-radius:2px;margin-bottom:0.5rem">
+      <div style="width:16.6%;"></div><!-- midnight to 4am -->
+    </div>
+
+    <!-- Pump zone (always on during irrigation) -->
+    <div style="margin-bottom:0.75rem">
+      <div style="display:flex;align-items:center;gap:0.75rem">
+        <span style="font-size:0.7rem;font-weight:700;color:#7a8580;width:80px;flex-shrink:0">PUMP ZONE</span>
+        <div style="flex:1;background:#e4e9e6;border-radius:6px;height:28px;position:relative;overflow:visible">
+          <!-- 4am to 8am = 4h / 24h = 16.6% to 33.3% -->
+          <div style="position:absolute;left:16.6%;width:16.6%;height:100%;background:linear-gradient(90deg,#0d4d20,#1f7a37);border-radius:6px;display:flex;align-items:center;padding:0 8px">
+            <span style="font-size:0.65rem;color:white;font-weight:700;white-space:nowrap">ON · 4am → 8am</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Avocado block: 4am–6am -->
+    <div style="margin-bottom:0.5rem">
+      <div style="display:flex;align-items:center;gap:0.75rem">
+        <span style="font-size:0.7rem;font-weight:700;color:#7a8580;width:80px;flex-shrink:0">AVOCADOS</span>
+        <div style="flex:1;background:#e4e9e6;border-radius:6px;height:28px;position:relative">
+          <!-- Zone A: 4am–5am (first 50% of 4-6 window) -->
+          <div style="position:absolute;left:16.6%;width:4.16%;height:100%;background:#2e7d32;border-radius:6px 0 0 6px;display:flex;align-items:center;padding:0 6px">
+            <span style="font-size:0.6rem;color:white;font-weight:700">Z2 · 60m</span>
+          </div>
+          <!-- Zone B: 5am–6am -->
+          <div style="position:absolute;left:20.76%;width:4.16%;height:100%;background:#388e3c;display:flex;align-items:center;padding:0 6px">
+            <span style="font-size:0.6rem;color:white;font-weight:700">Z3 · 60m</span>
+          </div>
+          <!-- time labels -->
+          <div style="position:absolute;left:16.6%;top:32px;font-size:0.6rem;color:#7a8580;transform:translateX(-50%)">4am</div>
+          <div style="position:absolute;left:24.92%;top:32px;font-size:0.6rem;color:#7a8580;transform:translateX(-50%)">6am</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Second block: 6am–8am -->
+    <div style="margin-bottom:0.5rem">
+      <div style="display:flex;align-items:center;gap:0.75rem">
+        <span style="font-size:0.7rem;font-weight:700;color:#7a8580;width:80px;flex-shrink:0">CITRUS</span>
+        <div style="flex:1;background:#e4e9e6;border-radius:6px;height:28px;position:relative">
+          <!-- Zone C: 6am–7am -->
+          <div style="position:absolute;left:24.92%;width:4.16%;height:100%;background:#00639a;border-radius:6px 0 0 6px;display:flex;align-items:center;padding:0 6px">
+            <span style="font-size:0.6rem;color:white;font-weight:700">Z5 · 60m</span>
+          </div>
+          <!-- Zone D: 7am–8am -->
+          <div style="position:absolute;left:29.08%;width:4.16%;height:100%;background:#0277bd;display:flex;align-items:center;padding:0 6px">
+            <span style="font-size:0.6rem;color:white;font-weight:700">Z6 · 60m</span>
+          </div>
+          <div style="position:absolute;left:33.24%;top:32px;font-size:0.6rem;color:#7a8580;transform:translateX(-50%)">8am</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2rem">
+    <div style="background:white;border-radius:8px;padding:1rem;border:1px solid #e4e9e6">
+      <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#0d4d20;margin-bottom:0.5rem">KEY RULES</p>
+      <ul style="font-size:0.8rem;color:#3b4a44;line-height:1.7;margin:0;padding-left:1rem">
+        <li>Pump zone turns on <strong>before</strong> first zone, off <strong>after</strong> last zone</li>
+        <li>Zones within a block run <strong>sequentially</strong> (one at a time)</li>
+        <li>Each zone has its <strong>own duration</strong></li>
+        <li>Multiple blocks per day, each with a <strong>named start time</strong></li>
+        <li>Pump stays on across blocks if they are <strong>back-to-back</strong></li>
+      </ul>
+    </div>
+    <div style="background:white;border-radius:8px;padding:1rem;border:1px solid #e4e9e6">
+      <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#0d4d20;margin-bottom:0.5rem">WHAT CHANGES IN THE APP</p>
+      <ul style="font-size:0.8rem;color:#3b4a44;line-height:1.7;margin:0;padding-left:1rem">
+        <li>Designate a <strong>pump/master zone</strong> per device (Zone 1 or whichever)</li>
+        <li>Per-zone durations in program builder</li>
+        <li>Programs show as <strong>time blocks</strong> in calendar</li>
+        <li>Sequential execution already works ✓</li>
+        <li>Calendar shows pump zone as a continuous bar</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle">Does this match what you're describing? What's different? Let me know in the terminal.</p>

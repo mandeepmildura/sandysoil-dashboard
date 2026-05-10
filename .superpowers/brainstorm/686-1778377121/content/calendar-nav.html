@@ -1,0 +1,116 @@
+<h2>Navigating through past days</h2>
+<p class="subtitle">How do you want to move between days?</p>
+
+<div class="options">
+
+  <div class="option selected" data-choice="arrows" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Arrow navigation + date label (recommended)</h3>
+      <p>Tap ← → to step through days. Tap the date to jump to any day via a date picker. "Today" button always brings you back.</p>
+
+      <div style="background:#f8faf9;border-radius:10px;padding:1rem;margin-top:0.75rem;max-width:360px">
+        <!-- Nav bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <button style="background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:6px 12px;font-size:0.8rem;color:#3b4a44;cursor:pointer">← Yesterday</button>
+          <div style="text-align:center">
+            <div style="font-size:0.85rem;font-weight:700;color:#0d4d20;cursor:pointer">Friday 9 May</div>
+            <div style="font-size:0.65rem;color:#7a8580">tap to pick date</div>
+          </div>
+          <button style="background:#0d4d20;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:0.8rem;cursor:pointer">Today</button>
+        </div>
+
+        <!-- Mini timeline -->
+        <div style="display:flex;justify-content:space-between;font-size:0.55rem;color:#7a8580;margin-bottom:6px;padding-left:64px">
+          <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span style="font-size:0.58rem;font-weight:700;color:#7a8580;width:56px;text-align:right">PUMP</span>
+          <div style="flex:1;background:#e4e9e6;border-radius:3px;height:16px;position:relative">
+            <div style="position:absolute;left:16.6%;width:16.7%;height:100%;background:#b8d5c0;border-radius:3px;border:1px dashed #2e7d32"></div>
+            <div style="position:absolute;left:16.6%;width:25%;height:100%;background:#0d4d20;border-radius:3px;opacity:0.85"></div>
+            <div style="position:absolute;left:41.6%;top:-1px;height:calc(100% + 2px);width:2px;background:#e53935;opacity:0.8"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span style="font-size:0.58rem;font-weight:700;color:#7a8580;width:56px;text-align:right">AVOCADOS</span>
+          <div style="flex:1;background:#e4e9e6;border-radius:3px;height:16px;position:relative">
+            <div style="position:absolute;left:16.6%;width:8.3%;height:100%;background:#2e7d32;border-radius:3px;opacity:0.85"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.58rem;font-weight:700;color:#7a8580;width:56px;text-align:right">CITRUS</span>
+          <div style="flex:1;background:#e4e9e6;border-radius:3px;height:16px;position:relative">
+            <div style="position:absolute;left:24.9%;width:8.3%;height:100%;background:#b3d4e8;border-radius:3px;border:1px dashed #0277bd"></div>
+            <div style="position:absolute;left:24.9%;width:3.1%;height:100%;background:#0277bd;border-radius:3px 0 0 3px;opacity:0.85"></div>
+            <div style="position:absolute;left:28%;top:0;height:100%;display:flex;align-items:center">
+              <div style="background:#e53935;color:white;border-radius:3px;padding:1px 4px;font-size:0.5rem;font-weight:700">⚡ fault</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:0.75rem;padding-top:0.6rem;border-top:1px solid #e4e9e6;display:flex;gap:6px;flex-wrap:wrap">
+          <span style="background:#fde8e8;color:#c0392b;border-radius:4px;padding:2px 8px;font-size:0.65rem;font-weight:700">⚠ Pump ran 2h over</span>
+          <span style="background:#fde8e8;color:#c0392b;border-radius:4px;padding:2px 8px;font-size:0.65rem;font-weight:700">⚡ Pressure fault 6:45am</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="week" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>7-day strip at top, tap to select day</h3>
+      <p>A row of 7 day chips (Mon–Sun) at the top. Tap any day to see its timeline below. Dots under a day mean something ran or faulted that day.</p>
+
+      <div style="background:#f8faf9;border-radius:10px;padding:1rem;margin-top:0.75rem;max-width:360px">
+        <div style="display:flex;gap:4px;margin-bottom:1rem">
+          <div style="flex:1;text-align:center;background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:4px 2px">
+            <div style="font-size:0.55rem;color:#7a8580">Mon</div>
+            <div style="font-size:0.7rem;font-weight:600;color:#3b4a44">5</div>
+            <div style="width:4px;height:4px;background:#2e7d32;border-radius:50%;margin:2px auto 0"></div>
+          </div>
+          <div style="flex:1;text-align:center;background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:4px 2px">
+            <div style="font-size:0.55rem;color:#7a8580">Tue</div>
+            <div style="font-size:0.7rem;font-weight:600;color:#3b4a44">6</div>
+            <div style="width:4px;height:4px;background:#2e7d32;border-radius:50%;margin:2px auto 0"></div>
+          </div>
+          <div style="flex:1;text-align:center;background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:4px 2px">
+            <div style="font-size:0.55rem;color:#7a8580">Wed</div>
+            <div style="font-size:0.7rem;font-weight:600;color:#3b4a44">7</div>
+            <div style="width:4px;height:4px;background:#e53935;border-radius:50%;margin:2px auto 0"></div>
+          </div>
+          <div style="flex:1;text-align:center;background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:4px 2px">
+            <div style="font-size:0.55rem;color:#7a8580">Thu</div>
+            <div style="font-size:0.7rem;font-weight:600;color:#3b4a44">8</div>
+            <div style="width:4px;height:4px;background:#2e7d32;border-radius:50%;margin:2px auto 0"></div>
+          </div>
+          <div style="flex:1;text-align:center;background:#0d4d20;border:1.5px solid #0d4d20;border-radius:8px;padding:4px 2px">
+            <div style="font-size:0.55rem;color:#b8d5c0">Fri</div>
+            <div style="font-size:0.7rem;font-weight:600;color:white">9</div>
+            <div style="width:4px;height:4px;background:#e53935;border-radius:50%;margin:2px auto 0"></div>
+          </div>
+          <div style="flex:1;text-align:center;background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:4px 2px">
+            <div style="font-size:0.55rem;color:#7a8580">Sat</div>
+            <div style="font-size:0.7rem;font-weight:600;color:#3b4a44">10</div>
+            <div style="width:4px;height:4px;background:transparent;border-radius:50%;margin:2px auto 0"></div>
+          </div>
+          <div style="flex:1;text-align:center;background:white;border:1.5px solid #e4e9e6;border-radius:8px;padding:4px 2px">
+            <div style="font-size:0.55rem;color:#7a8580">Sun</div>
+            <div style="font-size:0.7rem;font-weight:600;color:#7a8580">11</div>
+            <div style="width:4px;height:4px;background:transparent;border-radius:50%;margin:2px auto 0"></div>
+          </div>
+        </div>
+        <p style="font-size:0.72rem;color:#5a756b">Red dot = fault on that day. Green = ran clean. Tap Wed or Fri to see what went wrong.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="background:#f8faf9;border:1px solid #e4e9e6;border-radius:10px;padding:1rem;margin-top:1.5rem">
+  <p style="font-size:0.7rem;font-weight:700;color:#0d4d20;margin-bottom:0.5rem">HOW FAR BACK?</p>
+  <p style="font-size:0.8rem;color:#3b4a44">The data is all in <code>zone_history</code> so history can go back as far as records exist. A sensible default to show in the timeline: <strong>30 days</strong>. Older data is still queryable if you ever need it.</p>
+</div>
+
+<p class="subtitle" style="margin-top:1.25rem">A or B? And 30 days of history — is that enough or do you want more?</p>

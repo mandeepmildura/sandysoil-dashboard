@@ -1,0 +1,72 @@
+<h2>Three approaches to master pump zone + time-block scheduling</h2>
+<p class="subtitle">My recommendation is A — here's why, and what the alternatives cost you.</p>
+
+<div class="options">
+
+  <div class="option selected" data-choice="device-config" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Device-level pump zone (recommended)</h3>
+      <p>One setting on the device: "Zone 1 is the pump." Every program automatically wraps its queue steps with a pump-on before the first zone and a pump-off after the last. Back-to-back programs skip the off/on between them — pump runs continuously through the whole irrigation window.</p>
+      <ul style="font-size:0.8rem;color:#3b4a44;margin-top:0.5rem;padding-left:1rem;line-height:1.6">
+        <li>DB change: add <code>pump_zone_num</code> to existing <code>farm_devices</code> table</li>
+        <li>UI change: one selector in device settings (Admin Console)</li>
+        <li>Scheduler change: <code>run-schedules</code> Edge Function injects pump steps automatically</li>
+        <li>Multiple programs share the same pump zone — consistent, simple</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="option" data-choice="per-program" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Per-program pump zone</h3>
+      <p>Each program (zone group) independently declares which zone is its pump. Avocados might use Zone 1, Citrus might use Zone 1 too — or a different relay for a different block.</p>
+      <ul style="font-size:0.8rem;color:#3b4a44;margin-top:0.5rem;padding-left:1rem;line-height:1.6">
+        <li>DB change: add <code>pump_zone_num</code> to <code>zone_groups</code></li>
+        <li>UI change: pump selector in each program's settings</li>
+        <li>Scheduler: each program builds its own pump steps independently</li>
+        <li>⚠ Back-to-back pump coordination harder — two programs must detect overlap</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="option" data-choice="explicit-steps" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Pump as an explicit zone step</h3>
+      <p>No special "pump" concept in the DB. The user manually adds Zone 1 as the first and last step in each program, with duration spanning the whole block. The app treats it like any other zone.</p>
+      <ul style="font-size:0.8rem;color:#3b4a44;margin-top:0.5rem;padding-left:1rem;line-height:1.6">
+        <li>No DB change needed</li>
+        <li>Full flexibility — pump step sits wherever the user places it</li>
+        <li>⚠ User must remember to add it to every program</li>
+        <li>⚠ No automatic back-to-back coordination — pump cycles off then on between programs</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div style="background:#f8faf9;border:1px solid #e4e9e6;border-radius:12px;padding:1.25rem;margin-top:1.5rem">
+  <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#7a8580;margin-bottom:0.75rem">What Approach A builds — concretely</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div>
+      <p style="font-size:0.75rem;font-weight:700;color:#0d4d20;margin-bottom:0.4rem">DB changes (small)</p>
+      <ul style="font-size:0.78rem;color:#3b4a44;line-height:1.7;margin:0;padding-left:1rem">
+        <li><code>farm_devices.pump_zone_num</code> — nullable int</li>
+        <li>No changes to <code>zone_groups</code> or <code>program_queue</code></li>
+      </ul>
+    </div>
+    <div>
+      <p style="font-size:0.75rem;font-weight:700;color:#0d4d20;margin-bottom:0.4rem">App changes</p>
+      <ul style="font-size:0.78rem;color:#3b4a44;line-height:1.7;margin:0;padding-left:1rem">
+        <li>Admin Console: pump zone selector per device</li>
+        <li>Program builder: per-zone duration inputs (replaces global duration)</li>
+        <li><code>run-schedules</code>: inject pump on/off steps in queue</li>
+        <li>Calendar: show pump zone as continuous bar across blocks</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Does A match what you need? Or does something about B/C fit better? Tell me in the terminal.</p>
