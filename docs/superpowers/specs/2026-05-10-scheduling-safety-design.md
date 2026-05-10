@@ -43,7 +43,7 @@ ALTER TABLE zone_groups
 - When any program runs on a device with `pump_zone_num` set, the scheduler automatically wraps the zone steps:
   - Pump ON → all zone ONs (same `fire_at`)
   - All zone OFFs → pump OFF (same `fire_at` = start + `duration_min`)
-- **Back-to-back programs** (two programs on the same device with a gap < 2 minutes): the pump OFF from block A and pump ON from block B are suppressed — pump stays on continuously across both blocks.
+- **Back-to-back programs** (two programs on the same device with a gap < 2 minutes): the pump OFF MQTT message from block A is suppressed. However, the pump ON message for block B is still sent — this resets the firmware's internal 120-minute auto-off timer (SSA-V8 clamps any zone to 120 min per command; without the reset the pump would auto-off when block A's timer expires). The relay stays on throughout since it was already on.
 - The pump zone is **excluded from the zone picker** in the program builder — it cannot be added as a program step.
 - The pump zone card on the Dashboard and Zones page shows a `PUMP` badge. It remains manually controllable (tap to run, tap to stop) for diagnostic use (testing solenoid pressure, identifying stuck valves, etc.).
 
@@ -77,7 +77,7 @@ Program: "Avocados Morning"
 
 ### Program builder UI changes
 
-- **Duration field** replaces any per-zone duration inputs — one value for the whole program (minutes or hours, validated > 0)
+- **Duration field** replaces any per-zone duration inputs — one value for the whole program (minutes or hours, validated > 0). No upper cap for SSA-V8 programs. A6v3 programs warn if duration exceeds 90 min (watchdog will force-stop that device at 90 min).
 - **Zone selector** is a multi-select list; pump zone is hidden from it
 - **Start time** + **days of week** as today (no change)
 - No drag-to-schedule in v1 — time is entered via a standard time input
@@ -154,9 +154,25 @@ $$;
 
 Implementation: an assertion in `run-schedules` (and `run-program-queue`) that validates the step list in memory before any insert — every ON step must have a paired OFF in the same batch. This is simpler and more reliable than a DB trigger (which cannot inspect sibling rows in the same insert batch). A DB-level check constraint on `duration_min NOT NULL WHERE step_type='on'` is added as a secondary guard.
 
-### 6.3 Watchdog extended to all devices
+### 6.3 Firmware cap removal (SSA-V8 OTA required)
 
-The existing `a6v3-runaway-watchdog` (90 min cap, pg_cron every minute) is extended to also cover `irrigation1` zones and the pump zone. Max runtime per device configurable via Edge Function secret (`MAX_RUNTIME_MIN`, default 180 min for irrigation1 to allow legitimate long programs, 90 min retained for A6v3).
+`config.h` currently sets `MAX_RUN_MINUTES = 120`, which silently clamps any zone to 2 hours regardless of what the scheduler sends. This must be removed — on hot days programs can legitimately run longer than 2 hours and a hard cutoff is unacceptable.
+
+**Firmware change:** raise `MAX_RUN_MINUTES` to `1440` (24h) in `config.h`, making it a true last-resort backstop only. Deploy via GitHub OTA (`/cmd/ota` MQTT command or Admin Console OTA button). Bump firmware version to 2.5.0.
+
+### 6.4 Watchdog replaced with tiered alerts (no forced shutoff by default)
+
+The cloud watchdog replaces hard force-stops with intelligent, tiered alerts for `irrigation1`:
+
+| Running time | Action |
+|---|---|
+| 3 hours | WhatsApp + SMS alert: "Zone N has been running 3h — is this intentional?" |
+| 6 hours | Escalated alert: "Zone N running 6h — check immediately" |
+| Configurable hard limit | Force-off only if explicitly set by admin (off by default) |
+
+A6v3 retains the 90-min force-off because that device has no firmware cap at all and is known to runaway silently (per the 2026-05-06 incident). The `irrigation1` watchdog relies on the firmware's 1440-min backstop and notifies rather than kills.
+
+Alert thresholds configurable per device in Admin Console.
 
 ### 6.4 CI deploy gate
 
@@ -168,20 +184,117 @@ GitHub Action added: on merge to `main`, automatically deploy:
 
 No more hand-deploying divergent local copies. The Vitest suite runs before deploy; deploy is gated on test pass.
 
-### 6.5 WhatsApp / SMS fault alerts (Twilio)
+### 6.5 Two-way WhatsApp / SMS gateway (Twilio)
 
-New Edge Function `notify-alert`:
-- Triggered by a `device_alerts` DB webhook (Supabase → Edge Function) on INSERT where `severity = 'fault'`
-- Calls Twilio API: WhatsApp message first, SMS as fallback if WhatsApp fails
-- Message format: `[Sandy Soil Alert] Zone 2 runaway on irrigation1 — force-stopped after 90 min. Check the dashboard.`
-- Phone number + Twilio credentials stored as Supabase secrets
-- Admin Console: "Alert phone number" field + "WhatsApp / SMS / Both" selector
+New Edge Function `whatsapp-gateway` handles both outbound alerts and inbound commands.
 
-Severity levels that trigger notification: `fault` only (runaway relay, device offline > threshold, pressure spike). Normal zone start/stop events do not send messages.
+**Outbound alerts:**
+- Triggered by a `device_alerts` DB webhook on INSERT where `severity = 'fault'`
+- Sends WhatsApp first; falls back to SMS if WhatsApp delivery fails
+- Alert includes reply instructions: "Reply STOP to stop all zones, STOP N to stop zone N, STATUS to check, OK to acknowledge."
+- Tiered alert messages:
+  - 3h: "Zone N has been running 3 hours on [device] — is this intentional?"
+  - 6h: "Zone N running 6h on [device] — check immediately."
+  - Force-stop (if configured): "Zone N was force-stopped after [N]h."
+
+**Inbound commands (Twilio webhook → `whatsapp-gateway`):**
+
+| Command | Action |
+|---|---|
+| `STOP` | Publishes `all/off` MQTT command, closes all zone_history rows |
+| `STOP N` | Stops zone N only (MQTT off + close history) |
+| `STATUS` | Replies with list of currently-on zones and elapsed runtime |
+| `OK` | Marks the triggering alert as acknowledged in `device_alerts` |
+
+**Security:** Edge Function validates `From` number against the configured alert phone. Unrecognised senders receive "Not authorised" and the attempt is logged to `device_alerts` as an info event.
+
+**Configuration (Admin Console):**
+- Alert phone number (E.164 format)
+- Channel: WhatsApp / SMS / Both
+- Alert threshold: Fault only (default)
+
+Twilio credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`) stored as Supabase Edge Function secrets.
 
 ---
 
-## 7. Out of Scope (next spec)
+## 7. Edge Cases & Failure Modes
+
+### Program overlap — blocked, not warned
+Two programs on the same device cannot run simultaneously. Overlapping schedules are rejected at save time: "Avocados is already running until 6:00am — earliest Citrus can start is 6:00am." Reason: simultaneous open zones reduce supply pressure and may starve zones furthest from the pump.
+
+### Low pressure alert (new)
+If `supply_psi` drops below a configurable threshold during an active program, raise a fault alert immediately (WhatsApp + SMS + in-app):
+- **Gradual drop** (pressure fell slowly as zones opened): "Low pressure during [program] — check zone count or pump."
+- **Sudden drop** (>20 PSI drop in under 30 seconds): "Pressure spike detected on [device] — possible burst pipe. Stopping irrigation." Auto-stops all zones on that device.
+
+Threshold configurable per device in Admin Console (default: 15 PSI minimum). Pressure is already published in `farm/irrigation1/status` as `supply_psi`.
+
+### Device offline mid-run
+Firmware auto-off timer continues on-device regardless of MQTT state. Cloud watchdog fires independently. WhatsApp alert fires at offline threshold ("irrigation1 offline while zones were running"). Zone history reconciled on reconnect.
+
+### STOP command when device is offline
+WhatsApp gateway queues the off command in `program_queue` with `fire_at = now` and replies: "Device appears offline — command queued, will fire on reconnect." Executes within seconds of device coming back online.
+
+### Pump zone conflict (manual vs. scheduled)
+If pump is running manually when a scheduled program starts, the program takes over (sends pump ON, resets firmware timer). Program's pump OFF fires at program end — manual session is superseded. Info alert: "Pump was running manually — taken over by [program name]."
+
+If user taps pump OFF while a program is running, dashboard intercepts and shows: "Pump is part of a running program. Stop the whole program instead?" — prevents accidental mid-run pump kill.
+
+## 8. Data Strategy
+
+### Pressure logging — pump-aware rate
+
+Pressure is only meaningful during active irrigation. Log rate tied to pump zone state:
+
+| Pump state | Log interval | Reason |
+|---|---|---|
+| ON | 30 seconds | Catch pressure drops, burst pipes, valve issues in real time |
+| OFF | 15 minutes | Baseline heartbeat only — confirms idle, detects slow leaks |
+
+~90% reduction in pressure_log volume vs continuous logging. Switching is automatic — triggered by pump zone ON/OFF events in `zone_history`.
+
+### Pressure history downsampling
+
+Nightly pg_cron job: pressure_log rows older than 90 days are averaged into hourly buckets and the originals deleted. Full resolution retained for 90 days; hourly averages kept indefinitely. Allows trend analysis over months without storage growth.
+
+### Multi-tenant storage scaling
+
+| Customers | Estimated pressure rows/year | DB size |
+|---|---|---|
+| 1 | ~50,000 | ~5 MB |
+| 10 | ~500,000 | ~50 MB |
+| 25 | ~1.25M | ~125 MB |
+| 50 | ~2.5M | ~250 MB → near free tier limit |
+
+Admin Console shows a storage usage indicator (Supabase `pg_database_size()`) so the threshold is visible before it becomes a problem. Supabase Pro ($25/month, 8 GB) recommended when customer count reaches ~40.
+
+### Calendar history
+
+- Day-timeline shows planned vs actual for selected day
+- 7-day strip at top with fault indicators (red dot = fault, green = clean)
+- Navigate back up to 30 days in the UI; all historical data remains queryable
+- Program builder UI: single scrollable form (name → zone picker → duration → schedule)
+
+## 9. Open Questions (resolved)
+
+| Question | Decision |
+|---|---|
+| Per-zone or per-program duration? | Per-program — all zones in a block run simultaneously |
+| Pump zone: per-program or device-level? | Device-level, set once, locked |
+| Can pump zone run manually for diagnostics? | Yes — Zones page card remains fully tappable |
+| Drag-to-schedule? | No — time picker in v1, drag deferred |
+| Notification channel? | WhatsApp primary, SMS fallback (Twilio) |
+| Fault-only or all alerts? | Fault-only by default |
+| Program overlap allowed? | No — blocked at save time (pressure risk) |
+| Low pressure alert? | Yes — configurable threshold, sudden drop auto-stops |
+| Program builder layout? | Single scrollable form |
+| SSA-V8 firmware cap? | Raise to 1440 min (24h), deploy as v2.5.0 via OTA |
+| Pressure log rate? | 30s when pump on, 15 min when pump off |
+| Long-term pressure storage? | Downsample to hourly averages after 90 days |
+| Calendar history depth? | 30 days in UI, all data queryable |
+| Calendar navigation? | 7-day strip with fault dots, tap to select day |
+
+## 10. Out of Scope (next spec)
 
 - Admin/customer onboarding and remote diagnostics
 - HiveMQ paid plan + per-customer MQTT credentials
