@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bucketMultiSeries, bucketA6v3, computePressureStats } from '../src/lib/pressureBuckets'
+import { bucketMultiSeries, bucketA6v3, computePressureStats } from './pressureBuckets'
 
 // All test rows use a local TZ where hour/minute are unambiguous.
 // Use plain `YYYY-MM-DDTHH:MM:SS` strings (no Z) so the same wall-clock

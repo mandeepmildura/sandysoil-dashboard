@@ -1,0 +1,101 @@
+<h2>A6v3 Pressure Graph — Design Preview</h2>
+<p class="subtitle">Full-width panel below the relay grid. Does this look right?</p>
+
+<div class="mockup">
+  <div class="mockup-header">RelayDevice page — Relays tab</div>
+  <div class="mockup-body" style="padding:0;">
+
+    <!-- Page layout sketch -->
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;padding:12px;background:#f8faf9;border-radius:8px;">
+
+      <!-- Left sidebar: gauge card (unchanged) -->
+      <div style="background:#fff;border-radius:10px;padding:14px;border:1px solid #e2e2e2;">
+        <div style="font-size:10px;font-weight:700;color:#40493d;margin-bottom:8px;">CH1 PRESSURE</div>
+        <div style="width:80px;height:80px;border-radius:50%;border:8px solid #0d631b;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#0d631b;">42</div>
+        <div style="text-align:center;font-size:10px;color:#40493d;">ADC 1726 · 0–80 PSI</div>
+      </div>
+
+      <!-- Right: relay grid (simplified) -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #e2e2e2;font-size:10px;color:#40493d;">Relay 1<br/><span style="color:#0d631b;font-weight:700;">ON</span></div>
+        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #e2e2e2;font-size:10px;color:#40493d;">Relay 2<br/>OFF</div>
+        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #e2e2e2;font-size:10px;color:#40493d;">Relay 3<br/>OFF</div>
+        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #e2e2e2;font-size:10px;color:#40493d;">Relay 4<br/>OFF</div>
+        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #e2e2e2;font-size:10px;color:#40493d;">Relay 5<br/>OFF</div>
+        <div style="background:#fff;border-radius:8px;padding:10px;border:1px solid #e2e2e2;font-size:10px;color:#40493d;">Relay 6<br/>OFF</div>
+      </div>
+    </div>
+
+    <!-- NEW: Full-width pressure history panel -->
+    <div style="background:#fff;border-radius:10px;border:2px solid #0d631b;margin-top:12px;overflow:hidden;">
+
+      <!-- Panel header -->
+      <div style="padding:14px 16px;border-bottom:1px solid #f2f4f3;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:13px;font-weight:800;color:#1a1c1c;">CH1 Pressure History</span>
+          <span style="font-size:11px;font-weight:700;color:#0d631b;background:#e8f5e9;padding:2px 8px;border-radius:99px;">42.3 PSI live</span>
+        </div>
+        <div style="display:flex;gap:4px;">
+          <span style="padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;background:#1a1c1c;color:#fff;">6h</span>
+          <span style="padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;background:#f3f3f3;color:#40493d;">1h</span>
+          <span style="padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;background:#f3f3f3;color:#40493d;">24h</span>
+          <span style="padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;background:#f3f3f3;color:#40493d;">7d</span>
+          <span style="padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;background:#f3f3f3;color:#40493d;">Custom</span>
+        </div>
+      </div>
+
+      <!-- Chart area -->
+      <div style="padding:16px;position:relative;height:200px;">
+        <!-- Y axis -->
+        <div style="position:absolute;left:8px;top:16px;font-size:8px;color:#717975;">80</div>
+        <div style="position:absolute;left:8px;top:56px;font-size:8px;color:#717975;">60</div>
+        <div style="position:absolute;left:8px;top:96px;font-size:8px;color:#717975;">40</div>
+        <div style="position:absolute;left:8px;top:136px;font-size:8px;color:#717975;">20</div>
+
+        <div style="position:absolute;left:28px;right:16px;top:16px;bottom:24px;">
+          <!-- Grid lines -->
+          <div style="position:absolute;left:0;right:0;top:0;border-top:1px solid #f2f4f3;"></div>
+          <div style="position:absolute;left:0;right:0;top:25%;border-top:1px solid #f2f4f3;"></div>
+          <div style="position:absolute;left:0;right:0;top:50%;border-top:1px solid #f2f4f3;"></div>
+          <div style="position:absolute;left:0;right:0;top:75%;border-top:1px solid #f2f4f3;"></div>
+
+          <!-- High threshold reference line at 86% of 80 PSI = 68.8 PSI → ~14% from top -->
+          <div style="position:absolute;left:0;right:0;top:14%;border-top:2px dashed #ba1a1a;">
+            <span style="position:absolute;right:0;top:-14px;font-size:8px;color:#ba1a1a;font-weight:700;">High alert 69 PSI</span>
+          </div>
+
+          <!-- Pressure line -->
+          <svg style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;" preserveAspectRatio="none" viewBox="0 0 100 100">
+            <polyline
+              points="0,48 10,46 20,52 30,55 40,50 50,47 60,44 70,46 80,50 90,48 100,45"
+              fill="none" stroke="#0d631b" stroke-width="2.5" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <!-- X axis labels -->
+        <div style="position:absolute;bottom:4px;left:32px;right:16px;display:flex;justify-content:space-between;font-size:8px;color:#717975;">
+          <span>06:00</span><span>07:00</span><span>08:00</span><span>09:00</span><span>10:00</span><span>11:00</span><span>12:00</span>
+        </div>
+      </div>
+
+      <!-- Stats strip -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid #f2f4f3;">
+        <div style="padding:12px 16px;text-align:center;border-right:1px solid #f2f4f3;">
+          <div style="font-size:9px;font-weight:700;color:#717975;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Min</div>
+          <div style="font-size:18px;font-weight:800;color:#1a1c1c;">38.2 <span style="font-size:10px;font-weight:400;color:#717975;">PSI</span></div>
+        </div>
+        <div style="padding:12px 16px;text-align:center;border-right:1px solid #f2f4f3;">
+          <div style="font-size:9px;font-weight:700;color:#717975;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Max</div>
+          <div style="font-size:18px;font-weight:800;color:#1a1c1c;">56.7 <span style="font-size:10px;font-weight:400;color:#717975;">PSI</span></div>
+        </div>
+        <div style="padding:12px 16px;text-align:center;">
+          <div style="font-size:9px;font-weight:700;color:#717975;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Avg</div>
+          <div style="font-size:18px;font-weight:800;color:#1a1c1c;">47.1 <span style="font-size:10px;font-weight:400;color:#717975;">PSI</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1rem">Happy with this? Reply in the terminal.</p>

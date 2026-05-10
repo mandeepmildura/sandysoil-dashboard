@@ -1,0 +1,35 @@
+<h2>What goes inside the pressure panel?</h2>
+<p class="subtitle">The full-width card sits below the relay grid. What should it contain alongside the chart?</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="stats" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>Min / Max / Avg strip</h3>
+      <p>Three stat tiles below the chart showing the min, max, and average PSI for the selected time range — same style as the Supply Summary on PressureAnalysis.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="thresholds" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>Threshold reference lines</h3>
+      <p>Dashed horizontal lines on the chart at the high-pressure alert threshold (86% of maxPsi) and optionally a low-pressure line — so you can see at a glance when readings were in the danger zone.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="relay-overlay" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>Relay-on shading</h3>
+      <p>Vertical shaded bands on the chart showing when relays were active, so you can correlate pressure changes with irrigation runs.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="live-badge" onclick="toggleSelect(this)">
+    <div class="letter">4</div>
+    <div class="content">
+      <h3>Live PSI badge in header</h3>
+      <p>Show the current live PSI reading in the panel header (colour-coded green/amber/red) so you don't have to look back up at the gauge card.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Select all that apply, then reply in the terminal.</p>
