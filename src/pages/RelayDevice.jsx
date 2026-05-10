@@ -44,22 +44,14 @@ function PressureTooltip({ active, payload, label }) {
   )
 }
 
-// ── PressurePanel sub-component ───────────────────────────────────────────────
+// ── PressureGaugeCard sub-component ──────────────────────────────────────────
 
-function PressurePanel({ deviceCfg, live, anyRelayOn }) {
+function PressureGaugeCard({ deviceCfg, live, anyRelayOn }) {
   const { adcKey, maxPsi } = deviceCfg.pressureConfig
   const device = live[deviceCfg.stateTopic] ?? null
   const adcRaw = device?.[adcKey]?.value ?? 0
 
   const smoothedAdcRef = useRef(null)
-  const psiRef = useRef(0)
-  const [showGraph, setShowGraph] = useState(false)
-  const [histPreset, setHistPreset] = useState('6h')
-  const [customDate, setCustomDate] = useState(() => localDateStr())
-  const [customFrom, setCustomFrom] = useState('05:00')
-  const [customTo, setCustomTo]   = useState('07:00')
-
-  // EMA smoothing (α=0.2)
   if (adcRaw > 0 || smoothedAdcRef.current === null) {
     smoothedAdcRef.current = smoothedAdcRef.current === null
       ? adcRaw
@@ -67,34 +59,8 @@ function PressurePanel({ deviceCfg, live, anyRelayOn }) {
   }
   const smoothedAdc = Math.round(smoothedAdcRef.current ?? adcRaw)
   const psi = (smoothedAdc / 4095) * maxPsi
-  psiRef.current = psi
+  const color = gaugeColor(psi, maxPsi)
 
-  // Tick once a minute so rolling windows advance, but not on every render.
-  const [rangeTick, setRangeTick] = useState(0)
-  useEffect(() => {
-    if (histPreset === 'custom') return
-    const id = setInterval(() => setRangeTick(t => t + 1), 60_000)
-    return () => clearInterval(id)
-  }, [histPreset])
-
-  const histRange = useMemo(() => {
-    if (histPreset === 'custom') {
-      return {
-        from: new Date(`${customDate}T${customFrom}:00`).toISOString(),
-        to:   new Date(`${customDate}T${customTo}:00`).toISOString(),
-      }
-    }
-    const hours = { '1h': 1, '6h': 6, '24h': 24, '7d': 168 }[histPreset] ?? 6
-    const now = Date.now()
-    return {
-      from: new Date(now - hours * 3600_000).toISOString(),
-      to:   new Date(now).toISOString(),
-    }
-  }, [histPreset, customDate, customFrom, customTo, rangeTick])
-
-  const { data: pressureHistory, loading: pressHistLoading, reload: reloadPressure } = useA6v3PressureHistory(histRange.from, histRange.to)
-
-  // Pressure alerts
   useEffect(() => {
     if (!device) return
     const highThreshold = maxPsi * 0.86
@@ -116,82 +82,15 @@ function PressurePanel({ deviceCfg, live, anyRelayOn }) {
     }
   }, [psi, anyRelayOn, !!device]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!showGraph) return
-    reloadPressure()
-    const id = setInterval(reloadPressure, 300_000)
-    return () => clearInterval(id)
-  }, [showGraph, histRange.from, histRange.to]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const color = gaugeColor(psi, maxPsi)
-
   return (
-    <Card accent={psi >= maxPsi * 0.86 ? 'red' : psi >= maxPsi * 0.69 ? 'amber' : 'green'} className="cursor-pointer select-none">
-      <div onClick={() => setShowGraph(s => !s)}>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-headline font-semibold text-sm text-[#1a1c1c]">CH1 Pressure</h2>
-          <span className="text-xs text-[#40493d]">{showGraph ? '▲ Hide graph' : '▼ Show graph'}</span>
-        </div>
-        <PressureGauge psi={psi} maxPsi={maxPsi} />
-        <div className="mt-2 text-center">
-          <span className="text-xs font-body text-[#40493d]">ADC {smoothedAdc} · 0–{maxPsi} PSI range</span>
-        </div>
+    <Card accent={psi >= maxPsi * 0.86 ? 'red' : psi >= maxPsi * 0.69 ? 'amber' : 'green'}>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="font-headline font-semibold text-sm text-[#1a1c1c]">CH1 Pressure</h2>
       </div>
-
-      {showGraph && (
-        <div className="mt-4 border-t border-[#e2e2e2] pt-4">
-          <div className="mb-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-[#40493d]">History</span>
-              <div className="flex gap-1">
-                {[['1h','1h'],['6h','6h'],['24h','24h'],['7d','7d'],['custom','Custom']].map(([val, label]) => (
-                  <button key={val} onClick={e => { e.stopPropagation(); setHistPreset(val) }}
-                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
-                      histPreset === val ? 'bg-[#0d631b] text-white' : 'bg-[#e2e2e2] text-[#40493d] hover:bg-[#d5d5d5]'
-                    }`}
-                  >{label}</button>
-                ))}
-              </div>
-            </div>
-            {histPreset === 'custom' && (
-              <div className="flex flex-wrap gap-2 items-end mt-2" onClick={e => e.stopPropagation()}>
-                <div className="flex-1 min-w-[110px]">
-                  <label className="text-[10px] text-[#40493d] block mb-0.5">Date</label>
-                  <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
-                    className="w-full bg-[#f3f3f3] rounded px-2 py-1 text-[11px] outline-none border border-[#e2e2e2]" />
-                </div>
-                <div>
-                  <label className="text-[10px] text-[#40493d] block mb-0.5">From</label>
-                  <input type="time" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-                    className="bg-[#f3f3f3] rounded px-2 py-1 text-[11px] w-24 outline-none border border-[#e2e2e2]" />
-                </div>
-                <div>
-                  <label className="text-[10px] text-[#40493d] block mb-0.5">To</label>
-                  <input type="time" value={customTo} onChange={e => setCustomTo(e.target.value)}
-                    className="bg-[#f3f3f3] rounded px-2 py-1 text-[11px] w-24 outline-none border border-[#e2e2e2]" />
-                </div>
-                <button onClick={e => { e.stopPropagation(); reloadPressure() }}
-                  className="px-3 py-1 rounded bg-[#0d631b] text-white text-[10px] font-semibold hover:opacity-90">Go</button>
-              </div>
-            )}
-          </div>
-          {pressHistLoading ? (
-            <div className="h-[160px] flex items-center justify-center text-xs text-[#40493d]">Loading…</div>
-          ) : pressureHistory.length === 0 ? (
-            <div className="h-[160px] flex items-center justify-center text-xs text-[#40493d]">No data yet</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={pressureHistory} margin={{ top: 4, right: 8, left: -20, bottom: 0 }} onClick={e => e?.stopPropagation?.()}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f2f4f3" />
-                <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#717975' }} interval={Math.max(1, Math.floor(pressureHistory.length / 6))} />
-                <YAxis domain={[0, maxPsi]} tick={{ fontSize: 9, fill: '#717975' }} />
-                <Tooltip content={<PressureTooltip />} />
-                <Line type="monotone" dataKey="psi" name="Pressure" stroke={color} strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      )}
+      <PressureGauge psi={psi} maxPsi={maxPsi} />
+      <div className="mt-2 text-center">
+        <span className="text-xs font-body text-[#40493d]">ADC {smoothedAdc} · 0–{maxPsi} PSI range</span>
+      </div>
     </Card>
   )
 }
@@ -503,7 +402,7 @@ export default function RelayDevice({ deviceCfg }) {
           {/* Left panel — pressure gauge + inputs (only for pressure devices) */}
           {deviceCfg.pressureConfig && (
             <div className="space-y-4">
-              <PressurePanel deviceCfg={deviceCfg} live={live} anyRelayOn={anyRelayOn} />
+              <PressureGaugeCard deviceCfg={deviceCfg} live={live} anyRelayOn={anyRelayOn} />
               {inputs.length > 0 && (
                 <Card>
                   <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">
