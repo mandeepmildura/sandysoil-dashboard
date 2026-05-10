@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import Card from '../components/Card'
 import StatusChip from '../components/StatusChip'
@@ -25,6 +25,7 @@ import { raiseAlert, resolveAlerts } from '../lib/alerts'
 import { supabase } from '../lib/supabase'
 import { localDateStr, fmtTime, fmtDuration } from '../lib/format'
 import { relayGridCls, inputGridCols, gaugeColor } from '../lib/relayDevice'
+import { computePressureStats } from '../lib/pressureBuckets'
 import PressureGauge from '../components/PressureGauge'
 
 const inputCls = 'bg-[#f3f3f3] rounded-lg px-3 py-2 text-sm font-body text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:ring-2 focus:ring-[#0d631b]/10 focus:bg-white transition-all'
