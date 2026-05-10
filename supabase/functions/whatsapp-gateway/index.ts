@@ -1,6 +1,8 @@
 // Handles outbound fault alerts (triggered by device_alerts DB webhook)
 // and inbound commands (Twilio webhook POST /inbound).
 // Secrets required: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+// Optional: TWILIO_WHATSAPP_FROM — WhatsApp sender (e.g. sandbox +14155238886).
+//           Falls back to TWILIO_FROM_NUMBER if not set.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -9,6 +11,7 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const TWILIO_ACCOUNT_SID   = Deno.env.get('TWILIO_ACCOUNT_SID') ?? ''
 const TWILIO_AUTH_TOKEN    = Deno.env.get('TWILIO_AUTH_TOKEN') ?? ''
 const TWILIO_FROM_NUMBER   = Deno.env.get('TWILIO_FROM_NUMBER') ?? ''
+const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? TWILIO_FROM_NUMBER
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -25,7 +28,8 @@ async function sendTwilio(to: string, body: string, channel: string, fromOverrid
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
     throw new Error('Twilio credentials not configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER secrets')
   }
-  const baseFrom = normalizePhone(fromOverride ?? TWILIO_FROM_NUMBER)
+  const defaultFrom = channel === 'sms' ? TWILIO_FROM_NUMBER : TWILIO_WHATSAPP_FROM
+  const baseFrom = normalizePhone(fromOverride ?? defaultFrom)
   const from = channel === 'sms'
     ? baseFrom
     : `whatsapp:${baseFrom}`
@@ -116,9 +120,9 @@ Deno.serve(async (req) => {
     }
 
     try {
-      // Use inboundTo (the Twilio number that received this SMS) as the From for the reply.
-      // This guarantees the number format exactly matches what Twilio has registered.
-      await sendTwilio(from, reply, 'sms', inboundTo || undefined)
+      // Mirror the channel: if Twilio delivered via WhatsApp, reply via WhatsApp.
+      const replyChannel = inboundTo.toLowerCase().startsWith('whatsapp:') ? 'whatsapp' : 'sms'
+      await sendTwilio(from, reply, replyChannel, inboundTo || undefined)
     } catch (err) {
       console.error('[whatsapp-gateway] inbound reply failed:', String(err))
     }
