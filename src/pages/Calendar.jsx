@@ -13,13 +13,15 @@ import {
   fmtDays,
   totalDuration,
 } from '../lib/calendar'
+import { useCalendarHistory } from '../hooks/useCalendarHistory'
+import DayTimeline from '../components/DayTimeline'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 5) // 5am–10pm
 const COLORS = ['#0d631b', '#2e7d32', '#00639a', '#6a4c93', '#c0392b', '#d35400', '#16a085', '#8e44ad']
 
 // ── Event detail modal ──────────────────────────────────────────────────────
-function EventModal({ event, onClose, mqttPrefix, myDeviceId }) {
+function EventModal({ event, onClose, mqttPrefix, myDeviceId, onReload }) {
   const p = event.program
   const [running, setRunning] = useState(false)
 
@@ -127,6 +129,33 @@ function EventModal({ event, onClose, mqttPrefix, myDeviceId }) {
             Close
           </button>
         </div>
+
+        {p.schedule?.id && (
+          <div style={{ display: 'flex', gap: 8, marginTop: '0.75rem' }}>
+            <button
+              onClick={async () => {
+                if (!window.confirm('Delete this schedule? This cannot be undone.')) return
+                await supabase.from('group_schedules').delete().eq('id', p.schedule.id)
+                if (onReload) onReload()
+                onClose()
+              }}
+              style={{ background: '#fde8e8', color: '#c0392b', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+            >
+              Delete
+            </button>
+            <button
+              onClick={async () => {
+                await supabase.from('group_schedules')
+                  .update({ enabled: !p.schedule.enabled })
+                  .eq('id', p.schedule.id)
+                if (onReload) onReload()
+              }}
+              style={{ background: '#fff3cd', color: '#856404', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+            >
+              {p.schedule.enabled ? 'Pause' : 'Resume'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -311,8 +340,20 @@ export default function Calendar() {
   const [programs, setPrograms]       = useState([])
   const [loading, setLoading]         = useState(true)
   const [tick, setTick]               = useState(0)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date()
+    return d.toISOString().slice(0, 10)
+  })
 
   const reload = useCallback(() => setTick(t => t + 1), [])
+
+  const { actual } = useCalendarHistory(selectedDate)
+
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    return d.toISOString().slice(0, 10)
+  })
 
   useEffect(() => {
     async function load() {
@@ -320,7 +361,7 @@ export default function Calendar() {
       const [groupsRes, membersRes, schedulesRes] = await Promise.all([
         supabase.from('zone_groups').select('id, name, run_mode'),
         supabase.from('zone_group_members').select('group_id, zone_num, duration_min, sort_order, device').order('sort_order'),
-        supabase.from('group_schedules').select('group_id, label, days_of_week, start_time, enabled'),
+        supabase.from('group_schedules').select('id, group_id, label, days_of_week, start_time, enabled'),
       ])
       if (groupsRes.data) {
         const members   = membersRes.data   ?? []
@@ -522,6 +563,27 @@ export default function Calendar() {
 
         {/* ── Sidebar ────────────────────────────────────────────────────── */}
         <div className="space-y-4">
+
+          {/* 7-day navigation strip */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {weekDays.map(date => {
+              const d = new Date(date + 'T12:00:00')
+              const label = d.toLocaleDateString('en-AU', { weekday: 'short' })
+              const dayNum = d.getDate()
+              const isSelected = date === selectedDate
+              return (
+                <button key={date} onClick={() => setSelectedDate(date)}
+                  style={{ flex: 1, background: isSelected ? '#0d4d20' : 'white', color: isSelected ? 'white' : '#3b4a44', border: '1.5px solid', borderColor: isSelected ? '#0d4d20' : '#e4e9e6', borderRadius: 8, padding: '4px 2px', cursor: 'pointer', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.55rem', color: isSelected ? '#b8d5c0' : '#7a8580' }}>{label}</div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600 }}>{dayNum}</div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Day timeline — planned vs actual */}
+          <DayTimeline actual={actual} programs={programs} selectedDate={selectedDate} />
+
           <div className="bg-[#ffffff] rounded-xl shadow-card p-4">
             <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">
               Today — {DAY_NAMES[todayCalIdx]} {today.getDate()}
@@ -565,7 +627,7 @@ export default function Calendar() {
 
       {showAddModal    && <AddScheduleModal onClose={() => setShowAddModal(false)} onSaved={onSaved} />}
       {showRunModal    && <RunZoneModal onClose={() => setShowRunModal(false)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} />}
-      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} />}
+      {selectedEvent   && <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} mqttPrefix={mqttPrefix} myDeviceId={myDeviceId} onReload={reload} />}
     </div>
   )
 }

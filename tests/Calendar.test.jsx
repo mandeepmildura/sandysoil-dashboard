@@ -20,6 +20,7 @@ function makeBuilder(name) {
     eq:     () => builder,
     is:     () => builder,
     gte:    () => builder,
+    lte:    () => builder,
     order:  () => builder,
     limit:  () => builder,
     insert: vi.fn((rows) => {
