@@ -33,7 +33,7 @@ export function useMyDevice() {
         }
         const { data: rows, error: qErr } = await supabase
           .from('farms')
-          .select('id, name, farm_devices(id, device_id, model, type, status, last_seen, firmware, mqtt_base_topic)')
+          .select('id, name, farm_devices(id, device_id, model, type, status, last_seen, firmware, mqtt_base_topic, pump_zone_num)')
           .eq('owner_id', user.id)
           .limit(1)
         if (qErr) throw qErr
