@@ -37,6 +37,9 @@ function ensurePolling() {
 function stopPolling() {
   if (listeners.size > 0) return
   if (timer) { clearInterval(timer); timer = null }
+  // Reset cached value so a re-login (remount) doesn't show the previous
+  // user's last reading before the next poll fires.
+  cache = { psi: null, simulated: false, ts: 0 }
 }
 
 /**

@@ -183,21 +183,9 @@ export default function Alerts() {
 
           <Card>
             <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">Notification Settings</h2>
-            <div className="space-y-3">
-              {[
-                { label: 'Email — Critical alerts', on: true  },
-                { label: 'Email — Warnings',        on: true  },
-                { label: 'SMS — Critical alerts',   on: false },
-                { label: 'Push notifications',      on: true  },
-              ].map(s => (
-                <div key={s.label} className="flex items-center justify-between">
-                  <span className="text-xs font-body text-[#40493d]">{s.label}</span>
-                  <div className={`relative w-8 h-4 rounded-full ${s.on ? 'bg-[#0d631b]' : 'bg-[#e2e2e2]'}`}>
-                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${s.on ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="text-xs text-[#40493d] leading-relaxed">
+              Per-user notification preferences (email, SMS, push) are coming soon.
+            </p>
           </Card>
         </div>
       </div>

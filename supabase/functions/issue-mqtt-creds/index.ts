@@ -87,6 +87,9 @@ Deno.serve(async (req) => {
     if (devErr) return json(500, { error: 'lookup_failed', detail: devErr.message })
     const device = rows?.[0]?.farm_devices?.[0]
     if (!device) return json(403, { error: 'no_device_assigned' })
+    if (!device.mqtt_base_topic && !device.device_id) {
+      return json(403, { error: 'device_not_provisioned' })
+    }
     topicPrefix = device.mqtt_base_topic
       ?? `farm/${String(device.device_id).toLowerCase()}`
   }

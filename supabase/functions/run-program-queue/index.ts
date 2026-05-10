@@ -161,6 +161,7 @@ Deno.serve(async (_req) => {
     const allFiredLabels: string[] = []
     const allHistoryRows: object[] = []
     const allA6v3OffSteps: QueueRow[] = []
+    const allIrrigation1OffSteps: QueueRow[] = []
 
     for (const fireAtKey of orderedKeys) {
       const group = groups.get(fireAtKey)!
@@ -217,6 +218,7 @@ Deno.serve(async (_req) => {
               payload: JSON.stringify({ cmd: 'off' }),
               label:   `${prefix} zone ${step.zone_num} → off`,
             })
+            allIrrigation1OffSteps.push(step)
           }
         }
       }
@@ -244,6 +246,26 @@ Deno.serve(async (_req) => {
         .select('id')
         .eq('zone_num', step.zone_num)
         .eq('device', 'a6v3')
+        .is('ended_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+      if (open?.length) {
+        await supabase.from('zone_history')
+          .update({ ended_at: firedAt })
+          .eq('id', open[0].id)
+      }
+    }
+
+    // Close zone_history rows for irrigation1 OFF steps.
+    // The irrigation1 firmware sends MQTT state updates, but those only reach
+    // the dashboard via the browser — the scheduler must also close history rows
+    // server-side so records are accurate even when no browser is connected.
+    for (const step of allIrrigation1OffSteps) {
+      const { data: open } = await supabase
+        .from('zone_history')
+        .select('id')
+        .eq('zone_num', step.zone_num)
+        .eq('device', step.device ?? 'irrigation1')
         .is('ended_at', null)
         .order('started_at', { ascending: false })
         .limit(1)

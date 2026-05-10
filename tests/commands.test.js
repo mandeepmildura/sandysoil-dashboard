@@ -161,6 +161,26 @@ describe('zone commands (8-zone irrigation controller)', () => {
       expect(call[1]).toEqual({ cmd: 'off' })
     }
   })
+
+  it('allZonesOff closes open zone_history rows for all 8 zones', async () => {
+    // Each closeOpenHistoryRecord call does a select; if a row is found, it updates.
+    sb.nextSelectRows = [{ id: 'open-row' }]
+    await allZonesOff()
+    // One select per zone
+    expect(sb.selects.filter(s => s.table === 'zone_history')).toHaveLength(8)
+    // One update per zone (row found for every select in this scenario)
+    expect(sb.updates.filter(u => u.table === 'zone_history')).toHaveLength(8)
+    for (const u of sb.updates) {
+      expect(u.patch).toHaveProperty('ended_at')
+    }
+  })
+
+  it('allZonesOff does not update when no open history rows exist', async () => {
+    sb.nextSelectRows = []
+    await allZonesOff()
+    expect(sb.selects.filter(s => s.table === 'zone_history')).toHaveLength(8)
+    expect(sb.updates).toHaveLength(0)
+  })
 })
 
 describe('A6v3 commands', () => {

@@ -16,7 +16,7 @@ export function usePrograms() {
       setLoading(true)
 
       const [groupsRes, membersRes, schedulesRes] = await Promise.all([
-        supabase.from('zone_groups').select('id, name, run_mode, created_at'),
+        supabase.from('zone_groups').select('id, name, run_mode, duration_min, created_at'),
         supabase.from('zone_group_members').select('group_id, zone_num, duration_min, sort_order, device, step_type, delay_min').order('sort_order'),
         supabase.from('group_schedules').select('id, group_id, label, days_of_week, start_time, enabled'),
       ])

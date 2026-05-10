@@ -6,22 +6,25 @@ import { useScheduleRules } from '../hooks/useScheduleRules'
 import { useAlerts } from '../hooks/useAlerts'
 import { useAuth } from '../hooks/useAuth'
 import { useMyDevice } from '../hooks/useMyDevice'
+import { usePressureHistory } from '../hooks/usePressureHistory'
 import { topicsForPrefix } from '../lib/topics'
 import { zoneOn, zoneOff, allZonesOff, startBackwash } from '../lib/commands'
 import { KCS_DEVICES } from '../config/devices'
 import { supabase } from '../lib/supabase'
 import { isAdmin } from '../lib/role'
+import PressureChart from '../components/PressureChart'
 import {
   fmtLastRun,
-  bucketPressureBars,
   upcomingSchedules,
   diffPsi as computeDiffPsi,
 } from '../lib/dashboard'
 
-const PRESSURE_TOPIC = 'farm/filter1/pressure'
-const BACKWASH_TOPIC = 'farm/filter1/backwash/state'
-const B16M_TOPIC     = 'B16M/CCBA97071FD8/STATE'
-const A6V3_TOPIC     = 'A6v3/8CBFEA03002C/STATE'
+const PRESSURE_TOPIC         = 'farm/filter1/pressure'
+const BACKWASH_TOPIC         = 'farm/filter1/backwash/state'
+const B16M_TOPIC             = 'B16M/CCBA97071FD8/STATE'
+const A6V3_TOPIC             = 'A6v3/8CBFEA03002C/STATE'
+const BACKWASH_THRESHOLD_PSI = 8   // must match filter-bridge BACKWASH_TRIGGER_PSI
+const BACKWASH_SCALE_PSI     = 20  // bar max — threshold sits at 40% of scale
 
 // Severity / state palette — matches v2 design system
 const T = {
@@ -44,7 +47,7 @@ function Icon({ name, className = '', style }) {
 }
 
 export default function Dashboard() {
-  const { mqttPrefix } = useMyDevice()
+  const { device: myDevice, mqttPrefix } = useMyDevice()
   const t = useMemo(() => topicsForPrefix(mqttPrefix), [mqttPrefix])
   const TOPICS = useMemo(
     () => [t.status, t.zoneStateWildcard, PRESSURE_TOPIC, BACKWASH_TOPIC, B16M_TOPIC, A6V3_TOPIC, t.simPressure],
@@ -58,8 +61,9 @@ export default function Dashboard() {
   const admin = isAdmin(session)
   const [busy, setBusy] = useState({})
   const [lastRuns, setLastRuns] = useState({})
-  const [pressureBars, setPressureBars] = useState([])
+  const [activeZones, setActiveZones] = useState([])
   const [, forceTick] = useState(0)
+  const { data: pressureHistory } = usePressureHistory(24)
 
   // 1-second tick for live elapsed/remaining counters on running zones
   useEffect(() => {
@@ -94,16 +98,18 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    async function load() {
-      const { data: rows } = await supabase
-        .from('pressure_log')
-        .select('supply_psi')
-        .not('supply_psi', 'is', null)
-        .order('ts', { ascending: false })
-        .limit(30)
-      setPressureBars(bucketPressureBars(rows?.map(r => r.supply_psi)))
+    function fetchActive() {
+      supabase
+        .from('zone_history')
+        .select('zone_num, device, started_at')
+        .eq('device', 'irrigation1')
+        .is('ended_at', null)
+        .order('started_at')
+        .then(({ data }) => setActiveZones(data ?? []))
     }
-    load()
+    fetchActive()
+    const interval = setInterval(fetchActive, 30_000)
+    return () => clearInterval(interval)
   }, [])
 
   const irr      = data[t.status]      ?? null
@@ -139,7 +145,7 @@ export default function Dashboard() {
   const inletPsi    = pressure?.inlet_psi ?? null
   const outletPsi   = pressure?.outlet_psi ?? null
   const diffPsi     = computeDiffPsi(pressure)
-  const diffPct     = (typeof diffPsi === 'number') ? Math.min(100, (diffPsi / 20) * 100) : 0
+  const diffPct     = (typeof diffPsi === 'number') ? Math.min(100, (diffPsi / BACKWASH_SCALE_PSI) * 100) : 0
 
   // ── Status banner state machine ──────────────────────────────
   // Priority: critical alerts > offline > running > healthy
@@ -214,6 +220,21 @@ export default function Dashboard() {
           onSinceRef={onSinceRef}
         />
 
+        {/* Running zones strip — DB-backed active zone list */}
+        {activeZones.length > 0 && (
+          <div style={{ background: '#f0f7f2', border: '1px solid #c8e0d0', borderRadius: 10, padding: '0.75rem 1rem', marginTop: '0.75rem' }}>
+            {activeZones.map(z => {
+              const elapsedMin = Math.round((Date.now() - new Date(z.started_at).getTime()) / 60_000)
+              return (
+                <div key={z.zone_num} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', color: '#1a3d28', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600 }}>Zone {z.zone_num}</span>
+                  <span style={{ color: '#7a8580' }}>running · {elapsedMin} min</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {/* Mobile-only: extra-prominent stop button when zones are running */}
         {activeCount > 0 && (
           <button
@@ -252,6 +273,7 @@ export default function Dashboard() {
                     busy={!!busy[z.id]}
                     lastRun={lastRuns[z.id]}
                     onSinceMs={onSinceRef.current[z.id]}
+                    isPump={myDevice?.pump_zone_num === z.id}
                     onToggle={() => handleZoneToggle(z.id, z.on)}
                   />
                 ))}
@@ -274,23 +296,16 @@ export default function Dashboard() {
                 </Link>
               </header>
               <div className="p-4 sm:p-6">
-                {pressureBars.length === 0 ? (
+                {pressureHistory.length === 0 ? (
                   <div className="h-32 flex items-center justify-center text-sm" style={{ color: T.ink3 }}>
                     No pressure data recorded yet.
                   </div>
                 ) : (
-                  <div className="h-32 flex items-end gap-1">
-                    {pressureBars.map((h, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 rounded-t transition-all"
-                        style={{
-                          height: `${h}%`,
-                          background: i === pressureBars.length - 1 ? T.green2 : T.green3,
-                        }}
-                      />
-                    ))}
-                  </div>
+                  <PressureChart
+                    data={pressureHistory}
+                    currentPsi={typeof supplyPsi === 'number' ? supplyPsi : null}
+                    lowThreshold={15}
+                  />
                 )}
               </div>
             </section>
@@ -421,7 +436,7 @@ function StatusBanner({ state, activeCount, totalZones, supplyPsi, onlineNow, up
 }
 
 // ── Zone card ────────────────────────────────────────────────────
-function ZoneCard({ zone, name, busy, lastRun, onSinceMs, onToggle }) {
+function ZoneCard({ zone, name, busy, lastRun, onSinceMs, isPump, onToggle }) {
   const on = zone.on
   const elapsedSec = onSinceMs ? Math.floor((Date.now() - onSinceMs) / 1000) : null
   const min = elapsedSec != null ? Math.floor(elapsedSec / 60) : null
@@ -443,7 +458,12 @@ function ZoneCard({ zone, name, busy, lastRun, onSinceMs, onToggle }) {
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: T.ink3 }}>Zone {zone.id}</p>
-          <p className="text-sm font-bold truncate" style={{ color: T.ink }}>{name}</p>
+          <p className="text-sm font-bold truncate" style={{ color: T.ink }}>
+            {name}
+            {isPump && (
+              <span style={{ background: '#0d4d20', color: 'white', borderRadius: 4, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 700, marginLeft: 4 }}>PUMP</span>
+            )}
+          </p>
         </div>
         <span
           className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1 ${on ? 'animate-pulse' : ''}`}
@@ -499,7 +519,7 @@ function FilterCard({ inletPsi, outletPsi, diffPsi, diffPct }) {
         <div className="w-full h-1.5 rounded-full" style={{ background: '#fff' }}>
           <div className="h-full rounded-full transition-all" style={{ width: `${diffPct}%`, background: toneColor }} />
         </div>
-        <p className="text-[10px] mt-2" style={{ color: T.ink3 }}>Backwash threshold: 8 psi</p>
+        <p className="text-[10px] mt-2" style={{ color: T.ink3 }}>Backwash threshold: {BACKWASH_THRESHOLD_PSI} psi</p>
       </div>
       <button
         onClick={() => startBackwash().catch(console.error)}

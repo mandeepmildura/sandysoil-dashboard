@@ -42,7 +42,15 @@ vi.mock('../src/hooks/useAuth', () => ({
   useAuth: () => ({ session: null, loading: false }),
 }))
 
-// ── Mock Supabase (Dashboard pulls last-runs + pressure history) ───────────
+vi.mock('../src/hooks/useMyDevice', () => ({
+  useMyDevice: () => ({ device: null, mqttPrefix: 'farm/irrigation1', loading: false, error: null }),
+}))
+
+vi.mock('../src/hooks/usePressureHistory', () => ({
+  usePressureHistory: () => ({ data: [], loading: false, reload: vi.fn() }),
+}))
+
+// ── Mock Supabase (Dashboard pulls last-runs + active zones) ─────────────
 vi.mock('../src/lib/supabase', () => ({
   supabase: {
     from: () => {
@@ -50,8 +58,11 @@ vi.mock('../src/lib/supabase', () => ({
         select: () => builder,
         eq:     () => builder,
         not:    () => builder,
+        is:     () => builder,
+        gte:    () => builder,
         order:  () => builder,
         limit:  () => Promise.resolve({ data: [], error: null }),
+        then:   (cb) => Promise.resolve({ data: [], error: null }).then(cb),
       }
       return builder
     },

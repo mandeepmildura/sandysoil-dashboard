@@ -77,6 +77,26 @@ function localTimeParts() {
 function currentHHMM(): string { return localTimeParts().hhmm }
 function currentDOW():  number { return localTimeParts().dow }
 
+function toMin(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+function schedulesOverlap(
+  a: { start_time: string; duration_min: number; days_of_week: number[] },
+  b: { start_time: string; duration_min: number; days_of_week: number[] },
+): boolean {
+  const sharedDay = a.days_of_week.some(d => b.days_of_week.includes(d))
+  if (!sharedDay) return false
+  const aStart = toMin(a.start_time), aEnd = aStart + a.duration_min
+  const bStart = toMin(b.start_time), bEnd = bStart + b.duration_min
+  return aStart < bEnd && bStart < aEnd
+}
+
+function isBackToBack(aEndMin: number, bStartMin: number): boolean {
+  return Math.abs(bStartMin - aEndMin) < 2
+}
+
 Deno.serve(async (_req) => {
   try {
     const now = currentHHMM()
@@ -102,9 +122,11 @@ Deno.serve(async (_req) => {
           id,
           name,
           run_mode,
-          devices (
-            mqtt_topic_base,
-            device_id
+          duration_min,
+          farm_devices (
+            mqtt_base_topic,
+            device_id,
+            pump_zone_num
           ),
           zone_group_members (
             zone_num,
@@ -134,8 +156,9 @@ Deno.serve(async (_req) => {
         id: string
         name: string
         run_mode: string
+        duration_min: number | null
         zone_group_members: Step[]
-        devices: { mqtt_topic_base: string | null, device_id: string } | null
+        farm_devices: { mqtt_base_topic: string | null, device_id: string, pump_zone_num: number | null } | null
       } | null
 
       if (!group) continue
@@ -143,8 +166,8 @@ Deno.serve(async (_req) => {
       // Resolve the device's MQTT prefix at queue time so the executor doesn't
       // need to re-query devices later. Falls back to the legacy
       // irrigation controller for any zone_groups row not yet linked to a device.
-      const mqttBaseTopic = group.devices?.mqtt_topic_base
-        ?? (group.devices?.device_id ? `farm/${group.devices.device_id.toLowerCase()}` : 'farm/irrigation1')
+      const mqttBaseTopic = group.farm_devices?.mqtt_base_topic
+        ?? (group.farm_devices?.device_id ? `farm/${group.farm_devices.device_id.toLowerCase()}` : 'farm/irrigation1')
 
       console.log(`[run-schedules] queuing "${group.name}" → ${mqttBaseTopic} (${(group.zone_group_members ?? []).length} steps)`)
 
@@ -166,13 +189,50 @@ Deno.serve(async (_req) => {
 
       // Base time is now — the function runs at the correct minute,
       // so Date.now() is the right fire_at for immediate steps.
+      const pumpZoneNum: number | null = group.farm_devices?.pump_zone_num ?? null
+      const programDurationMin: number = group.duration_min ?? 30
+
+      // Back-to-back detection: if another due program ends within 2 min of this one starting,
+      // suppress pump OFF (pump stays on; next program sends its own pump ON to reset firmware timer)
+      let suppressPumpOff = false
+      if (pumpZoneNum != null) {
+        const thisStartMin = toMin(now)
+        for (const other of due) {
+          if (other === sched) continue
+          const otherGroup = (other as any).zone_groups
+          if (!otherGroup) continue
+          const otherDur: number = otherGroup.duration_min ?? 30
+          const otherEndMin = toMin(other.start_time) + otherDur
+          if (isBackToBack(otherEndMin, thisStartMin)) {
+            suppressPumpOff = true
+            break
+          }
+        }
+      }
+
       const queueRows = expandSteps(
         group.id,
         group.run_mode,
         (group.zone_group_members ?? []) as Step[],
         Date.now(),
         mqttBaseTopic,
+        pumpZoneNum,
+        programDurationMin,
+        suppressPumpOff,
       )
+
+      // Safety assertion: every ON row in simultaneous mode must have a matching OFF
+      if (group.run_mode === 'simultaneous' || !group.run_mode) {
+        const onRows  = queueRows.filter(r => r.step_type === 'on')
+        const offRows = queueRows.filter(r => r.step_type === 'off')
+        const missingOff = onRows.filter(on =>
+          !offRows.some(off => off.zone_num === on.zone_num && off.device === on.device)
+        )
+        if (missingOff.length > 0) {
+          console.error(`[run-schedules] ON/OFF mismatch for "${group.name}" zones: ${missingOff.map(r => r.zone_num).join(', ')}`)
+          continue
+        }
+      }
 
       if (queueRows.length > 0) {
         const { error: qErr } = await supabase.from('program_queue').insert(queueRows)

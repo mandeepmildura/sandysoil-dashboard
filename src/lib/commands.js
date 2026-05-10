@@ -87,10 +87,14 @@ export async function closeOpenHistoryRecord(zoneNum, device = 'irrigation1') {
 
 export async function allZonesOff(opts = {}) {
   const prefix = opts.prefix ?? LEGACY_PREFIX
+  const device = opts.device ?? 'irrigation1'
   const t = topicsForPrefix(prefix)
   await Promise.all(
     [1,2,3,4,5,6,7,8].map(z =>
-      mqttPublish(t.zoneCmd(z), { cmd: 'off' })
+      Promise.all([
+        mqttPublish(t.zoneCmd(z), { cmd: 'off' }),
+        closeOpenHistoryRecord(z, device),
+      ])
     )
   )
 }

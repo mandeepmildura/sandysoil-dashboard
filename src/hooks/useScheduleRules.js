@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
@@ -8,6 +8,8 @@ import { supabase } from '../lib/supabase'
 export function useScheduleRules() {
   const [groupSchedules, setGroupSchedules] = useState([])
   const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
+  const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
     async function fetch() {
@@ -21,7 +23,7 @@ export function useScheduleRules() {
       setLoading(false)
     }
     fetch()
-  }, [])
+  }, [tick])
 
-  return { zoneSchedules: [], groupSchedules, loading }
+  return { zoneSchedules: [], groupSchedules, loading, reload }
 }

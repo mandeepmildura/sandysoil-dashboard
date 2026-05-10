@@ -38,5 +38,5 @@ export function useDeviceOffline(device, deviceId, lastMessage, timeoutMs = 5 * 
     }, timeoutMs)
 
     return () => clearTimeout(timerRef.current)
-  }, [lastMessage]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lastMessage, device, deviceId, timeoutMs])
 }

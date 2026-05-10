@@ -151,3 +151,49 @@ describe('expandSteps', () => {
     expect(JSON.stringify(steps)).toBe(snapshot)
   })
 })
+
+describe('simultaneous mode', () => {
+  it('fires all zone ONs at baseMs and all OFFs at baseMs + duration', () => {
+    const rows = expandSteps('g1', 'simultaneous', [
+      step({ zone_num: 2, sort_order: 0, duration_min: null }),
+      step({ zone_num: 3, sort_order: 1, duration_min: null }),
+    ], BASE, 'farm/irrigation1', null, 120)
+
+    const ons  = rows.filter(r => r.step_type === 'on')
+    const offs = rows.filter(r => r.step_type === 'off')
+    expect(ons).toHaveLength(2)
+    expect(offs).toHaveLength(2)
+    ons.forEach(r  => expect(r.fire_at).toBe(new Date(BASE).toISOString()))
+    offs.forEach(r => expect(r.fire_at).toBe(new Date(BASE + 120 * 60_000).toISOString()))
+  })
+
+  it('injects pump ON at baseMs and pump OFF at baseMs + duration', () => {
+    const rows = expandSteps('g1', 'simultaneous', [
+      step({ zone_num: 2, sort_order: 0, duration_min: null }),
+    ], BASE, 'farm/irrigation1', 1, 60)
+
+    const pumpOn  = rows.find(r => r.zone_num === 1 && r.step_type === 'on')
+    const pumpOff = rows.find(r => r.zone_num === 1 && r.step_type === 'off')
+    expect(pumpOn).toBeDefined()
+    expect(pumpOff).toBeDefined()
+    expect(pumpOn!.fire_at).toBe(new Date(BASE).toISOString())
+    expect(pumpOff!.fire_at).toBe(new Date(BASE + 60 * 60_000).toISOString())
+  })
+
+  it('suppresses pump OFF when suppressPumpOff = true', () => {
+    const rows = expandSteps('g1', 'simultaneous', [
+      step({ zone_num: 2, sort_order: 0, duration_min: null }),
+    ], BASE, 'farm/irrigation1', 1, 60, true)
+
+    const pumpOff = rows.find(r => r.zone_num === 1 && r.step_type === 'off')
+    expect(pumpOff).toBeUndefined()
+  })
+
+  it('pump zone is not duplicated when zone_num matches pump_zone_num', () => {
+    const rows = expandSteps('g1', 'simultaneous', [
+      step({ zone_num: 1, sort_order: 0, duration_min: null }),
+    ], BASE, 'farm/irrigation1', 1, 30)
+    const pumpOns = rows.filter(r => r.zone_num === 1 && r.step_type === 'on')
+    expect(pumpOns).toHaveLength(1)
+  })
+})
