@@ -1,0 +1,43 @@
+name: Deploy Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions
+        run: |
+          supabase functions deploy run-schedules --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy run-program-queue --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy a6v3-runaway-watchdog --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy pressure-downsample --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy issue-mqtt-creds --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy log-a6v3-pressure --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy lmw-place-order --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy lmw-sync --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
