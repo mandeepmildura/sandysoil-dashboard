@@ -94,6 +94,147 @@ function PressureGaugeCard({ deviceCfg, live, anyRelayOn }) {
   )
 }
 
+// ── PressureHistoryPanel sub-component ───────────────────────────────────────
+
+function PressureHistoryPanel({ deviceCfg, livePsi, liveColor }) {
+  const { maxPsi } = deviceCfg.pressureConfig
+  const highThreshold = maxPsi * 0.86
+
+  const [histPreset, setHistPreset] = useState('6h')
+  const [customDate, setCustomDate] = useState(() => localDateStr())
+  const [customFrom, setCustomFrom] = useState('05:00')
+  const [customTo, setCustomTo] = useState('07:00')
+  const [rangeTick, setRangeTick] = useState(0)
+
+  useEffect(() => {
+    if (histPreset === 'custom') return
+    const id = setInterval(() => setRangeTick(t => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [histPreset])
+
+  const histRange = useMemo(() => {
+    if (histPreset === 'custom') {
+      return {
+        from: new Date(`${customDate}T${customFrom}:00`).toISOString(),
+        to:   new Date(`${customDate}T${customTo}:00`).toISOString(),
+      }
+    }
+    const hours = { '1h': 1, '6h': 6, '24h': 24, '7d': 168 }[histPreset] ?? 6
+    const now = Date.now()
+    return {
+      from: new Date(now - hours * 3_600_000).toISOString(),
+      to:   new Date(now).toISOString(),
+    }
+  }, [histPreset, customDate, customFrom, customTo, rangeTick])
+
+  const { data: pressureHistory, loading, reload } = useA6v3PressureHistory(histRange.from, histRange.to)
+
+  useEffect(() => {
+    reload()
+    const id = setInterval(reload, 300_000)
+    return () => clearInterval(id)
+  }, [histRange.from, histRange.to]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stats = computePressureStats(pressureHistory)
+  const liveLabel = typeof livePsi === 'number' ? livePsi.toFixed(1) : '—'
+
+  return (
+    <div className="bg-white rounded-xl shadow-card overflow-hidden"
+      style={{ borderTop: `3px solid ${liveColor}` }}>
+
+      {/* Header */}
+      <div className="px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h2 className="font-headline font-bold text-base text-[#1a1c1c]">CH1 Pressure History</h2>
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
+            style={{ background: `${liveColor}1a`, color: liveColor }}>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: liveColor }} />
+            {liveLabel} PSI
+          </span>
+        </div>
+        <div className="flex items-center gap-1 bg-[#f3f3f3] p-1 rounded-lg">
+          {[['1h','1h'],['6h','6h'],['24h','24h'],['7d','7d'],['custom','Custom']].map(([val, label]) => (
+            <button key={val} onClick={() => setHistPreset(val)}
+              className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all ${
+                histPreset === val ? 'bg-white shadow-sm text-[#1a1c1c]' : 'text-[#717975] hover:text-[#1a1c1c]'
+              }`}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom range picker */}
+      {histPreset === 'custom' && (
+        <div className="px-6 pb-3 flex flex-wrap gap-2 items-end">
+          <div>
+            <label className="text-[10px] text-[#40493d] block mb-0.5">Date</label>
+            <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
+              className="bg-[#f3f3f3] rounded px-2 py-1 text-xs outline-none border border-[#e2e2e2]" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#40493d] block mb-0.5">From</label>
+            <input type="time" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+              className="bg-[#f3f3f3] rounded px-2 py-1 text-xs w-24 outline-none border border-[#e2e2e2]" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#40493d] block mb-0.5">To</label>
+            <input type="time" value={customTo} onChange={e => setCustomTo(e.target.value)}
+              className="bg-[#f3f3f3] rounded px-2 py-1 text-xs w-24 outline-none border border-[#e2e2e2]" />
+          </div>
+          <button onClick={reload}
+            className="px-3 py-1 rounded bg-[#0d631b] text-white text-[10px] font-semibold hover:opacity-90">Go</button>
+        </div>
+      )}
+
+      {/* Chart */}
+      <div className="px-6 pb-4">
+        {loading ? (
+          <div className="h-[260px] flex items-center justify-center text-sm text-[#40493d]">Loading…</div>
+        ) : pressureHistory.length === 0 ? (
+          <div className="h-[260px] flex items-center justify-center text-sm text-[#40493d]">No data for this range</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={pressureHistory} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+              <defs>
+                <linearGradient id="a6v3PressureGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={liveColor} stopOpacity={0.15} />
+                  <stop offset="95%" stopColor={liveColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="" vertical={false} stroke="#f2f4f3" />
+              <XAxis dataKey="time"
+                tick={{ fontSize: 9, fill: '#717975', fontFamily: 'Manrope', fontWeight: 600 }}
+                interval={Math.max(1, Math.floor(pressureHistory.length / 8))} />
+              <YAxis domain={[0, maxPsi]}
+                tick={{ fontSize: 9, fill: '#717975', fontFamily: 'Manrope', fontWeight: 600 }} />
+              <Tooltip content={<PressureTooltip />} />
+              <ReferenceLine y={highThreshold} stroke="#ba1a1a" strokeDasharray="4 2"
+                label={{ value: '⚠ High alert', position: 'insideTopRight', fontSize: 9, fill: '#ba1a1a' }} />
+              <Area type="monotone" dataKey="psi" name="Pressure"
+                stroke={liveColor} strokeWidth={2.5} dot={false}
+                fill="url(#a6v3PressureGradient)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Stats strip */}
+      {stats && (
+        <div className="grid grid-cols-3 bg-[#f3f3f3]">
+          {[['Min', stats.min], ['Max', stats.max], ['Avg', stats.avg]].map(([label, val], i) => (
+            <div key={label} className={`px-4 py-4 text-center ${i < 2 ? 'border-r border-[#e2e2e2]' : ''}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#717975] mb-1">{label}</p>
+              <p className="font-headline text-2xl font-extrabold text-[#1a1c1c] leading-none">
+                {val.toFixed(1)}{' '}
+                <span className="text-xs font-normal text-[#717975]">PSI</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function RelayDevice({ deviceCfg }) {
