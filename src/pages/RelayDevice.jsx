@@ -276,6 +276,15 @@ export default function RelayDevice({ deviceCfg }) {
 
   // Live device state
   const device = live[deviceCfg.stateTopic] ?? null
+  const pressureAdcRaw = deviceCfg.pressureConfig
+    ? (device?.[deviceCfg.pressureConfig.adcKey]?.value ?? 0)
+    : 0
+  const livePsi = deviceCfg.pressureConfig
+    ? (pressureAdcRaw / 4095) * deviceCfg.pressureConfig.maxPsi
+    : 0
+  const liveColor = deviceCfg.pressureConfig
+    ? gaugeColor(livePsi, deviceCfg.pressureConfig.maxPsi)
+    : '#0d631b'
   const outputs = Array.from({ length: deviceCfg.outputCount }, (_, i) => device?.[`output${i+1}`]?.value ?? false)
   const inputs  = Array.from({ length: deviceCfg.inputCount  }, (_, i) => device?.[`input${i+1}`]?.value  ?? false)
   // ADC channels — skip the one used by pressure gauge
@@ -538,107 +547,13 @@ export default function RelayDevice({ deviceCfg }) {
 
       {/* ── RELAYS TAB ─────────────────────────────────────────────────── */}
       {activeTab === 'relays' && (
-        <div className={`grid grid-cols-1 gap-6 ${deviceCfg.pressureConfig ? 'lg:grid-cols-3' : ''}`}>
-          {/* Left panel — pressure gauge + inputs (only for pressure devices) */}
-          {deviceCfg.pressureConfig && (
-            <div className="space-y-4">
-              <PressureGaugeCard deviceCfg={deviceCfg} live={live} anyRelayOn={anyRelayOn} />
-              {inputs.length > 0 && (
-                <Card>
-                  <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">
-                    Inputs (DI1–DI{deviceCfg.inputCount})
-                  </h3>
-                  <div className={`grid ${inputGridCols(inputs.length)} gap-1.5`}>
-                    {inputs.map((active, i) => (
-                      <div key={i} className={`py-1.5 rounded text-[10px] font-semibold text-center ${
-                        active ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'
-                      }`}>DI{i+1}</div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-            </div>
-          )}
-
-          {/* Right panel — relay grid + (for non-pressure devices) inputs + ADC */}
-          <div className={deviceCfg.pressureConfig ? 'lg:col-span-2' : ''}>
-            <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">
-              Relays (DO1–DO{deviceCfg.outputCount})
-            </h2>
-            <div className={`grid ${relayGridCls(deviceCfg.outputCount)} gap-4 mb-6`}>
-              {outputs.map((on, i) => {
-                const n = i + 1
-                const name = names[n] ?? `Relay ${n}`
-                return (
-                  <Card key={i} accent={on ? 'green' : undefined}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
-                        {editingOutput === n ? (
-                          <input ref={outputNameRef} value={outputNameInput}
-                            onChange={e => setOutputNameInput(e.target.value)}
-                            onBlur={() => commitRename(n)}
-                            onKeyDown={e => { if (e.key === 'Enter') commitRename(n); if (e.key === 'Escape') setEditingOutput(null) }}
-                            className="font-headline font-bold text-[#1a1c1c] bg-transparent border-b-2 border-[#0d631b] outline-none w-full text-sm"
-                            maxLength={32} autoFocus />
-                        ) : (
-                          <button onClick={() => startEdit(n, name)}
-                            className="font-headline font-bold text-[#1a1c1c] hover:text-[#0d631b] transition-colors flex items-center gap-1 group text-sm"
-                            title="Click to rename">
-                            <span className="truncate">{name}</span>
-                            <span className="opacity-0 group-hover:opacity-60 transition-opacity text-xs">✏️</span>
-                          </button>
-                        )}
-                        <p className="text-xs text-[#40493d]">DO{n}</p>
-                      </div>
-                      <span className={`w-3 h-3 rounded-full mt-0.5 shrink-0 ${on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
-                    </div>
-                    <StatusChip status={on ? 'running' : 'offline'} label={on ? 'ON' : 'OFF'} />
-
-                    {/* Duration input — shown when relay is OFF (matches Zones page UX) */}
-                    {!on && (
-                      <div className="flex items-center gap-1.5 mt-2">
-                        <input
-                          type="number"
-                          min={1}
-                          max={240}
-                          placeholder="30"
-                          value={selectedDurations[n] === null ? '' : (selectedDurations[n] ?? '')}
-                          onChange={e => {
-                            const v = e.target.value
-                            setSelectedDurations(prev => ({ ...prev, [n]: v === '' ? null : Number(v) }))
-                          }}
-                          className="w-14 bg-[#f3f3f3] rounded-md px-2 py-1 text-xs text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:bg-white transition-all"
-                        />
-                        <span className="text-[10px] text-[#40493d]">min</span>
-                      </div>
-                    )}
-
-                    {/* Countdown — shown when relay is ON with auto-off */}
-                    {on && autoOffRef.current[n] && (() => {
-                      const rem = Math.max(0, autoOffRef.current[n] - Date.now())
-                      const min = Math.floor(rem / 60000)
-                      const sec = Math.floor((rem % 60000) / 1000)
-                      return (
-                        <p className="text-[10px] text-center text-[#0d631b] font-semibold mt-1">
-                          auto-off {min}:{String(sec).padStart(2,'0')}
-                        </p>
-                      )
-                    })()}
-
-                    <div className="flex gap-1 mt-2">
-                      <button onClick={() => handleToggle(n, on)} disabled={!!busy[n] || on}
-                        className="flex-1 py-1.5 rounded-md bg-[#0d631b] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity">On</button>
-                      <button onClick={() => handleToggle(n, on)} disabled={!!busy[n] || !on}
-                        className="flex-1 py-1.5 rounded-md bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold hover:bg-[#d5d5d5] disabled:opacity-40 transition-all">Off</button>
-                    </div>
-                  </Card>
-                )
-              })}
-            </div>
-
-            {/* Inputs + ADC for non-pressure devices (or below relays for all devices) */}
-            {!deviceCfg.pressureConfig && (inputs.length > 0 || adcChannels.length > 0) && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="space-y-6">
+          {/* Gauge + relay grid */}
+          <div className={`grid grid-cols-1 gap-6 ${deviceCfg.pressureConfig ? 'lg:grid-cols-3' : ''}`}>
+            {/* Left — pressure gauge + digital inputs */}
+            {deviceCfg.pressureConfig && (
+              <div className="space-y-4">
+                <PressureGaugeCard deviceCfg={deviceCfg} live={live} anyRelayOn={anyRelayOn} />
                 {inputs.length > 0 && (
                   <Card>
                     <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">
@@ -653,30 +568,127 @@ export default function RelayDevice({ deviceCfg }) {
                     </div>
                   </Card>
                 )}
-                {adcChannels.length > 0 && (
-                  <Card>
-                    <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">
-                      Analog ({adcChannels.map(c => `CH${c.index}`).join('–')})
-                    </h3>
-                    <div className="space-y-3">
-                      {adcChannels.map(ch => (
-                        <div key={ch.key}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-[#40493d]">CH{ch.index}</span>
-                            <span className="font-semibold text-[#1a1c1c]">{ch.value}</span>
-                          </div>
-                          <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
-                            <div className="h-full bg-[#0d631b] rounded-full transition-all"
-                              style={{ width: `${Math.min((ch.value / 4095) * 100, 100)}%` }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                )}
               </div>
             )}
+
+            {/* Right — relay grid */}
+            <div className={deviceCfg.pressureConfig ? 'lg:col-span-2' : ''}>
+              <h2 className="font-headline font-semibold text-base text-[#1a1c1c] mb-3">
+                Relays (DO1–DO{deviceCfg.outputCount})
+              </h2>
+              <div className={`grid ${relayGridCls(deviceCfg.outputCount)} gap-4 mb-6`}>
+                {outputs.map((on, i) => {
+                  const n = i + 1
+                  const name = names[n] ?? `Relay ${n}`
+                  return (
+                    <Card key={i} accent={on ? 'green' : undefined}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          {editingOutput === n ? (
+                            <input ref={outputNameRef} value={outputNameInput}
+                              onChange={e => setOutputNameInput(e.target.value)}
+                              onBlur={() => commitRename(n)}
+                              onKeyDown={e => { if (e.key === 'Enter') commitRename(n); if (e.key === 'Escape') setEditingOutput(null) }}
+                              className="font-headline font-bold text-[#1a1c1c] bg-transparent border-b-2 border-[#0d631b] outline-none w-full text-sm"
+                              maxLength={32} autoFocus />
+                          ) : (
+                            <button onClick={() => startEdit(n, name)}
+                              className="font-headline font-bold text-[#1a1c1c] hover:text-[#0d631b] transition-colors flex items-center gap-1 group text-sm"
+                              title="Click to rename">
+                              <span className="truncate">{name}</span>
+                              <span className="opacity-0 group-hover:opacity-60 transition-opacity text-xs">✏️</span>
+                            </button>
+                          )}
+                          <p className="text-xs text-[#40493d]">DO{n}</p>
+                        </div>
+                        <span className={`w-3 h-3 rounded-full mt-0.5 shrink-0 ${on ? 'bg-[#0d631b] animate-pulse' : 'bg-[#e2e2e2]'}`} />
+                      </div>
+                      <StatusChip status={on ? 'running' : 'offline'} label={on ? 'ON' : 'OFF'} />
+
+                      {!on && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <input
+                            type="number" min={1} max={240} placeholder="30"
+                            value={selectedDurations[n] === null ? '' : (selectedDurations[n] ?? '')}
+                            onChange={e => {
+                              const v = e.target.value
+                              setSelectedDurations(prev => ({ ...prev, [n]: v === '' ? null : Number(v) }))
+                            }}
+                            className="w-14 bg-[#f3f3f3] rounded-md px-2 py-1 text-xs text-[#1a1c1c] outline-none border border-transparent focus:border-[#0d631b]/40 focus:bg-white transition-all"
+                          />
+                          <span className="text-[10px] text-[#40493d]">min</span>
+                        </div>
+                      )}
+
+                      {on && autoOffRef.current[n] && (() => {
+                        const rem = Math.max(0, autoOffRef.current[n] - Date.now())
+                        const min = Math.floor(rem / 60000)
+                        const sec = Math.floor((rem % 60000) / 1000)
+                        return (
+                          <p className="text-[10px] text-center text-[#0d631b] font-semibold mt-1">
+                            auto-off {min}:{String(sec).padStart(2,'0')}
+                          </p>
+                        )
+                      })()}
+
+                      <div className="flex gap-1 mt-2">
+                        <button onClick={() => handleToggle(n, on)} disabled={!!busy[n] || on}
+                          className="flex-1 py-1.5 rounded-md bg-[#0d631b] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity">On</button>
+                        <button onClick={() => handleToggle(n, on)} disabled={!!busy[n] || !on}
+                          className="flex-1 py-1.5 rounded-md bg-[#e2e2e2] text-[#1a1c1c] text-xs font-semibold hover:bg-[#d5d5d5] disabled:opacity-40 transition-all">Off</button>
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+
+              {/* Inputs + ADC for non-pressure devices */}
+              {!deviceCfg.pressureConfig && (inputs.length > 0 || adcChannels.length > 0) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {inputs.length > 0 && (
+                    <Card>
+                      <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">
+                        Inputs (DI1–DI{deviceCfg.inputCount})
+                      </h3>
+                      <div className={`grid ${inputGridCols(inputs.length)} gap-1.5`}>
+                        {inputs.map((active, i) => (
+                          <div key={i} className={`py-1.5 rounded text-[10px] font-semibold text-center ${
+                            active ? 'bg-[#e8f5e9] text-[#0d631b]' : 'bg-[#f3f3f3] text-[#40493d]'
+                          }`}>DI{i+1}</div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                  {adcChannels.length > 0 && (
+                    <Card>
+                      <h3 className="font-headline font-semibold text-xs text-[#40493d] uppercase mb-3">
+                        Analog ({adcChannels.map(c => `CH${c.index}`).join('–')})
+                      </h3>
+                      <div className="space-y-3">
+                        {adcChannels.map(ch => (
+                          <div key={ch.key}>
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-[#40493d]">CH{ch.index}</span>
+                              <span className="font-semibold text-[#1a1c1c]">{ch.value}</span>
+                            </div>
+                            <div className="h-1.5 bg-[#e2e2e2] rounded-full overflow-hidden">
+                              <div className="h-full bg-[#0d631b] rounded-full transition-all"
+                                style={{ width: `${Math.min((ch.value / 4095) * 100, 100)}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Full-width pressure history panel */}
+          {deviceCfg.pressureConfig && (
+            <PressureHistoryPanel deviceCfg={deviceCfg} livePsi={livePsi} liveColor={liveColor} />
+          )}
         </div>
       )}
 
