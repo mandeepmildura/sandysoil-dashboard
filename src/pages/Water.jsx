@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import Card from '../components/Card'
 import PageHeader from '../components/PageHeader'
 import BookWaterModal from '../components/BookWaterModal'
 import { useLmwAllocation } from '../hooks/useLmwAllocation'
 import { useLmwOrders } from '../hooks/useLmwOrders'
 import { useLmwMeterReadings } from '../hooks/useLmwMeterReadings'
+import { useLmwNotices } from '../hooks/useLmwNotices'
+import { supabase } from '../lib/supabase'
 
 const TZ = 'Australia/Melbourne'
 
@@ -26,7 +28,21 @@ export default function Water() {
   const { allocation, loading: allocLoading, reload: reloadAllocation } = useLmwAllocation()
   const { orders, loading: ordersLoading, reload: reloadOrders } = useLmwOrders()
   const { readings, loading: readingsLoading, totalAct, totalEst } = useLmwMeterReadings({ days: 365 })
+  const { notices, reload: reloadNotices } = useLmwNotices()
   const [bookOpen, setBookOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+
+  const syncNow = useCallback(async () => {
+    setSyncing(true)
+    try {
+      await supabase.functions.invoke('lmw-sync', { body: {} })
+      reloadAllocation()
+      reloadOrders()
+      reloadNotices()
+    } finally {
+      setSyncing(false)
+    }
+  }, [reloadAllocation, reloadOrders, reloadNotices])
 
   const lastSync = allocation?.snapshot_at
   const period1Pct = useMemo(() => {
@@ -42,13 +58,26 @@ export default function Water() {
           title="Water"
           subtitle={lastSync ? `Last synced ${fmtDate(lastSync)}` : 'Awaiting first sync'}
         />
-        <button
-          type="button"
-          onClick={() => setBookOpen(true)}
-          className="px-4 py-2.5 rounded-md bg-gradient-to-r from-[#0d631b] to-[#46a358] text-white text-sm font-bold shadow-sm hover:opacity-90"
-        >
-          Book water
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={syncNow}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-md border border-[#d0d9d4] text-sm font-medium text-[#40493d] hover:bg-[#f5f7f6] disabled:opacity-50"
+          >
+            <svg className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z" clipRule="evenodd" />
+            </svg>
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setBookOpen(true)}
+            className="px-4 py-2.5 rounded-md bg-gradient-to-r from-[#0d631b] to-[#46a358] text-white text-sm font-bold shadow-sm hover:opacity-90"
+          >
+            Book water
+          </button>
+        </div>
       </div>
 
       <BookWaterModal
@@ -57,6 +86,20 @@ export default function Water() {
         onPlaced={() => { reloadOrders(); reloadAllocation() }}
         available_ml={allocation?.available_ml}
       />
+
+      {/* ── LMW Portal Notices ─────────────────────────────── */}
+      {notices.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {notices.map(n => (
+            <div key={n.id} className="flex items-start gap-3 px-4 py-3 rounded-md bg-rose-50 border border-rose-200 text-sm text-rose-800">
+              <svg className="mt-0.5 shrink-0 w-4 h-4 text-rose-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+              <span>{n.notice_text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Allocation ─────────────────────────────────────── */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">

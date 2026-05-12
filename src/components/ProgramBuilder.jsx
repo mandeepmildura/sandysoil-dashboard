@@ -1,10 +1,15 @@
-// src/components/ProgramBuilder.jsx
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { schedulesOverlap, toMin } from '../lib/programUtils'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const ALL_ZONES = [1, 2, 3, 4, 5, 6, 7, 8]
+const DURATION_PRESETS = [
+  { label: '30 min', value: 30 },
+  { label: '1 hr',   value: 60 },
+  { label: '2 hr',   value: 120 },
+  { label: '4 hr',   value: 240 },
+]
 
 /**
  * @param {object} props
@@ -15,7 +20,7 @@ const ALL_ZONES = [1, 2, 3, 4, 5, 6, 7, 8]
  * @param {object|null} props.editProgram - program to edit, or null for new
  */
 export default function ProgramBuilder({ pumpZoneNum, existingSchedules = [], onSave, onCancel, editProgram = null }) {
-  const [name, setName]           = useState(editProgram?.name ?? '')
+  const [name, setName]                   = useState(editProgram?.name ?? '')
   const [selectedZones, setSelectedZones] = useState(
     editProgram ? editProgram.zones.map(z => z.zone_num) : []
   )
@@ -89,57 +94,141 @@ export default function ProgramBuilder({ pumpZoneNum, existingSchedules = [], on
   }
 
   const availableZones = ALL_ZONES.filter(z => z !== pumpZoneNum)
+  const isPreset = DURATION_PRESETS.some(p => p.value === durationMin)
 
   return (
-    <div style={{ padding: '1.25rem', maxWidth: 360 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0d4d20' }}>
+    <div className="p-6 w-full max-w-md">
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-base font-bold text-[#0d4d20]">
           {editProgram ? 'Edit Program' : 'New Program'}
+        </h2>
+        <button
+          onClick={onCancel}
+          className="text-sm text-[#7a8580] hover:text-[#40493d] transition-colors"
+        >
+          ✕ Cancel
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 px-3 py-2.5 bg-red-50 border border-red-100 text-red-700 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Program name */}
+      <label className="block text-xs font-bold text-[#7a8580] uppercase tracking-wider mb-1.5">
+        Program name
+      </label>
+      <input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="e.g. Avocados Morning"
+        className="w-full border border-[#e4e9e6] rounded-lg px-3 py-2.5 text-sm mb-5 focus:outline-none focus:border-[#0d4d20] transition-colors"
+      />
+
+      {/* Zones */}
+      <label className="block text-xs font-bold text-[#7a8580] uppercase tracking-wider mb-2">
+        Zones <span className="normal-case font-normal">(run simultaneously)</span>
+      </label>
+      <div className="grid grid-cols-4 gap-2 mb-1">
+        {availableZones.map(z => {
+          const on = selectedZones.includes(z)
+          return (
+            <button
+              key={z}
+              onClick={() => toggleZone(z)}
+              className={`py-3 rounded-xl text-sm font-bold transition-colors ${
+                on
+                  ? 'bg-[#0d4d20] text-white'
+                  : 'bg-white border-2 border-[#e4e9e6] text-[#7a8580] hover:border-[#0d4d20] hover:text-[#0d4d20]'
+              }`}
+            >
+              {on ? '✓' : ''} Z{z}
+            </button>
+          )
+        })}
+      </div>
+      {pumpZoneNum && (
+        <p className="text-[10px] text-[#7a8580] mb-4">Zone {pumpZoneNum} (Pump) runs automatically</p>
+      )}
+      {!pumpZoneNum && <div className="mb-4" />}
+
+      {/* Duration */}
+      <label className="block text-xs font-bold text-[#7a8580] uppercase tracking-wider mb-2">
+        Duration <span className="normal-case font-normal">(all zones)</span>
+      </label>
+      <div className="grid grid-cols-4 gap-2 mb-3">
+        {DURATION_PRESETS.map(p => (
+          <button
+            key={p.value}
+            onClick={() => setDurationMin(p.value)}
+            className={`py-3 rounded-xl text-sm font-bold transition-colors ${
+              durationMin === p.value
+                ? 'bg-[#0d4d20] text-white'
+                : 'bg-white border-2 border-[#e4e9e6] text-[#7a8580] hover:border-[#0d4d20] hover:text-[#0d4d20]'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mb-5">
+        <input
+          type="number"
+          min="1"
+          value={durationMin}
+          onChange={e => setDurationMin(parseInt(e.target.value) || 1)}
+          className="w-24 border border-[#e4e9e6] rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:border-[#0d4d20] transition-colors"
+        />
+        <span className="text-sm text-[#7a8580]">
+          min
+          {durationMin >= 60 && (
+            <span className="ml-1 text-[#0d4d20] font-semibold">
+              = {Math.floor(durationMin / 60)}h{durationMin % 60 ? ` ${durationMin % 60}m` : ''}
+            </span>
+          )}
         </span>
-        <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#7a8580', fontSize: '0.8rem', cursor: 'pointer' }}>✕ Cancel</button>
       </div>
 
-      {error && <div style={{ background: '#fde8e8', color: '#c0392b', borderRadius: 6, padding: '6px 10px', fontSize: '0.78rem', marginBottom: '0.75rem' }}>{error}</div>}
+      {/* Start time */}
+      <label className="block text-xs font-bold text-[#7a8580] uppercase tracking-wider mb-1.5">
+        Start time
+      </label>
+      <input
+        type="time"
+        value={startTime}
+        onChange={e => setStartTime(e.target.value)}
+        className="border border-[#e4e9e6] rounded-lg px-3 py-2.5 text-sm mb-5 focus:outline-none focus:border-[#0d4d20] transition-colors"
+      />
 
-      <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.3rem' }}>Program name</label>
-      <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Avocados Morning"
-        style={{ width: '100%', border: '1.5px solid #e4e9e6', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', marginBottom: '0.85rem', boxSizing: 'border-box' }} />
-
-      <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.3rem' }}>Zones (run together)</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: '0.4rem' }}>
-        {availableZones.map(z => (
-          <button key={z} onClick={() => toggleZone(z)}
-            style={{ background: selectedZones.includes(z) ? '#0d4d20' : 'white', color: selectedZones.includes(z) ? 'white' : '#7a8580', border: '1.5px solid', borderColor: selectedZones.includes(z) ? '#0d4d20' : '#e4e9e6', borderRadius: 6, padding: '4px 10px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-            {selectedZones.includes(z) ? '✓ ' : ''}Zone {z}
-          </button>
-        ))}
-      </div>
-      {pumpZoneNum && <p style={{ fontSize: '0.6rem', color: '#7a8580', marginBottom: '0.85rem' }}>Zone {pumpZoneNum} (Pump) runs automatically</p>}
-
-      <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.3rem' }}>Duration (all zones)</label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.85rem' }}>
-        <input type="number" min="1" value={durationMin} onChange={e => setDurationMin(parseInt(e.target.value) || 1)}
-          style={{ width: 64, border: '1.5px solid #e4e9e6', borderRadius: 6, padding: '6px 8px', fontSize: '0.85rem', textAlign: 'center' }} />
-        <span style={{ fontSize: '0.8rem', color: '#7a8580' }}>minutes</span>
-        {durationMin >= 60 && <span style={{ fontSize: '0.7rem', color: '#7a8580', marginLeft: 'auto' }}>= {Math.floor(durationMin/60)}h{durationMin%60 ? ` ${durationMin%60}m` : ''}</span>}
-      </div>
-
-      <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.3rem' }}>Start time</label>
-      <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-        style={{ border: '1.5px solid #e4e9e6', borderRadius: 6, padding: '6px 8px', fontSize: '0.85rem', marginBottom: '0.75rem' }} />
-
-      <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7a8580', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.3rem' }}>Days</label>
-      <div style={{ display: 'flex', gap: 5, marginBottom: '1rem' }}>
+      {/* Days */}
+      <label className="block text-xs font-bold text-[#7a8580] uppercase tracking-wider mb-2">
+        Days
+      </label>
+      <div className="grid grid-cols-7 gap-1.5 mb-6">
         {DAYS.map((d, i) => (
-          <button key={i} onClick={() => toggleDay(i)}
-            style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: days.includes(i) ? '#0d4d20' : '#e4e9e6', color: days.includes(i) ? 'white' : '#7a8580', fontSize: '0.6rem', fontWeight: 700, cursor: 'pointer' }}>
-            {d[0]}
+          <button
+            key={i}
+            onClick={() => toggleDay(i)}
+            className={`py-2.5 rounded-xl text-xs font-bold transition-colors ${
+              days.includes(i)
+                ? 'bg-[#0d4d20] text-white'
+                : 'bg-white border-2 border-[#e4e9e6] text-[#7a8580] hover:border-[#0d4d20] hover:text-[#0d4d20]'
+            }`}
+          >
+            {d.slice(0, 2)}
           </button>
         ))}
       </div>
 
-      <button onClick={save} disabled={saving}
-        style={{ width: '100%', background: saving ? '#7a8580' : '#0d4d20', color: 'white', border: 'none', borderRadius: 8, padding: '0.65rem', fontSize: '0.85rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
+      <button
+        onClick={save}
+        disabled={saving}
+        className="w-full py-3 bg-[#0d4d20] text-white rounded-xl font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+      >
         {saving ? 'Saving…' : 'Save Program'}
       </button>
     </div>

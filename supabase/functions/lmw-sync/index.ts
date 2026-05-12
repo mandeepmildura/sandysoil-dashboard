@@ -22,6 +22,7 @@ import {
   parseOrderHistory,
   parseMeterReadings,
   parseCurrentOrderReceipts,
+  parseNotices,
 } from './lib/parsers.ts'
 
 export const CRON_EXPR = '*/30 * * * *'
@@ -80,6 +81,23 @@ async function syncOne(cred: CredRow): Promise<Record<string, unknown>> {
 
   try {
     const session = await lmwLogin(outlet_no, cred.pin)
+
+    // Notices (from the home page returned by lmwLogin — no extra HTTP request)
+    try {
+      const noticesList = parseNotices(session.homeHtml)
+      const nowIso = new Date().toISOString()
+      // Replace the full set so the table always reflects current portal state
+      await supabase.from('lmw_notices').delete().eq('outlet_no', outlet_no).eq('user_id', user_id)
+      if (noticesList.length > 0) {
+        const { error } = await supabase.from('lmw_notices').insert(
+          noticesList.map(n => ({ user_id, outlet_no, notice_text: n.text, synced_at: nowIso }))
+        )
+        if (error) throw error
+      }
+      result.notices = noticesList.length
+    } catch (e) {
+      result.notices = `error: ${String(e).slice(0, 200)}`
+    }
 
     // Allocation
     try {

@@ -516,6 +516,35 @@ export default function Calendar() {
             )}
           </div>
 
+          {/* All programs — direct edit list */}
+          <div className="bg-white rounded-xl shadow-card p-4">
+            <h2 className="font-headline font-semibold text-sm text-[#1a1c1c] mb-3">All Programs</h2>
+            {loading ? (
+              <p className="text-xs text-[#40493d]">Loading…</p>
+            ) : programs.length === 0 ? (
+              <p className="text-xs text-[#40493d]">No programs yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {programs.map((p, pi) => (
+                  <div key={p.id} className="flex items-center gap-2.5 p-2.5 bg-[#f9f9f9] rounded-lg">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: COLORS[pi % COLORS.length] }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-[#1a1c1c] truncate">{p.name}</p>
+                      <p className="text-[10px] text-[#40493d]">{fmtTime(p.schedule.start_time)} · {fmtDuration(totalDuration(p))}</p>
+                      <p className="text-[10px] text-[#717975]">{fmtDays(p.schedule.days_of_week)}</p>
+                    </div>
+                    <button
+                      onClick={() => setEditingProgram(p)}
+                      className="shrink-0 px-2.5 py-1 rounded-md bg-[#e8f4ea] text-[#0d4d20] text-xs font-bold hover:bg-[#d4ecda] transition-colors"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => setShowProgramBuilder(true)}
             className={`w-full ${btnPrimary}`}
@@ -532,7 +561,7 @@ export default function Calendar() {
       {(showProgramBuilder || editingProgram) && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
           onClick={() => { setShowProgramBuilder(false); setEditingProgram(null) }}>
-          <div className="bg-white rounded-2xl shadow-xl overflow-y-auto max-h-[90vh]"
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-y-auto max-h-[90vh]"
             onClick={e => e.stopPropagation()}>
             <ProgramBuilder
               pumpZoneNum={myDevice?.pump_zone_num ?? null}

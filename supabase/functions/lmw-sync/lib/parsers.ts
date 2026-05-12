@@ -142,6 +142,65 @@ export function parseCurrentOrderReceipts(html: string): Set<string> {
   return receipts
 }
 
+// ─────── default1.asp — portal home notices ──────────────────
+
+export type Notice = {
+  text: string
+}
+
+/**
+ * Parse dismissible notice banners from the LMW portal home page.
+ *
+ * The classic-ASP home page shows pink alert rows with a dismiss link
+ * next to each notice. We detect rows that contain a dismiss signal
+ * (× / &times; / href to a dismiss/notice URL) and extract the text.
+ *
+ * If that yields nothing we fall back to coloured table cells
+ * (bgcolor with a reddish/pinkish hex) as a secondary signal.
+ */
+export function parseNotices(html: string): Notice[] {
+  const notices: Notice[] = []
+  const seen = new Set<string>()
+
+  const clean = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+
+  const isDismissSignal = (s: string) =>
+    /[×✕]|&times;|&#215;/i.test(s) ||
+    /href\s*=\s*["'][^"']*(?:dismiss|notice)[^"']*["']/i.test(s)
+
+  const addIfNovel = (rawInner: string) => {
+    const text = stripTags(rawInner)
+      .replace(/&times;|&#215;/g, '')
+      .replace(/[×✕]/g, '')
+      .replace(/\b(?:close|dismiss)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (text.length < 10 || seen.has(text)) return
+    seen.add(text)
+    notices.push({ text })
+  }
+
+  // Primary: <tr> elements that contain a dismiss signal
+  const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+  let m: RegExpExecArray | null
+  while ((m = trRe.exec(clean)) !== null) {
+    if (isDismissSignal(m[1])) addIfNovel(m[1])
+  }
+
+  // Secondary fallback: <td> or <table> with a pinkish bgcolor attribute
+  if (notices.length === 0) {
+    const pinkRe = /bgcolor\s*=\s*["']?\s*#?(?:FF[89A-Fa-f][0-9A-Fa-f]{2}[0-9A-Fa-f]{2}|FFB\w{3}|FFA\w{3}|FF8\w{3}|pink|salmon)/i
+    const cellRe = /<(?:td|th|table)[^>]*>([\s\S]*?)<\/(?:td|th|table)>/gi
+    while ((m = cellRe.exec(clean)) !== null) {
+      if (pinkRe.test(m[0].slice(0, 120))) addIfNovel(m[1])
+    }
+  }
+
+  return notices
+}
+
 // ─────── helpers ─────────────────────────────────────────────
 
 function htmlToText(html: string): string {

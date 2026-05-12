@@ -207,16 +207,26 @@ async function placeOrder(args: PlaceArgs): Promise<PlaceResult> {
   params.set(map.hours,     String(args.hours))
   params.set(map.flow,      String(args.flow_lps))
   params.set(map.shift,     String(args.shift_no))
-  if (map.submit) params.set(map.submit, 'Submit')
+  // Always include Submit — LMW ASP forms require the button value in the POST body.
+  params.set(map.submit ?? 'Submit', 'Submit')
 
   const postRes = await lmwPost(session, form.action, params)
   const respHtml = postRes.body
 
+  // Primary: text-based receipt match
   const receiptMatch =
     respHtml.match(/Receipt\s*(?:No|Number)?[:\s#]*([0-9]{5,8})/i) ??
     respHtml.match(/Order\s*(?:placed|confirmed)[^0-9]{0,40}([0-9]{5,8})/i)
   if (receiptMatch) {
     return { ok: true, receipt_no: receiptMatch[1] }
+  }
+
+  // Fallback: scan table cells for a 5-8 digit number after the order is submitted.
+  // LMW confirmation pages often just render the new order in an HTML table without
+  // explicit "Receipt" label text.
+  const tableReceipt = extractReceiptFromTable(respHtml)
+  if (tableReceipt) {
+    return { ok: true, receipt_no: tableReceipt }
   }
 
   // Diagnostic: surface what we sent and what we found, so we can fix
@@ -293,14 +303,15 @@ function parseAttrs(s: string): Record<string, string> {
 
 /**
  * Map *visible* form field names → keys we recognise. The LMW form is a
- * multi-row "Place Your New Orders Here" grid, so each name typically
- * carries a row index (Date1, Time1, Hours1, Flow1, Shift1) or an
- * array suffix (Date[], Date[1]). Match either.
+ * multi-row "Place Your New Orders Here" grid. Two naming conventions seen:
+ *   - Generic: Date1, Time1, Hours1, Flow1, Shift1
+ *   - LMW live site: st_day0, st_hour0, length0, amount0, shift0
+ * Match both so this works if LMW ever updates their templates.
  */
 function pickFieldMap(fieldNames: string[]): {
   startDate: string; startTime: string; hours: string; flow: string; shift: string; submit: string | null
 } {
-  // Lowercase + strip array brackets / numeric suffix once, for easy matching
+  // Lowercase + strip array brackets / numeric suffix for easy matching
   const norm = (n: string) => n.toLowerCase().replace(/\[\d*\]$/, '').replace(/\d+$/, '')
 
   const find = (...predicates: ((stem: string) => boolean)[]) => {
@@ -312,17 +323,50 @@ function pickFieldMap(fieldNames: string[]): {
   }
 
   return {
-    startDate: find(s => s === 'date' || s === 'startdate' || s === 'stdate' || s.endsWith('date')) || 'Date1',
-    startTime: find(s => s === 'time' || s === 'starttime' || s === 'sttime' || s.endsWith('time')) || 'Time1',
-    hours:     find(s => s === 'hours' || s === 'hour' || s === 'hrs' || s === 'duration')          || 'Hours1',
-    flow:      find(s => s === 'flow' || s === 'lps' || s === 'rate' || s.startsWith('flow'))       || 'Flow1',
-    shift:     find(s => s === 'shift' || s.startsWith('shift'))                                    || 'Shift1',
-    submit:    find(s => s === 'submit' || s === 'place' || s === 'order' || s.startsWith('btn'))   || null,
+    // Generic: date/Date1/startdate — LMW live: st_day0 (norm → st_day)
+    startDate: find(
+      s => s === 'date' || s === 'startdate' || s === 'stdate' || s.endsWith('date'),
+      s => s === 'st_day' || s.endsWith('_day'),
+    ) || 'Date1',
+    // Generic: time/Time1/starttime — LMW live: st_hour0 (norm → st_hour)
+    startTime: find(
+      s => s === 'time' || s === 'starttime' || s === 'sttime' || s.endsWith('time'),
+      s => s === 'st_hour' || s.endsWith('_hour'),
+    ) || 'Time1',
+    // Generic: hours/Hours1/duration — LMW live: length0 (norm → length)
+    hours: find(
+      s => s === 'hours' || s === 'hour' || s === 'hrs' || s === 'duration',
+      s => s === 'length',
+    ) || 'Hours1',
+    // Generic: flow/Flow1/lps — LMW live: amount0 (norm → amount)
+    flow: find(
+      s => s === 'flow' || s === 'lps' || s === 'rate' || s.startsWith('flow'),
+      s => s === 'amount',
+    ) || 'Flow1',
+    shift:  find(s => s === 'shift' || s.startsWith('shift')) || 'Shift1',
+    submit: find(s => s === 'submit' || s === 'place' || s === 'order' || s.startsWith('btn')) || null,
   }
 }
 
 function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ')
+}
+
+/**
+ * Scan table rows for a standalone 5-8 digit number — LMW confirmation pages
+ * often render the new receipt number in a table cell without surrounding text.
+ */
+function extractReceiptFromTable(html: string): string | null {
+  const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+  let m: RegExpExecArray | null
+  while ((m = trRegex.exec(html)) !== null) {
+    const cells = Array.from(m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi))
+      .map(t => stripTags(t[1]).trim())
+    for (const cell of cells) {
+      if (/^\d{5,8}$/.test(cell)) return cell
+    }
+  }
+  return null
 }
 
 /**

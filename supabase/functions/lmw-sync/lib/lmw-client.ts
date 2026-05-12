@@ -15,6 +15,7 @@ const BASE_URL = 'https://waterorder.lmw.vic.gov.au'
 export type LmwSession = {
   outlet: string
   cookie: string         // Cookie header value to send on subsequent requests
+  homeHtml: string       // Verified home page HTML (used to parse portal notices)
 }
 
 /**
@@ -65,7 +66,7 @@ export async function lmwLogin(outlet: string, pin: string): Promise<LmwSession>
     throw new Error('LMW login failed — check outlet/pin')
   }
 
-  return { outlet, cookie: loginCookie }
+  return { outlet, cookie: loginCookie, homeHtml: verifyHtml }
 }
 
 /** GET an LMW page using the session cookie. Returns the HTML body. */
