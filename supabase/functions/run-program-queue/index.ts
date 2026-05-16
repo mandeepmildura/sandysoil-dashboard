@@ -140,9 +140,10 @@ Deno.serve(async (_req) => {
 
     // Claim every row up-front by setting fired_at = now(). This prevents
     // the next cron tick (which fires every 60 s) from racing with our wait
-    // window and double-publishing the same step. Trade-off: a mid-run
-    // crash leaves these rows marked fired even though no MQTT was sent —
-    // surfaced via the "Queue executor error" alert path below.
+    // window and double-publishing the same step. Any row whose MQTT publish
+    // later fails is un-claimed again (see the catch block below) so the next
+    // tick retries it — otherwise a transient broker outage would strand an
+    // OFF step and the relay would run until the watchdog cap.
     const claimedAt = new Date().toISOString()
     await Promise.all(rows.map(r =>
       supabase.from('program_queue').update({ fired_at: claimedAt }).eq('id', r.id)
@@ -162,6 +163,7 @@ Deno.serve(async (_req) => {
     const allHistoryRows: object[] = []
     const allA6v3OffSteps: QueueRow[] = []
     const allIrrigation1OffSteps: QueueRow[] = []
+    const publishedIds = new Set<string>()
 
     for (const fireAtKey of orderedKeys) {
       const group = groups.get(fireAtKey)!
@@ -223,7 +225,22 @@ Deno.serve(async (_req) => {
         }
       }
 
-      await mqttPublishAll(groupMessages.map(m => ({ topic: m.topic, payload: m.payload })))
+      try {
+        await mqttPublishAll(groupMessages.map(m => ({ topic: m.topic, payload: m.payload })))
+      } catch (pubErr) {
+        // Publish failed — un-claim every row that has not been published yet
+        // (this group plus all later groups) so the next cron tick retries
+        // them. Without this an unsent OFF step would strand the relay ON.
+        const stranded = rows.filter(r => !publishedIds.has(r.id))
+        if (stranded.length > 0) {
+          console.error(`[run-program-queue] publish failed — un-claiming ${stranded.length} row(s) for retry`)
+          await Promise.all(stranded.map(r =>
+            supabase.from('program_queue').update({ fired_at: null }).eq('id', r.id)
+          ))
+        }
+        throw pubErr
+      }
+      group.forEach(r => publishedIds.add(r.id))
       groupMessages.forEach(m => allFiredLabels.push(m.label))
     }
 
