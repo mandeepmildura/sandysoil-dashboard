@@ -1,5 +1,8 @@
 # Sandy Soil Automations — Project Context
 
+## Communication
+- Explain things in plain language by default — short, minimal jargon, no assuming deep codebase knowledge.
+
 ## Stack
 - **Frontend**: React + Vite, Tailwind CSS, deployed on Cloudflare Pages (`sandysoil.pages.dev`)
 - **Database**: Supabase (PostgreSQL) — zone history, schedules, programs, alerts, auth
