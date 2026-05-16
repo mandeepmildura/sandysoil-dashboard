@@ -3,6 +3,9 @@
 // Secrets required: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
 // Optional: TWILIO_WHATSAPP_FROM — WhatsApp sender (e.g. sandbox +14155238886).
 //           Falls back to TWILIO_FROM_NUMBER if not set.
+//           TWILIO_WEBHOOK_URL — exact public URL Twilio is configured to
+//           call. Only needed if signature validation rejects every request
+//           because the runtime req.url differs from what Twilio signed.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -22,6 +25,39 @@ async function getSettings(): Promise<Record<string, string>> {
 
 function normalizePhone(s: string): string {
   return s.replace(/^whatsapp:/i, '').replace(/\s/g, '').trim()
+}
+
+/**
+ * Validate a Twilio webhook signature.
+ * Twilio signs (request URL + each POST param appended as key+value, sorted
+ * by key) with HMAC-SHA1 keyed by the account auth token, base64-encoded.
+ * See https://www.twilio.com/docs/usage/security#validating-requests
+ */
+async function isValidTwilioSignature(
+  authToken: string,
+  signature: string,
+  webhookUrl: string,
+  params: Record<string, string>,
+): Promise<boolean> {
+  const data = webhookUrl + Object.keys(params).sort()
+    .map(k => k + params[k])
+    .join('')
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(authToken),
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign'],
+  )
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data))
+  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)))
+  // Constant-time compare to avoid leaking the signature via timing.
+  if (expected.length !== signature.length) return false
+  let diff = 0
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i)
+  }
+  return diff === 0
 }
 
 async function sendTwilio(to: string, body: string, channel: string, fromOverride?: string): Promise<void> {
@@ -58,10 +94,27 @@ Deno.serve(async (req) => {
   // Inbound Twilio webhook: POST /whatsapp-gateway/inbound
   if (req.method === 'POST' && url.pathname.endsWith('/inbound')) {
     const formData = await req.formData()
+
+    // Verify the request genuinely came from Twilio before trusting any field.
+    // Without this the `From` field is attacker-controlled — anyone could POST
+    // From=<admin number>&Body=STOP and shut off every irrigation zone.
+    const params: Record<string, string> = {}
+    for (const [k, v] of formData.entries()) {
+      if (typeof v === 'string') params[k] = v
+    }
+    const signature  = req.headers.get('X-Twilio-Signature') ?? ''
+    const webhookUrl = Deno.env.get('TWILIO_WEBHOOK_URL') ?? req.url
+    const signed = TWILIO_AUTH_TOKEN.length > 0 && signature.length > 0 &&
+      await isValidTwilioSignature(TWILIO_AUTH_TOKEN, signature, webhookUrl, params)
+    if (!signed) {
+      console.warn('[whatsapp-gateway] inbound rejected — missing/invalid Twilio signature')
+      return new Response('Forbidden', { status: 403 })
+    }
+
     const from      = formData.get('From')?.toString() ?? ''
     const inboundTo = formData.get('To')?.toString() ?? ''
     const body      = formData.get('Body')?.toString().trim().toUpperCase() ?? ''
-    console.log('[inbound] From:', from, 'To:', inboundTo, 'Body:', body, 'FROM_NUMBER:', TWILIO_FROM_NUMBER)
+    console.log('[inbound] From:', from, 'To:', inboundTo, 'Body:', body)
 
     const settings = await getSettings()
     const alertPhone = normalizePhone(settings.alert_phone ?? '')
